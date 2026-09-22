@@ -198,7 +198,7 @@ void LauncherApp::run() {
                                 lilka::colors::White,
                                 [](void* item) {
                                     lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
-                                    menuItem->postfix = lilka::battery.hasFullLevelCalibration() ? K_S_ON : K_S_OFF;
+                                    menuItem->postfix = lilka::battery.hasFullLevelCalibration() ? "[x]" : "[ ]";
                                 }
                             ),
                             ITEM::MENU(
