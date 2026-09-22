@@ -21,6 +21,9 @@ private:
     uint8_t memMode;
     uint8_t networkMode;
     uint8_t batteryMode;
+    int displayedBatteryLevel = -1;
+    int pendingBatteryLevel = -1;
+    uint8_t pendingBatteryLevelSeconds = 0;
 
 public:
     StatusBarApp();
@@ -53,6 +56,7 @@ private:
     int drawMem(lilka::Canvas* canvas);
     int drawNetwork(lilka::Canvas* canvas);
     int drawBattery(lilka::Canvas* canvas);
+    int stableBatteryLevel(int level);
 
     void formatSize(uint32_t bytes, char* buf, size_t len);
 };

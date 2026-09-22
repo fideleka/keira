@@ -226,7 +226,7 @@ int StatusBarApp::drawNetwork(lilka::Canvas* canvas) {
 }
 
 int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
-    auto level = lilka::battery.readLevel();
+    auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readLevel());
     auto xOffset = 0;
     const uint16_t* icon = nullptr;
     if (batteryMode == 1 || batteryMode == 2) {
@@ -268,12 +268,47 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
 
     if (batteryMode == 4) {
         canvas->setCursor(xOffset, 17);
-        uint16_t raw = lilka::battery.readRawValue();
-        float voltage = (float)raw / 4095.0 * LILKA_BATTERY_MAX_MEASURABLE_VOLTAGE;
+        float voltage = lilka::battery.readVoltage();
         canvas->print(String(voltage, 2) + "v");
         xOffset = canvas->getCursorX() + 2;
     }
     return xOffset;
+}
+
+int StatusBarApp::stableBatteryLevel(int level) {
+    if (level < 0) {
+        displayedBatteryLevel = -1;
+        pendingBatteryLevel = -1;
+        pendingBatteryLevelSeconds = 0;
+        return level;
+    }
+
+    if (displayedBatteryLevel < 0) {
+        displayedBatteryLevel = level;
+        return level;
+    }
+
+    if (level == displayedBatteryLevel) {
+        pendingBatteryLevel = -1;
+        pendingBatteryLevelSeconds = 0;
+        return displayedBatteryLevel;
+    }
+
+    if (level != pendingBatteryLevel) {
+        pendingBatteryLevel = level;
+        pendingBatteryLevelSeconds = 1;
+        return displayedBatteryLevel;
+    }
+
+    pendingBatteryLevelSeconds++;
+    uint8_t requiredSeconds = abs(level - displayedBatteryLevel) >= 2 ? 3 : 10;
+    if (level <= 10 || pendingBatteryLevelSeconds >= requiredSeconds) {
+        displayedBatteryLevel = level;
+        pendingBatteryLevel = -1;
+        pendingBatteryLevelSeconds = 0;
+    }
+
+    return displayedBatteryLevel;
 }
 
 void StatusBarApp::formatSize(uint32_t bytes, char* buf, size_t len) {

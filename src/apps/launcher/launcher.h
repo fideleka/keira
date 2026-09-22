@@ -67,6 +67,10 @@ private:
     void wifiToggle();
     void wifiManager();
     void setSpiSDSpeed();
+    void calibrateBatteryFullLevel();
+    void resetBatteryFullLevelCalibration();
+    void setBatteryVoltageOffset();
+    void resetBatteryVoltageOffset();
     void setMDNSHostname();
     void about();
     void info();
