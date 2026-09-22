@@ -226,7 +226,7 @@ int StatusBarApp::drawNetwork(lilka::Canvas* canvas) {
 }
 
 int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
-    auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readLevel());
+    auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readEstimatedLevel());
     auto xOffset = 0;
     const uint16_t* icon = nullptr;
     if (batteryMode == 1 || batteryMode == 2) {
