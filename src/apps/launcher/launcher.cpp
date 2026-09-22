@@ -13,6 +13,7 @@
 #include "services/telnet/telnet.h"
 #include "services/web/web.h"
 #include "services/mdns/mdns.h"
+#include "services/clock/clock.h"
 // Demos:
 #include "apps/demos/lines/lines.h"
 #include "apps/demos/disk/disk.h"
@@ -178,6 +179,17 @@ void LauncherApp::run() {
                             ),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_NETWORKS, [this]() { this->wifiManager(); }),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_TX_POWER, [this]() { this->setWiFiTxPower(); }),
+                        }
+                    ),
+                    ITEM::MENU(
+                        K_S_LAUNCHER_TIMEZONE,
+                        [this]() { this->setTimezone(); },
+                        nullptr,
+                        lilka::colors::White,
+                        [this](void* item) {
+                            lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                            ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+                            menuItem->postfix = getTimezoneLabel(clockService->getTimezone());
                         }
                     ),
                     ITEM::SUBMENU(
@@ -738,6 +750,86 @@ void LauncherApp::setMDNSHostname() {
     String newHostname = inputDialog.getValue();
     if (!newHostname.isEmpty()) {
         mdnsService->setHostname(newHostname);
+    }
+}
+
+const char* LauncherApp::getTimezoneLabel(const String& timezone) {
+    if (timezone == CLOCK_TIMEZONE_UTC) {
+        return K_S_LAUNCHER_TIMEZONE_UTC;
+    }
+    if (timezone == CLOCK_TIMEZONE_KYIV) {
+        return K_S_LAUNCHER_TIMEZONE_KYIV;
+    }
+    if (timezone == CLOCK_TIMEZONE_TORONTO) {
+        return K_S_LAUNCHER_TIMEZONE_TORONTO;
+    }
+    return K_S_LAUNCHER_TIMEZONE_CUSTOM;
+}
+
+void LauncherApp::setTimezone() {
+    ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    String currentTimezone = clockService->getTimezone();
+
+    lilka::Menu menu(K_S_LAUNCHER_TIMEZONE);
+    menu.addActivationButton(K_BTN_BACK);
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_KYIV,
+        nullptr,
+        lilka::colors::White,
+        currentTimezone == CLOCK_TIMEZONE_KYIV ? "[x]" : "[ ]"
+    );
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_TORONTO,
+        nullptr,
+        lilka::colors::White,
+        currentTimezone == CLOCK_TIMEZONE_TORONTO ? "[x]" : "[ ]"
+    );
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_UTC,
+        nullptr,
+        lilka::colors::White,
+        currentTimezone == CLOCK_TIMEZONE_UTC ? "[x]" : "[ ]"
+    );
+    bool isCustom = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO
+        && currentTimezone != CLOCK_TIMEZONE_UTC;
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_CUSTOM, nullptr, lilka::colors::White, isCustom ? "[x]" : "[ ]"
+    );
+    int16_t cursor = 3;
+    if (currentTimezone == CLOCK_TIMEZONE_KYIV) cursor = 0;
+    else if (currentTimezone == CLOCK_TIMEZONE_TORONTO) cursor = 1;
+    else if (currentTimezone == CLOCK_TIMEZONE_UTC) cursor = 2;
+    menu.setCursor(cursor);
+
+    while (!menu.isFinished()) {
+        menu.update();
+        menu.draw(canvas);
+        queueDraw();
+    }
+
+    if (menu.getButton() == K_BTN_BACK) {
+        return;
+    }
+
+    switch (menu.getCursor()) {
+        case 0:
+            clockService->setTimezone(CLOCK_TIMEZONE_KYIV);
+            break;
+        case 1:
+            clockService->setTimezone(CLOCK_TIMEZONE_TORONTO);
+            break;
+        case 2:
+            clockService->setTimezone(CLOCK_TIMEZONE_UTC);
+            break;
+        case 3: {
+            String customTimezone = input(K_S_LAUNCHER_TIMEZONE_CUSTOM_INPUT, currentTimezone);
+            if (!customTimezone.isEmpty()) {
+                clockService->setTimezone(customTimezone);
+            }
+            break;
+        }
+        default:
+            break;
     }
 }
 
