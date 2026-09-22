@@ -191,7 +191,16 @@ void LauncherApp::run() {
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_BATTERY_SETTINGS,
                         {
-                            ITEM::MENU(K_S_LAUNCHER_BATTERY_SET_FULL, [this]() { this->calibrateBatteryFullLevel(); }),
+                            ITEM::MENU(
+                                K_S_LAUNCHER_BATTERY_SET_FULL,
+                                [this]() { this->calibrateBatteryFullLevel(); },
+                                nullptr,
+                                lilka::colors::White,
+                                [](void* item) {
+                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                    menuItem->postfix = lilka::battery.hasFullLevelCalibration() ? K_S_ON : K_S_OFF;
+                                }
+                            ),
                             ITEM::MENU(
                                 K_S_LAUNCHER_BATTERY_RESET_FULL,
                                 [this]() { this->resetBatteryFullLevelCalibration(); }
