@@ -121,7 +121,7 @@
 #define K_S_LAUNCHER_BATTERY_RESET_FULL             "Reset scale"
 #define K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM     "Reset scale?\n\nSTART: Yes  B: No"
 #define K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION     "Voltage offset"
-#define K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT     "Current voltage"
+#define K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT     "Voltage"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_DECREASE    "Decrease"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_VALUE       "Correction"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_INCREASE    "Increase"

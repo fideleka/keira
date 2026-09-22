@@ -769,11 +769,12 @@ void LauncherApp::setBatteryVoltageOffset() {
     while (true) {
         lilka::Menu menu(K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION);
         menu.addActivationButton(K_BTN_BACK);
+        float rawVoltage = lilka::battery.readRawVoltage();
         menu.addItem(
             K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT,
             nullptr,
             lilka::colors::White,
-            String(lilka::battery.readRawVoltage(), 2) + " V"
+            String(rawVoltage, 2) + " -> " + String(rawVoltage + offset / 1000.0f, 2) + " V"
         );
         menu.addItem(K_S_LAUNCHER_BATTERY_CORRECTION_DECREASE, nullptr, lilka::colors::White, "-10 mV");
         menu.addItem(

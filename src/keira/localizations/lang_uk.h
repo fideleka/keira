@@ -120,7 +120,7 @@
 #define K_S_LAUNCHER_BATTERY_RESET_FULL             "Скинути шкалу"
 #define K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM     "Скинути шкалу?\n\nSTART: Так  B: Ні"
 #define K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION     "Зсув напруги"
-#define K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT     "Поточна напруга"
+#define K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT     "Напруга"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_DECREASE    "Зменшити"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_VALUE       "Корекція"
 #define K_S_LAUNCHER_BATTERY_CORRECTION_INCREASE    "Збільшити"
