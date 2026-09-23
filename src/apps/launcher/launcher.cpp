@@ -202,8 +202,7 @@ void LauncherApp::run() {
                                 }
                             ),
                             ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_RESET_FULL,
-                                [this]() { this->resetBatteryFullLevelCalibration(); }
+                                K_S_LAUNCHER_BATTERY_RESET_FULL, [this]() { this->resetBatteryFullLevelCalibration(); }
                             ),
                             ITEM::MENU(
                                 K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION,
@@ -217,8 +216,7 @@ void LauncherApp::run() {
                                 }
                             ),
                             ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_RESET_CORRECTION,
-                                [this]() { this->resetBatteryVoltageOffset(); }
+                                K_S_LAUNCHER_BATTERY_RESET_CORRECTION, [this]() { this->resetBatteryVoltageOffset(); }
                             ),
                         }
                     ),
@@ -753,9 +751,8 @@ void LauncherApp::setSpiSDSpeed() {
 }
 
 void LauncherApp::calibrateBatteryFullLevel() {
-    String description = StringFormat(
-        K_S_LAUNCHER_BATTERY_SET_FULL_CONFIRM, String(lilka::battery.readRawVoltage(), 2).c_str()
-    );
+    String description =
+        StringFormat(K_S_LAUNCHER_BATTERY_SET_FULL_CONFIRM, String(lilka::battery.readRawVoltage(), 2).c_str());
     if (!confirm(K_S_LAUNCHER_BATTERY_SET_FULL, description)) {
         return;
     }
