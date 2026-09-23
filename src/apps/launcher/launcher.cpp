@@ -208,11 +208,22 @@ void LauncherApp::run() {
                                 K_S_LAUNCHER_BATTERY_DISCHARGE_PROFILE,
                                 []() {
                                     auto profile = lilka::battery.getDischargeProfile();
-                                    auto nextProfile = profile == lilka::BatteryDischargeProfile::Sharp
-                                                           ? lilka::BatteryDischargeProfile::Typical
-                                                           : static_cast<lilka::BatteryDischargeProfile>(
-                                                                 static_cast<uint8_t>(profile) + 1
-                                                             );
+                                    lilka::BatteryDischargeProfile nextProfile;
+                                    switch (profile) {
+                                        case lilka::BatteryDischargeProfile::Typical:
+                                            nextProfile = lilka::BatteryDischargeProfile::Smooth;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Smooth:
+                                            nextProfile = lilka::BatteryDischargeProfile::VerySmooth;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::VerySmooth:
+                                            nextProfile = lilka::BatteryDischargeProfile::Sharp;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Sharp:
+                                        default:
+                                            nextProfile = lilka::BatteryDischargeProfile::Typical;
+                                            break;
+                                    }
                                     lilka::battery.setDischargeProfile(nextProfile);
                                 },
                                 nullptr,
@@ -222,6 +233,9 @@ void LauncherApp::run() {
                                     switch (lilka::battery.getDischargeProfile()) {
                                         case lilka::BatteryDischargeProfile::Smooth:
                                             menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SMOOTH;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::VerySmooth:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_VERY_SMOOTH;
                                             break;
                                         case lilka::BatteryDischargeProfile::Sharp:
                                             menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SHARP;
