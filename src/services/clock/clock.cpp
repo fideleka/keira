@@ -63,19 +63,21 @@ String ClockService::getTimezone() {
     return currentTimezone;
 }
 
-void ClockService::setTimezone(const String& newTimezone) {
+void ClockService::setTimezone(const String& newTimezone, bool persist) {
     if (newTimezone.isEmpty() || newTimezone.length() > CLOCK_MAX_TIMEZONE_LENGTH) {
         return;
     }
 
     KMTX_LOCK(timezoneMutex);
-    if (timezone == newTimezone) {
-        KMTX_UNLOCK(timezoneMutex);
+    if (timezone != newTimezone) {
+        timezone = newTimezone;
+        applyTimezone(timezone);
+    }
+    KMTX_UNLOCK(timezoneMutex);
+
+    if (!persist) {
         return;
     }
-    timezone = newTimezone;
-    applyTimezone(timezone);
-    KMTX_UNLOCK(timezoneMutex);
 
     NVS_LOCK;
     Preferences prefs;

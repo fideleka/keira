@@ -70,6 +70,7 @@ private:
     void setMDNSHostname();
     void setTimezone();
     void setCustomTimezone();
+    void setFixedUtcOffset();
     String getTimezoneLabel(const String& timezone);
     void about();
     void info();

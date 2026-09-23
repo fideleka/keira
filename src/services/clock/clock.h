@@ -14,7 +14,7 @@ public:
 
     struct tm getTime();
     String getTimezone();
-    void setTimezone(const String& timezone);
+    void setTimezone(const String& timezone, bool persist = true);
 
 private:
     void run() override;
