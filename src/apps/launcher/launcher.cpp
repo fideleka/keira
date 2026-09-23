@@ -205,6 +205,35 @@ void LauncherApp::run() {
                                 K_S_LAUNCHER_BATTERY_RESET_FULL, [this]() { this->resetBatteryFullLevelCalibration(); }
                             ),
                             ITEM::MENU(
+                                K_S_LAUNCHER_BATTERY_DISCHARGE_PROFILE,
+                                []() {
+                                    auto profile = lilka::battery.getDischargeProfile();
+                                    auto nextProfile = profile == lilka::BatteryDischargeProfile::Sharp
+                                                           ? lilka::BatteryDischargeProfile::Typical
+                                                           : static_cast<lilka::BatteryDischargeProfile>(
+                                                                 static_cast<uint8_t>(profile) + 1
+                                                             );
+                                    lilka::battery.setDischargeProfile(nextProfile);
+                                },
+                                nullptr,
+                                lilka::colors::White,
+                                [](void* item) {
+                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                    switch (lilka::battery.getDischargeProfile()) {
+                                        case lilka::BatteryDischargeProfile::Smooth:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SMOOTH;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Sharp:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SHARP;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Typical:
+                                        default:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_TYPICAL;
+                                            break;
+                                    }
+                                }
+                            ),
+                            ITEM::MENU(
                                 K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION,
                                 [this]() { this->setBatteryVoltageOffset(); },
                                 nullptr,
