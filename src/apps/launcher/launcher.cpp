@@ -247,20 +247,6 @@ void LauncherApp::run() {
                                     }
                                 }
                             ),
-                            ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION,
-                                [this]() { this->setBatteryVoltageOffset(); },
-                                nullptr,
-                                lilka::colors::White,
-                                [](void* item) {
-                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
-                                    int16_t offset = lilka::battery.getVoltageOffsetMilliVolts();
-                                    menuItem->postfix = String(offset >= 0 ? "+" : "") + String(offset) + " mV";
-                                }
-                            ),
-                            ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_RESET_CORRECTION, [this]() { this->resetBatteryVoltageOffset(); }
-                            ),
                         }
                     ),
                     ITEM::MENU(K_S_LAUNCHER_SOUND, [this]() { this->runApp<SoundConfigApp>(); }),
@@ -808,67 +794,6 @@ void LauncherApp::calibrateBatteryFullLevel() {
 void LauncherApp::resetBatteryFullLevelCalibration() {
     if (confirm(K_S_LAUNCHER_BATTERY_RESET_FULL, K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM)) {
         lilka::battery.resetFullLevelCalibration();
-    }
-}
-
-void LauncherApp::setBatteryVoltageOffset() {
-    int16_t offset = lilka::battery.getVoltageOffsetMilliVolts();
-    int16_t cursor = 2;
-
-    while (true) {
-        lilka::Menu menu(K_S_LAUNCHER_BATTERY_VOLTAGE_CORRECTION);
-        menu.addActivationButton(K_BTN_BACK);
-        float rawVoltage = lilka::battery.readRawVoltage();
-        menu.addItem(
-            K_S_LAUNCHER_BATTERY_CORRECTION_CURRENT,
-            nullptr,
-            lilka::colors::White,
-            String(rawVoltage, 2) + " -> " + String(rawVoltage + offset / 1000.0f, 2) + " V"
-        );
-        menu.addItem(K_S_LAUNCHER_BATTERY_CORRECTION_DECREASE, nullptr, lilka::colors::White, "-10 mV");
-        menu.addItem(
-            K_S_LAUNCHER_BATTERY_CORRECTION_VALUE,
-            nullptr,
-            lilka::colors::White,
-            String(offset >= 0 ? "+" : "") + String(offset) + " mV"
-        );
-        menu.addItem(K_S_LAUNCHER_BATTERY_CORRECTION_INCREASE, nullptr, lilka::colors::White, "+10 mV");
-        menu.addItem(K_S_LAUNCHER_BATTERY_CORRECTION_SAVE);
-        menu.addItem(K_S_LAUNCHER_BATTERY_CORRECTION_CANCEL);
-        menu.setCursor(cursor);
-
-        while (!menu.isFinished()) {
-            menu.update();
-            menu.draw(canvas);
-            queueDraw();
-        }
-
-        if (menu.getButton() == K_BTN_BACK) {
-            return;
-        }
-
-        cursor = menu.getCursor();
-        switch (cursor) {
-            case 1:
-                offset = constrain(offset - 10, -500, 500);
-                break;
-            case 3:
-                offset = constrain(offset + 10, -500, 500);
-                break;
-            case 4:
-                lilka::battery.setVoltageOffsetMilliVolts(offset);
-                return;
-            case 5:
-                return;
-            default:
-                break;
-        }
-    }
-}
-
-void LauncherApp::resetBatteryVoltageOffset() {
-    if (confirm(K_S_LAUNCHER_BATTERY_RESET_CORRECTION, K_S_LAUNCHER_BATTERY_RESET_CORRECTION_CONFIRM)) {
-        lilka::battery.resetVoltageOffset();
     }
 }
 
