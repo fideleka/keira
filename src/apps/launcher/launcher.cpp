@@ -113,9 +113,7 @@ bool parseUtcOffset(const String& input, int16_t& offsetMinutes) {
 
 String formatUtcOffset(int16_t offsetMinutes) {
     int absoluteMinutes = abs(offsetMinutes);
-    return StringFormat(
-        "%c%02d:%02d", offsetMinutes < 0 ? '-' : '+', absoluteMinutes / 60, absoluteMinutes % 60
-    );
+    return StringFormat("%c%02d:%02d", offsetMinutes < 0 ? '-' : '+', absoluteMinutes / 60, absoluteMinutes % 60);
 }
 
 String timezoneFromUtcOffset(int16_t offsetMinutes) {
@@ -876,16 +874,11 @@ void LauncherApp::setTimezone() {
         currentTimezone == CLOCK_TIMEZONE_TORONTO ? "[x]" : "[ ]"
     );
     menu.addItem(
-        K_S_LAUNCHER_TIMEZONE_UTC,
-        nullptr,
-        lilka::colors::White,
-        currentTimezone == CLOCK_TIMEZONE_UTC ? "[x]" : "[ ]"
+        K_S_LAUNCHER_TIMEZONE_UTC, nullptr, lilka::colors::White, currentTimezone == CLOCK_TIMEZONE_UTC ? "[x]" : "[ ]"
     );
-    bool isCustom = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO
-        && currentTimezone != CLOCK_TIMEZONE_UTC;
-    menu.addItem(
-        K_S_LAUNCHER_TIMEZONE_CUSTOM, nullptr, lilka::colors::White, isCustom ? "[x]" : "[ ]"
-    );
+    bool isCustom = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO &&
+                    currentTimezone != CLOCK_TIMEZONE_UTC;
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_CUSTOM, nullptr, lilka::colors::White, isCustom ? "[x]" : "[ ]");
     int16_t cursor = 3;
     if (currentTimezone == CLOCK_TIMEZONE_KYIV) cursor = 0;
     else if (currentTimezone == CLOCK_TIMEZONE_TORONTO) cursor = 1;
@@ -925,25 +918,15 @@ void LauncherApp::setCustomTimezone() {
     ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
     String currentTimezone = clockService->getTimezone();
     int16_t currentOffsetMinutes = 0;
-    bool isFixedOffset = currentTimezone != CLOCK_TIMEZONE_UTC
-        && utcOffsetFromTimezone(currentTimezone, currentOffsetMinutes);
-    bool isAdvanced = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO
-        && currentTimezone != CLOCK_TIMEZONE_UTC && !isFixedOffset;
+    bool isFixedOffset =
+        currentTimezone != CLOCK_TIMEZONE_UTC && utcOffsetFromTimezone(currentTimezone, currentOffsetMinutes);
+    bool isAdvanced = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO &&
+                      currentTimezone != CLOCK_TIMEZONE_UTC && !isFixedOffset;
 
     lilka::Menu menu(K_S_LAUNCHER_TIMEZONE_CUSTOM);
     menu.addActivationButton(K_BTN_BACK);
-    menu.addItem(
-        K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET,
-        nullptr,
-        lilka::colors::White,
-        isFixedOffset ? "[x]" : "[ ]"
-    );
-    menu.addItem(
-        K_S_LAUNCHER_TIMEZONE_ADVANCED,
-        nullptr,
-        lilka::colors::White,
-        isAdvanced ? "[x]" : "[ ]"
-    );
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET, nullptr, lilka::colors::White, isFixedOffset ? "[x]" : "[ ]");
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_ADVANCED, nullptr, lilka::colors::White, isAdvanced ? "[x]" : "[ ]");
     menu.setCursor(isAdvanced ? 1 : 0);
 
     while (!menu.isFinished()) {
@@ -999,12 +982,7 @@ void LauncherApp::setFixedUtcOffset() {
             StringFormat("%02d:%02d", localTime.tm_hour, localTime.tm_min)
         );
         menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_DECREASE, nullptr, lilka::colors::White, "-30 min");
-        menu.addItem(
-            K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET,
-            nullptr,
-            lilka::colors::White,
-            offsetLabel
-        );
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET, nullptr, lilka::colors::White, offsetLabel);
         menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_INCREASE, nullptr, lilka::colors::White, "+30 min");
         menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_SAVE);
         menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_CANCEL);

@@ -14,9 +14,11 @@ constexpr size_t CLOCK_MAX_TIMEZONE_LENGTH = 63;
 ClockService::ClockService() : Service("clock") {
     NVS_LOCK;
     Preferences prefs;
-    prefs.begin(getName(), true);
-    String savedTimezone = prefs.getString(CLOCK_NVS_TIMEZONE_KEY, CLOCK_DEFAULT_TIMEZONE);
-    prefs.end();
+    String savedTimezone = CLOCK_DEFAULT_TIMEZONE;
+    if (prefs.begin(getName(), true)) {
+        savedTimezone = prefs.getString(CLOCK_NVS_TIMEZONE_KEY, CLOCK_DEFAULT_TIMEZONE);
+        prefs.end();
+    }
     NVS_UNLOCK;
 
     if (!savedTimezone.isEmpty() && savedTimezone.length() <= CLOCK_MAX_TIMEZONE_LENGTH) {
