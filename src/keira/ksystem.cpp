@@ -26,6 +26,7 @@
 // Versioning:
 #include <lilka/sdk.h>
 #include "keira_version_auto_gen.h"
+#include "personal_build.h"
 
 // Libs:
 //#include <string.h>
@@ -44,6 +45,41 @@
 // Even though PlatformIO allows us to do everything wrong way, it's still
 // a thing for further code reusage and visually shows local/global scopes
 // of code parts
+//////////////////////////////////////////////////////////////////////////////
+
+namespace {
+#if KEIRA_PERSONAL_BUILD
+void printCentered(const char* text, int16_t y, const uint8_t* font, uint16_t color) {
+    int16_t x1;
+    int16_t y1;
+    uint16_t width;
+    uint16_t height;
+
+    lilka::display.setFont(font);
+    lilka::display.getTextBounds(text, 0, y, &x1, &y1, &width, &height);
+    lilka::display.setTextColor(color);
+    lilka::display.setCursor((lilka::display.width() - width) / 2 - x1, y);
+    lilka::display.print(text);
+}
+
+void showPersonalBuildCard() {
+    lilka::display.fillScreen(lilka::colors::Black);
+    lilka::display.drawRoundRect(
+        12, 12, lilka::display.width() - 24, lilka::display.height() - 24, 10, lilka::colors::Cyan
+    );
+
+    printCentered("* " KEIRA_BUILD_LABEL " *", 48, FONT_10x20, lilka::colors::Jasmine);
+    printCentered(KEIRA_BUILD_OWNER, 73, FONT_8x13, lilka::colors::Cyan);
+    lilka::display.drawFastHLine(34, 92, lilka::display.width() - 68, lilka::colors::Navy_blue_crayola);
+    printCentered("Keira " KEIRA_GIT_VERSION, 121, FONT_6x13, lilka::colors::White);
+    printCentered("SDK   " SDK_GIT_VERSION, 143, FONT_6x13, lilka::colors::White);
+    printCentered(KEIRA_BUILD_FOOTER, 192, FONT_6x13, lilka::colors::Arylide_yellow);
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+}
+#endif
+} // namespace
+
 //////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////
@@ -103,6 +139,9 @@
 KeiraSystem::KeiraSystem() {
     versionType = KEIRA_VERSION_TYPE;
     // Keira version
+#if KEIRA_PERSONAL_BUILD
+    this->version = StringFormat("KeiraOS %s Dev %s", KEIRA_GIT_VERSION, K_S_CURRENT_LANGUAGE_SHORT);
+#else
     this->version = StringFormat(
         "KeiraOS v%d.%d.%d %s %s",
         KEIRA_VERSION_MAJOR,
@@ -111,6 +150,7 @@ KeiraSystem::KeiraSystem() {
         KEIRA_VERSION_TYPE_ACSTR[KEIRA_VERSION_TYPE],
         K_S_CURRENT_LANGUAGE_SHORT
     );
+#endif
 }
 
 // TODO: CMD Params Handling
@@ -198,11 +238,16 @@ void KeiraSystem::showStartupScreen() {
     auto resetReason = lilka::multiboot.getResetReason();
     // chip always run in ESP_RST_PANIC instead of ESP_RST_POWERON
     // to speedify dev, we just do not display splash in a dev mode at all
-    bool displaySplash =
-        (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_PANIC) &&
-        (!(lilka::sdk.getVersion().vtype == lilka::SDK_VERSION_TYPE_DEV || versionType == KEIRA_VERSION_TYPE_DEV));
+    bool displaySplash = (resetReason == ESP_RST_POWERON || resetReason == ESP_RST_PANIC) &&
+                         (KEIRA_PERSONAL_BUILD || !(lilka::sdk.getVersion().vtype == lilka::SDK_VERSION_TYPE_DEV ||
+                                                    versionType == KEIRA_VERSION_TYPE_DEV));
 
-    if (displaySplash) lilka::display.showStartupScreen();
+    if (displaySplash) {
+        lilka::display.showStartupScreen();
+#if KEIRA_PERSONAL_BUILD
+        showPersonalBuildCard();
+#endif
+    }
 }
 
 // Prepare system to launch
