@@ -147,6 +147,9 @@ int StatusBarApp::drawWidget(StatusBarWidget* widget, int x, int availableWidth)
 
 int StatusBarApp::drawClock(lilka::Canvas* canvas) {
     ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    if (clockService == NULL) {
+        return 0;
+    }
     struct tm timeinfo = clockService->getTime();
     char strftime_buf[16];
     auto clockFormat = "%H:%M";

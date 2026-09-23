@@ -70,6 +70,10 @@ private:
     void calibrateBatteryFullLevel();
     void resetBatteryFullLevelCalibration();
     void setMDNSHostname();
+    void setTimezone();
+    void setCustomTimezone();
+    void setFixedUtcOffset();
+    String getTimezoneLabel(const String& timezone);
     void about();
     void info();
     void showEasterEgg();

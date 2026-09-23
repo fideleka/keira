@@ -13,6 +13,7 @@
 #include "services/telnet/telnet.h"
 #include "services/web/web.h"
 #include "services/mdns/mdns.h"
+#include "services/clock/clock.h"
 // Demos:
 #include "apps/demos/lines/lines.h"
 #include "apps/demos/disk/disk.h"
@@ -62,6 +63,88 @@
 
 #include "keira/ksystem.h"
 #include "keira/utils/string.h"
+
+namespace {
+bool isDecimalNumber(const String& value) {
+    if (value.isEmpty()) {
+        return false;
+    }
+    for (size_t i = 0; i < value.length(); i++) {
+        if (value[i] < '0' || value[i] > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseUtcOffset(const String& input, int16_t& offsetMinutes) {
+    String value = input;
+    value.trim();
+    if (value.isEmpty()) {
+        return false;
+    }
+
+    int8_t sign = 1;
+    if (value[0] == '+' || value[0] == '-') {
+        sign = value[0] == '-' ? -1 : 1;
+        value.remove(0, 1);
+    }
+
+    int separator = value.indexOf(':');
+    if (separator >= 0 && value.indexOf(':', separator + 1) >= 0) {
+        return false;
+    }
+
+    String hoursText = separator >= 0 ? value.substring(0, separator) : value;
+    String minutesText = separator >= 0 ? value.substring(separator + 1) : "0";
+    if (!isDecimalNumber(hoursText) || !isDecimalNumber(minutesText)) {
+        return false;
+    }
+
+    int hours = hoursText.toInt();
+    int minutes = minutesText.toInt();
+    if (hours > 14 || minutes > 59 || (hours == 14 && minutes != 0)) {
+        return false;
+    }
+
+    offsetMinutes = sign * (hours * 60 + minutes);
+    return true;
+}
+
+String formatUtcOffset(int16_t offsetMinutes) {
+    int absoluteMinutes = abs(offsetMinutes);
+    return StringFormat("%c%02d:%02d", offsetMinutes < 0 ? '-' : '+', absoluteMinutes / 60, absoluteMinutes % 60);
+}
+
+String timezoneFromUtcOffset(int16_t offsetMinutes) {
+    if (offsetMinutes == 0) {
+        return CLOCK_TIMEZONE_UTC;
+    }
+
+    int absoluteMinutes = abs(offsetMinutes);
+    // POSIX TZ offsets have the opposite sign from the familiar UTC offset.
+    String timezone = offsetMinutes > 0 ? "UTC-" : "UTC";
+    timezone += String(absoluteMinutes / 60);
+    if (absoluteMinutes % 60 != 0) {
+        timezone += ":";
+        timezone += String(absoluteMinutes % 60);
+    }
+    return timezone;
+}
+
+bool utcOffsetFromTimezone(const String& timezone, int16_t& offsetMinutes) {
+    if (!timezone.startsWith("UTC")) {
+        return false;
+    }
+
+    int16_t posixOffsetMinutes;
+    if (!parseUtcOffset(timezone.substring(3), posixOffsetMinutes)) {
+        return false;
+    }
+    offsetMinutes = -posixOffsetMinutes;
+    return true;
+}
+} // namespace
 
 LauncherApp::LauncherApp() : App("Launcher") {
     setktStackSize(8192); // Yeah, this one is heavy as fuck
@@ -178,6 +261,17 @@ void LauncherApp::run() {
                             ),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_NETWORKS, [this]() { this->wifiManager(); }),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_TX_POWER, [this]() { this->setWiFiTxPower(); }),
+                        }
+                    ),
+                    ITEM::MENU(
+                        K_S_LAUNCHER_TIMEZONE,
+                        [this]() { this->setTimezone(); },
+                        nullptr,
+                        lilka::colors::White,
+                        [this](void* item) {
+                            lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                            ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+                            menuItem->postfix = getTimezoneLabel(clockService->getTimezone());
                         }
                     ),
                     ITEM::SUBMENU(
@@ -817,6 +911,194 @@ void LauncherApp::setMDNSHostname() {
     String newHostname = inputDialog.getValue();
     if (!newHostname.isEmpty()) {
         mdnsService->setHostname(newHostname);
+    }
+}
+
+String LauncherApp::getTimezoneLabel(const String& timezone) {
+    if (timezone == CLOCK_TIMEZONE_UTC) {
+        return K_S_LAUNCHER_TIMEZONE_UTC;
+    }
+    if (timezone == CLOCK_TIMEZONE_KYIV) {
+        return K_S_LAUNCHER_TIMEZONE_KYIV;
+    }
+    if (timezone == CLOCK_TIMEZONE_TORONTO) {
+        return K_S_LAUNCHER_TIMEZONE_TORONTO;
+    }
+
+    int16_t offsetMinutes;
+    if (utcOffsetFromTimezone(timezone, offsetMinutes)) {
+        String label = "UTC";
+        label += formatUtcOffset(offsetMinutes);
+        return label;
+    }
+    return K_S_LAUNCHER_TIMEZONE_CUSTOM;
+}
+
+void LauncherApp::setTimezone() {
+    ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    String currentTimezone = clockService->getTimezone();
+
+    lilka::Menu menu(K_S_LAUNCHER_TIMEZONE);
+    menu.addActivationButton(K_BTN_BACK);
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_KYIV,
+        nullptr,
+        lilka::colors::White,
+        currentTimezone == CLOCK_TIMEZONE_KYIV ? "[x]" : "[ ]"
+    );
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_TORONTO,
+        nullptr,
+        lilka::colors::White,
+        currentTimezone == CLOCK_TIMEZONE_TORONTO ? "[x]" : "[ ]"
+    );
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_UTC, nullptr, lilka::colors::White, currentTimezone == CLOCK_TIMEZONE_UTC ? "[x]" : "[ ]"
+    );
+    bool isCustom = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO &&
+                    currentTimezone != CLOCK_TIMEZONE_UTC;
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_CUSTOM, nullptr, lilka::colors::White, isCustom ? "[x]" : "[ ]");
+    int16_t cursor = 3;
+    if (currentTimezone == CLOCK_TIMEZONE_KYIV) cursor = 0;
+    else if (currentTimezone == CLOCK_TIMEZONE_TORONTO) cursor = 1;
+    else if (currentTimezone == CLOCK_TIMEZONE_UTC) cursor = 2;
+    menu.setCursor(cursor);
+
+    while (!menu.isFinished()) {
+        menu.update();
+        menu.draw(canvas);
+        queueDraw();
+    }
+
+    if (menu.getButton() == K_BTN_BACK) {
+        return;
+    }
+
+    switch (menu.getCursor()) {
+        case 0:
+            clockService->setTimezone(CLOCK_TIMEZONE_KYIV);
+            break;
+        case 1:
+            clockService->setTimezone(CLOCK_TIMEZONE_TORONTO);
+            break;
+        case 2:
+            clockService->setTimezone(CLOCK_TIMEZONE_UTC);
+            break;
+        case 3: {
+            setCustomTimezone();
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+void LauncherApp::setCustomTimezone() {
+    ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    String currentTimezone = clockService->getTimezone();
+    int16_t currentOffsetMinutes = 0;
+    bool isFixedOffset =
+        currentTimezone != CLOCK_TIMEZONE_UTC && utcOffsetFromTimezone(currentTimezone, currentOffsetMinutes);
+    bool isAdvanced = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO &&
+                      currentTimezone != CLOCK_TIMEZONE_UTC && !isFixedOffset;
+
+    lilka::Menu menu(K_S_LAUNCHER_TIMEZONE_CUSTOM);
+    menu.addActivationButton(K_BTN_BACK);
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET, nullptr, lilka::colors::White, isFixedOffset ? "[x]" : "[ ]");
+    menu.addItem(K_S_LAUNCHER_TIMEZONE_ADVANCED, nullptr, lilka::colors::White, isAdvanced ? "[x]" : "[ ]");
+    menu.setCursor(isAdvanced ? 1 : 0);
+
+    while (!menu.isFinished()) {
+        menu.update();
+        menu.draw(canvas);
+        queueDraw();
+    }
+
+    if (menu.getButton() == K_BTN_BACK) {
+        return;
+    }
+
+    if (menu.getCursor() == 0) {
+        setFixedUtcOffset();
+        return;
+    }
+
+    String advancedTimezone = input(K_S_LAUNCHER_TIMEZONE_CUSTOM_INPUT, currentTimezone);
+    if (!advancedTimezone.isEmpty()) {
+        clockService->setTimezone(advancedTimezone);
+    }
+}
+
+void LauncherApp::setFixedUtcOffset() {
+    constexpr int16_t MIN_OFFSET_MINUTES = -12 * 60;
+    constexpr int16_t MAX_OFFSET_MINUTES = 14 * 60;
+    constexpr int16_t OFFSET_STEP_MINUTES = 30;
+
+    ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    String originalTimezone = clockService->getTimezone();
+    int16_t offsetMinutes = 0;
+    if (!utcOffsetFromTimezone(originalTimezone, offsetMinutes)) {
+        if (originalTimezone == CLOCK_TIMEZONE_KYIV) {
+            offsetMinutes = 2 * 60;
+        } else if (originalTimezone == CLOCK_TIMEZONE_TORONTO) {
+            offsetMinutes = -5 * 60;
+        }
+    }
+
+    clockService->setTimezone(timezoneFromUtcOffset(offsetMinutes), false);
+    int16_t cursor = 2;
+
+    while (true) {
+        lilka::Menu menu(K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET);
+        menu.addActivationButton(K_BTN_BACK);
+        struct tm localTime = clockService->getTime();
+        String offsetLabel = "UTC";
+        offsetLabel += formatUtcOffset(offsetMinutes);
+        menu.addItem(
+            K_S_LAUNCHER_TIMEZONE_OFFSET_CURRENT,
+            nullptr,
+            lilka::colors::White,
+            StringFormat("%02d:%02d", localTime.tm_hour, localTime.tm_min)
+        );
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_DECREASE, nullptr, lilka::colors::White, "-30 min");
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET, nullptr, lilka::colors::White, offsetLabel);
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_INCREASE, nullptr, lilka::colors::White, "+30 min");
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_SAVE);
+        menu.addItem(K_S_LAUNCHER_TIMEZONE_OFFSET_CANCEL);
+        menu.setCursor(cursor);
+
+        while (!menu.isFinished()) {
+            menu.update();
+            menu.draw(canvas);
+            queueDraw();
+        }
+
+        if (menu.getButton() == K_BTN_BACK) {
+            clockService->setTimezone(originalTimezone, false);
+            return;
+        }
+
+        cursor = menu.getCursor();
+        switch (cursor) {
+            case 1:
+                offsetMinutes -= OFFSET_STEP_MINUTES;
+                if (offsetMinutes < MIN_OFFSET_MINUTES) offsetMinutes = MIN_OFFSET_MINUTES;
+                clockService->setTimezone(timezoneFromUtcOffset(offsetMinutes), false);
+                break;
+            case 3:
+                offsetMinutes += OFFSET_STEP_MINUTES;
+                if (offsetMinutes > MAX_OFFSET_MINUTES) offsetMinutes = MAX_OFFSET_MINUTES;
+                clockService->setTimezone(timezoneFromUtcOffset(offsetMinutes), false);
+                break;
+            case 4:
+                clockService->setTimezone(timezoneFromUtcOffset(offsetMinutes));
+                return;
+            case 5:
+                clockService->setTimezone(originalTimezone, false);
+                return;
+            default:
+                break;
+        }
     }
 }
 
