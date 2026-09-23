@@ -69,7 +69,8 @@ private:
     void setSpiSDSpeed();
     void setMDNSHostname();
     void setTimezone();
-    const char* getTimezoneLabel(const String& timezone);
+    void setCustomTimezone();
+    String getTimezoneLabel(const String& timezone);
     void about();
     void info();
     void showEasterEgg();

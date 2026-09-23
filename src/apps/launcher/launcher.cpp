@@ -64,6 +64,90 @@
 #include "keira/ksystem.h"
 #include "keira/utils/string.h"
 
+namespace {
+bool isDecimalNumber(const String& value) {
+    if (value.isEmpty()) {
+        return false;
+    }
+    for (size_t i = 0; i < value.length(); i++) {
+        if (value[i] < '0' || value[i] > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseUtcOffset(const String& input, int16_t& offsetMinutes) {
+    String value = input;
+    value.trim();
+    if (value.isEmpty()) {
+        return false;
+    }
+
+    int8_t sign = 1;
+    if (value[0] == '+' || value[0] == '-') {
+        sign = value[0] == '-' ? -1 : 1;
+        value.remove(0, 1);
+    }
+
+    int separator = value.indexOf(':');
+    if (separator >= 0 && value.indexOf(':', separator + 1) >= 0) {
+        return false;
+    }
+
+    String hoursText = separator >= 0 ? value.substring(0, separator) : value;
+    String minutesText = separator >= 0 ? value.substring(separator + 1) : "0";
+    if (!isDecimalNumber(hoursText) || !isDecimalNumber(minutesText)) {
+        return false;
+    }
+
+    int hours = hoursText.toInt();
+    int minutes = minutesText.toInt();
+    if (hours > 14 || minutes > 59 || (hours == 14 && minutes != 0)) {
+        return false;
+    }
+
+    offsetMinutes = sign * (hours * 60 + minutes);
+    return true;
+}
+
+String formatUtcOffset(int16_t offsetMinutes) {
+    int absoluteMinutes = abs(offsetMinutes);
+    return StringFormat(
+        "%c%02d:%02d", offsetMinutes < 0 ? '-' : '+', absoluteMinutes / 60, absoluteMinutes % 60
+    );
+}
+
+String timezoneFromUtcOffset(int16_t offsetMinutes) {
+    if (offsetMinutes == 0) {
+        return CLOCK_TIMEZONE_UTC;
+    }
+
+    int absoluteMinutes = abs(offsetMinutes);
+    // POSIX TZ offsets have the opposite sign from the familiar UTC offset.
+    String timezone = offsetMinutes > 0 ? "UTC-" : "UTC";
+    timezone += String(absoluteMinutes / 60);
+    if (absoluteMinutes % 60 != 0) {
+        timezone += ":";
+        timezone += String(absoluteMinutes % 60);
+    }
+    return timezone;
+}
+
+bool utcOffsetFromTimezone(const String& timezone, int16_t& offsetMinutes) {
+    if (!timezone.startsWith("UTC")) {
+        return false;
+    }
+
+    int16_t posixOffsetMinutes;
+    if (!parseUtcOffset(timezone.substring(3), posixOffsetMinutes)) {
+        return false;
+    }
+    offsetMinutes = -posixOffsetMinutes;
+    return true;
+}
+} // namespace
+
 LauncherApp::LauncherApp() : App("Launcher") {
     setktStackSize(8192); // Yeah, this one is heavy as fuck
 }
@@ -753,7 +837,7 @@ void LauncherApp::setMDNSHostname() {
     }
 }
 
-const char* LauncherApp::getTimezoneLabel(const String& timezone) {
+String LauncherApp::getTimezoneLabel(const String& timezone) {
     if (timezone == CLOCK_TIMEZONE_UTC) {
         return K_S_LAUNCHER_TIMEZONE_UTC;
     }
@@ -762,6 +846,13 @@ const char* LauncherApp::getTimezoneLabel(const String& timezone) {
     }
     if (timezone == CLOCK_TIMEZONE_TORONTO) {
         return K_S_LAUNCHER_TIMEZONE_TORONTO;
+    }
+
+    int16_t offsetMinutes;
+    if (utcOffsetFromTimezone(timezone, offsetMinutes)) {
+        String label = "UTC";
+        label += formatUtcOffset(offsetMinutes);
+        return label;
     }
     return K_S_LAUNCHER_TIMEZONE_CUSTOM;
 }
@@ -822,14 +913,66 @@ void LauncherApp::setTimezone() {
             clockService->setTimezone(CLOCK_TIMEZONE_UTC);
             break;
         case 3: {
-            String customTimezone = input(K_S_LAUNCHER_TIMEZONE_CUSTOM_INPUT, currentTimezone);
-            if (!customTimezone.isEmpty()) {
-                clockService->setTimezone(customTimezone);
-            }
+            setCustomTimezone();
             break;
         }
         default:
             break;
+    }
+}
+
+void LauncherApp::setCustomTimezone() {
+    ClockService* clockService = static_cast<ClockService*>(ksystem.services["clock"]);
+    String currentTimezone = clockService->getTimezone();
+    int16_t currentOffsetMinutes = 0;
+    bool isFixedOffset = currentTimezone != CLOCK_TIMEZONE_UTC
+        && utcOffsetFromTimezone(currentTimezone, currentOffsetMinutes);
+    bool isAdvanced = currentTimezone != CLOCK_TIMEZONE_KYIV && currentTimezone != CLOCK_TIMEZONE_TORONTO
+        && currentTimezone != CLOCK_TIMEZONE_UTC && !isFixedOffset;
+
+    lilka::Menu menu(K_S_LAUNCHER_TIMEZONE_CUSTOM);
+    menu.addActivationButton(K_BTN_BACK);
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET,
+        nullptr,
+        lilka::colors::White,
+        isFixedOffset ? "[x]" : "[ ]"
+    );
+    menu.addItem(
+        K_S_LAUNCHER_TIMEZONE_ADVANCED,
+        nullptr,
+        lilka::colors::White,
+        isAdvanced ? "[x]" : "[ ]"
+    );
+    menu.setCursor(isAdvanced ? 1 : 0);
+
+    while (!menu.isFinished()) {
+        menu.update();
+        menu.draw(canvas);
+        queueDraw();
+    }
+
+    if (menu.getButton() == K_BTN_BACK) {
+        return;
+    }
+
+    if (menu.getCursor() == 0) {
+        String initialOffset = isFixedOffset ? formatUtcOffset(currentOffsetMinutes) : "+00:00";
+        String enteredOffset = input(K_S_LAUNCHER_TIMEZONE_OFFSET_INPUT, initialOffset);
+        int16_t offsetMinutes;
+        if (!parseUtcOffset(enteredOffset, offsetMinutes)) {
+            if (!enteredOffset.isEmpty()) {
+                alert(K_S_ERROR, K_S_LAUNCHER_TIMEZONE_OFFSET_INVALID);
+            }
+            return;
+        }
+        clockService->setTimezone(timezoneFromUtcOffset(offsetMinutes));
+        return;
+    }
+
+    String advancedTimezone = input(K_S_LAUNCHER_TIMEZONE_CUSTOM_INPUT, currentTimezone);
+    if (!advancedTimezone.isEmpty()) {
+        clockService->setTimezone(advancedTimezone);
     }
 }
 
