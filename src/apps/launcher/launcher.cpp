@@ -188,6 +188,67 @@ void LauncherApp::run() {
                             ITEM::MENU(K_S_LAUNCHER_SD_SPEED, [this]() { this->setSpiSDSpeed(); }),
                         }
                     ),
+                    ITEM::SUBMENU(
+                        K_S_LAUNCHER_BATTERY_SETTINGS,
+                        {
+                            ITEM::MENU(
+                                K_S_LAUNCHER_BATTERY_SET_FULL,
+                                [this]() { this->calibrateBatteryFullLevel(); },
+                                nullptr,
+                                lilka::colors::White,
+                                [](void* item) {
+                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                    menuItem->postfix = lilka::battery.hasFullLevelCalibration() ? "[x]" : "[ ]";
+                                }
+                            ),
+                            ITEM::MENU(
+                                K_S_LAUNCHER_BATTERY_RESET_FULL, [this]() { this->resetBatteryFullLevelCalibration(); }
+                            ),
+                            ITEM::MENU(
+                                K_S_LAUNCHER_BATTERY_DISCHARGE_PROFILE,
+                                []() {
+                                    auto profile = lilka::battery.getDischargeProfile();
+                                    lilka::BatteryDischargeProfile nextProfile;
+                                    switch (profile) {
+                                        case lilka::BatteryDischargeProfile::Typical:
+                                            nextProfile = lilka::BatteryDischargeProfile::Smooth;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Smooth:
+                                            nextProfile = lilka::BatteryDischargeProfile::VerySmooth;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::VerySmooth:
+                                            nextProfile = lilka::BatteryDischargeProfile::Sharp;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Sharp:
+                                        default:
+                                            nextProfile = lilka::BatteryDischargeProfile::Typical;
+                                            break;
+                                    }
+                                    lilka::battery.setDischargeProfile(nextProfile);
+                                },
+                                nullptr,
+                                lilka::colors::White,
+                                [](void* item) {
+                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                    switch (lilka::battery.getDischargeProfile()) {
+                                        case lilka::BatteryDischargeProfile::Smooth:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SMOOTH;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::VerySmooth:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_VERY_SMOOTH;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Sharp:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_SHARP;
+                                            break;
+                                        case lilka::BatteryDischargeProfile::Typical:
+                                        default:
+                                            menuItem->postfix = K_S_LAUNCHER_BATTERY_PROFILE_TYPICAL;
+                                            break;
+                                    }
+                                }
+                            ),
+                        }
+                    ),
                     ITEM::MENU(K_S_LAUNCHER_SOUND, [this]() { this->runApp<SoundConfigApp>(); }),
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_SERVICES,
@@ -716,6 +777,24 @@ void LauncherApp::setSpiSDSpeed() {
     NVS_UNLOCK;
 
     alert("", K_S_CHANGE_ON_NEXT_BOOT);
+}
+
+void LauncherApp::calibrateBatteryFullLevel() {
+    String description =
+        StringFormat(K_S_LAUNCHER_BATTERY_SET_FULL_CONFIRM, String(lilka::battery.readRawVoltage(), 2).c_str());
+    if (!confirm(K_S_LAUNCHER_BATTERY_SET_FULL, description)) {
+        return;
+    }
+
+    if (!lilka::battery.calibrateFullLevel()) {
+        alert(K_S_LAUNCHER_BATTERY_SET_FULL, K_S_LAUNCHER_BATTERY_SET_FULL_ERROR);
+    }
+}
+
+void LauncherApp::resetBatteryFullLevelCalibration() {
+    if (confirm(K_S_LAUNCHER_BATTERY_RESET_FULL, K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM)) {
+        lilka::battery.resetFullLevelCalibration();
+    }
 }
 
 void LauncherApp::wifiToggle() {
