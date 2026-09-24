@@ -5,6 +5,7 @@
 #include <freertos/timers.h>
 
 #include "keira/utils/acquire.h"
+#include "services/screenshot/request.h"
 #include "driver.h"
 
 #define OSD_OK          0
@@ -34,7 +35,7 @@ static bool soundInitialized = false;
 namespace {
 constexpr size_t JOYPAD_EVENT_COUNT = 8;
 constexpr uint8_t TURBO_HALF_PERIOD_FRAMES = 2;
-constexpr uint32_t EXIT_HOLD_TIME_MS = 1000;
+constexpr uint32_t EXIT_HOLD_TIME_MS = 2000;
 constexpr TickType_t AUDIO_STOP_TIMEOUT = pdMS_TO_TICKS(100);
 
 const int joypadEvents[JOYPAD_EVENT_COUNT] = {
@@ -52,11 +53,15 @@ struct NesInputState {
     bool forwarded[JOYPAD_EVENT_COUNT] = {};
     bool saveChordActive = false;
     bool loadChordActive = false;
-    bool exitChordActive = false;
+    bool screenChordActive = false;
+    bool selectWasPressed = false;
+    bool startWasPressed = false;
+    bool selectConsumed = false;
+    bool startGameActive = false;
     bool exitRequested = false;
     uint8_t turboAFrame = 0;
     uint8_t turboBFrame = 0;
-    uint32_t exitChordStartedAt = 0;
+    uint32_t screenChordStartedAt = 0;
 };
 
 NesInputState inputState;
@@ -121,23 +126,23 @@ void* mem_alloc(int size, bool prefer_fast_memory) {
 void osd_getinput(void) {
     lilka::State state = lilka::controller.getState();
 
-    bool exitChord = state.select.pressed && state.start.pressed;
-    bool saveChord = state.select.pressed && state.c.pressed && !state.d.pressed && !state.start.pressed;
-    bool loadChord = state.select.pressed && state.d.pressed && !state.c.pressed && !state.start.pressed;
-
-    if (saveChord && !inputState.saveChordActive) {
-        triggerStateEvent(event_state_save);
+    if (inputState.exitRequested) {
+        return;
     }
-    if (loadChord && !inputState.loadChordActive) {
-        triggerStateEvent(event_state_load);
-    }
-    inputState.saveChordActive = saveChord;
-    inputState.loadChordActive = loadChord;
 
-    if (exitChord) {
-        if (!inputState.exitChordActive) {
-            inputState.exitChordStartedAt = millis();
-        } else if (!inputState.exitRequested && millis() - inputState.exitChordStartedAt >= EXIT_HOLD_TIME_MS) {
+    // A Start press without Select is a normal NES press immediately. If Select
+    // is already down, reserve Start for the screenshot/exit chord instead.
+    if (state.start.pressed && !inputState.startWasPressed) {
+        inputState.startGameActive = !state.select.pressed;
+        if (!inputState.startGameActive && !inputState.selectConsumed && !state.c.pressed && !state.d.pressed) {
+            inputState.screenChordActive = true;
+            inputState.screenChordStartedAt = millis();
+            inputState.selectConsumed = true;
+        }
+    }
+
+    if (inputState.screenChordActive) {
+        if (millis() - inputState.screenChordStartedAt >= EXIT_HOLD_TIME_MS) {
             inputState.exitRequested = true;
             releaseJoypad();
             prepareRuntimeShutdown();
@@ -147,25 +152,56 @@ void osd_getinput(void) {
             }
             return;
         }
-    } else {
-        inputState.exitChordStartedAt = 0;
-    }
-    inputState.exitChordActive = exitChord;
-
-    if (inputState.exitRequested) {
-        return;
+        if (!state.select.pressed || !state.start.pressed) {
+            inputState.screenChordActive = false;
+            screenshot::request();
+        }
     }
 
-    bool turboA = turboPulse(state.c.pressed && !saveChord && !exitChord, inputState.turboAFrame);
-    bool turboB = turboPulse(state.d.pressed && !loadChord && !exitChord, inputState.turboBFrame);
+    // Both state buttons together are ambiguous. Suppress turbo and wait for
+    // a fresh Select press rather than firing save/load as one is released.
+    if (state.select.pressed && state.c.pressed && state.d.pressed) {
+        inputState.selectConsumed = true;
+    }
+
+    bool saveChord = state.select.pressed && state.c.pressed && !state.d.pressed && !state.start.pressed &&
+                     !inputState.selectConsumed;
+    bool loadChord = state.select.pressed && state.d.pressed && !state.c.pressed && !state.start.pressed &&
+                     !inputState.selectConsumed;
+
+    if (saveChord && !inputState.saveChordActive) {
+        triggerStateEvent(event_state_save);
+        inputState.selectConsumed = true;
+    }
+    if (loadChord && !inputState.loadChordActive) {
+        triggerStateEvent(event_state_load);
+        inputState.selectConsumed = true;
+    }
+    inputState.saveChordActive = saveChord;
+    inputState.loadChordActive = loadChord;
+
+    // A solitary Select release becomes a one-frame NES tap. Never forward a
+    // Select used by save/load or screenshot/exit to the game.
+    bool selectTap = inputState.selectWasPressed && !state.select.pressed && !inputState.selectConsumed;
+    if (!state.select.pressed) {
+        inputState.selectConsumed = false;
+    }
+    if (!state.start.pressed) {
+        inputState.startGameActive = false;
+    }
+    inputState.selectWasPressed = state.select.pressed;
+    inputState.startWasPressed = state.start.pressed;
+
+    bool turboA = turboPulse(state.c.pressed && !state.select.pressed, inputState.turboAFrame);
+    bool turboB = turboPulse(state.d.pressed && !state.select.pressed, inputState.turboBFrame);
 
     const bool desiredStates[JOYPAD_EVENT_COUNT] = {
         state.up.pressed,
         state.down.pressed,
         state.left.pressed,
         state.right.pressed,
-        state.select.pressed && !saveChord && !loadChord && !exitChord,
-        state.start.pressed && !exitChord,
+        selectTap,
+        state.start.pressed && inputState.startGameActive,
         state.a.pressed || turboA,
         state.b.pressed || turboB,
     };

@@ -1,9 +1,19 @@
 #include <contrib/LodePNG/lodepng.h>
+#include <atomic>
 
+#include "services/screenshot/request.h"
 #include "services/screenshot/screenshot.h"
 #include "keira/appmanager.h"
 #include "services/clock/clock.h"
 #include "keira/ksystem.h"
+
+namespace {
+std::atomic<bool> requested{false};
+} // namespace
+
+void screenshot::request() {
+    requested.store(true);
+}
 
 #if !defined(KEIRA_SCREENSHOT_BMP) && !defined(KEIRA_SCREENSHOT_PNG)
 // Uncomment one of the following lines to choose the screenshot format
@@ -172,10 +182,20 @@ void ScreenshotService::run() {
     lilka::Canvas canvas(lilka::display.width(), lilka::display.height());
     while (1) {
         lilka::State state = lilka::controller.peekState();
-        if (state.select.pressed && state.start.pressed && !activated) {
+        bool capture = requested.exchange(false);
+        bool shortcutPressed = state.select.pressed && state.start.pressed;
+        if (shortcutPressed && !activated) {
             activated = true;
+            // NES owns this chord so it can distinguish a short screenshot
+            // request from the long-press exit action.
+            if (!ksystem.apps.isTopAppNamed("NES")) {
+                capture = true;
+            }
+        } else if (!shortcutPressed) {
+            activated = false;
+        }
 
-            // Take screenshot
+        if (capture) {
             ksystem.apps.renderToCanvas(&canvas);
 
             if (saveScreenshot(&canvas)) {
@@ -183,8 +203,6 @@ void ScreenshotService::run() {
             } else {
                 ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
             }
-        } else if (!state.select.pressed || !state.start.pressed) {
-            activated = false;
         }
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
