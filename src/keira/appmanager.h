@@ -30,6 +30,8 @@ public:
     void spawn(App* app, bool autoSuspend = true);
     // Renders screen to given canvas
     void renderToCanvas(lilka::Canvas* canvas);
+    // Reports whether the foreground app has this name.
+    bool isTopAppNamed(const char* name);
     // Starts toast
     void startToast(String message, uint64_t duration = 2500);
 

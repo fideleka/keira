@@ -1,5 +1,6 @@
 // Libraries
 #include <lilka/controller.h>
+#include <cstring>
 
 #include "keira/appmanager.h"
 #include "keira/thread.h"
@@ -132,6 +133,13 @@ void AppManager::renderToCanvas(lilka::Canvas* canvas) {
     KMTX_UNLOCK(ThreadManager::lock);
 }
 #undef GET_BACK
+
+bool AppManager::isTopAppNamed(const char* name) {
+    KMTX_LOCK(ThreadManager::lock);
+    bool matches = !threads.empty() && strcmp(threads.back()->getName(), name) == 0;
+    KMTX_UNLOCK(ThreadManager::lock);
+    return matches;
+}
 
 void AppManager::spawn(App* app, bool autoSuspend) {
     // Reset controller state on launch
