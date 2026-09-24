@@ -26,7 +26,86 @@ extern "C" {
 // No need to add `extern "C"` to functions below, because it's already declared in `osd.h`
 
 static SemaphoreHandle_t xSoundMutex = NULL;
+static SemaphoreHandle_t audioStoppedSemaphore = NULL;
 static TaskHandle_t audioTaskHandle = NULL;
+static TimerHandle_t timer = NULL;
+static bool soundInitialized = false;
+
+namespace {
+constexpr size_t JOYPAD_EVENT_COUNT = 8;
+constexpr uint8_t TURBO_HALF_PERIOD_FRAMES = 2;
+constexpr uint32_t EXIT_HOLD_TIME_MS = 1000;
+constexpr TickType_t AUDIO_STOP_TIMEOUT = pdMS_TO_TICKS(100);
+
+const int joypadEvents[JOYPAD_EVENT_COUNT] = {
+    event_joypad1_up,
+    event_joypad1_down,
+    event_joypad1_left,
+    event_joypad1_right,
+    event_joypad1_select,
+    event_joypad1_start,
+    event_joypad1_a,
+    event_joypad1_b,
+};
+
+struct NesInputState {
+    bool forwarded[JOYPAD_EVENT_COUNT] = {};
+    bool saveChordActive = false;
+    bool loadChordActive = false;
+    bool exitChordActive = false;
+    bool exitRequested = false;
+    uint8_t turboAFrame = 0;
+    uint8_t turboBFrame = 0;
+    uint32_t exitChordStartedAt = 0;
+};
+
+NesInputState inputState;
+
+void prepareRuntimeShutdown();
+
+void resetInputState() {
+    inputState = NesInputState();
+}
+
+void setJoypadEvent(size_t index, bool pressed) {
+    if (inputState.forwarded[index] == pressed) {
+        return;
+    }
+
+    event_t eventHandler = event_get(joypadEvents[index]);
+    if (eventHandler) {
+        eventHandler(pressed ? INP_STATE_MAKE : INP_STATE_BREAK);
+    }
+    inputState.forwarded[index] = pressed;
+}
+
+void releaseJoypad() {
+    for (size_t i = 0; i < JOYPAD_EVENT_COUNT; i++) {
+        setJoypadEvent(i, false);
+    }
+}
+
+void triggerStateEvent(int eventIndex) {
+    event_t eventHandler = event_get(eventIndex);
+    if (!eventHandler) {
+        return;
+    }
+
+    Acquire lock(xSoundMutex);
+    eventHandler(INP_STATE_MAKE);
+}
+
+bool turboPulse(bool pressed, uint8_t& frame) {
+    if (!pressed) {
+        frame = 0;
+        return false;
+    }
+
+    bool pulse = ((frame / TURBO_HALF_PERIOD_FRAMES) % 2) == 0;
+    frame++;
+    return pulse;
+}
+} // namespace
 
 int osd_init_sound();
 
@@ -39,49 +118,60 @@ void* mem_alloc(int size, bool prefer_fast_memory) {
     }
 }
 
-const int eventIndices[10] = {
-    event_joypad1_up,
-    event_joypad1_down,
-    event_joypad1_left,
-    event_joypad1_right,
-    event_joypad1_select,
-    event_joypad1_start,
-    event_joypad1_a,
-    event_joypad1_b,
-    event_state_save,
-    event_state_load,
-};
-
-const lilka::Button buttonIndices[10] = {
-    lilka::Button::UP,
-    lilka::Button::DOWN,
-    lilka::Button::LEFT,
-    lilka::Button::RIGHT,
-    lilka::Button::SELECT,
-    lilka::Button::START,
-    lilka::Button::A,
-    lilka::Button::B,
-    lilka::Button::C,
-    lilka::Button::D,
-};
-
 void osd_getinput(void) {
     lilka::State state = lilka::controller.getState();
-    const lilka::_StateButtons& buttons = *reinterpret_cast<lilka::_StateButtons*>(&state);
 
-    for (int i = 0; i < sizeof(eventIndices) / sizeof(eventIndices[0]); i++) {
-        int eventIndex = eventIndices[i];
-        int buttonIndex = buttonIndices[i];
-        event_t eventHandler = event_get(eventIndex);
-        if (!eventHandler) {
-            continue;
+    bool exitChord = state.select.pressed && state.start.pressed;
+    bool saveChord = state.select.pressed && state.c.pressed && !state.d.pressed && !state.start.pressed;
+    bool loadChord = state.select.pressed && state.d.pressed && !state.c.pressed && !state.start.pressed;
+
+    if (saveChord && !inputState.saveChordActive) {
+        triggerStateEvent(event_state_save);
+    }
+    if (loadChord && !inputState.loadChordActive) {
+        triggerStateEvent(event_state_load);
+    }
+    inputState.saveChordActive = saveChord;
+    inputState.loadChordActive = loadChord;
+
+    if (exitChord) {
+        if (!inputState.exitChordActive) {
+            inputState.exitChordStartedAt = millis();
+        } else if (!inputState.exitRequested && millis() - inputState.exitChordStartedAt >= EXIT_HOLD_TIME_MS) {
+            inputState.exitRequested = true;
+            releaseJoypad();
+            prepareRuntimeShutdown();
+            event_t quitHandler = event_get(event_quit);
+            if (quitHandler) {
+                quitHandler(INP_STATE_MAKE);
+            }
+            return;
         }
-        if (buttons[buttonIndex].justPressed) {
-            eventHandler(INP_STATE_MAKE);
-        }
-        if (buttons[buttonIndex].justReleased) {
-            eventHandler(INP_STATE_BREAK);
-        }
+    } else {
+        inputState.exitChordStartedAt = 0;
+    }
+    inputState.exitChordActive = exitChord;
+
+    if (inputState.exitRequested) {
+        return;
+    }
+
+    bool turboA = turboPulse(state.c.pressed && !saveChord && !exitChord, inputState.turboAFrame);
+    bool turboB = turboPulse(state.d.pressed && !loadChord && !exitChord, inputState.turboBFrame);
+
+    const bool desiredStates[JOYPAD_EVENT_COUNT] = {
+        state.up.pressed,
+        state.down.pressed,
+        state.left.pressed,
+        state.right.pressed,
+        state.select.pressed && !saveChord && !loadChord && !exitChord,
+        state.start.pressed && !exitChord,
+        state.a.pressed || turboA,
+        state.b.pressed || turboB,
+    };
+
+    for (size_t i = 0; i < JOYPAD_EVENT_COUNT; i++) {
+        setJoypadEvent(i, desiredStates[i]);
     }
 }
 
@@ -90,8 +180,9 @@ int logprint(const char* string) {
 }
 
 int osd_init() {
+    resetInputState();
     xSoundMutex = xSemaphoreCreateMutex();
-    KMTX_UNLOCK(xSoundMutex);
+    audioStoppedSemaphore = xSemaphoreCreateBinary();
     nofrendo_log_chain_logfunc(logprint);
     osd_init_sound();
     return 0;
@@ -102,8 +193,6 @@ int osd_main(int argc, char* argv[]) {
     config.filename = configfilename;
     return main_loop(argv[0], system_autodetect);
 }
-
-TimerHandle_t timer;
 
 int osd_installtimer(int frequency, void* func, int funcsize, void* counter, int countersize) {
     nofrendo_log_printf("Timer install, configTICK_RATE_HZ=%d, freq=%d\n", configTICK_RATE_HZ, frequency);
@@ -169,7 +258,12 @@ int osd_init_sound() {
         .dma_buf_len = 256,
         .use_apll = false,
     };
-    i2s_driver_install(esp_i2s::I2S_NUM_0, &cfg, 2, &queue);
+    if (i2s_driver_install(esp_i2s::I2S_NUM_0, &cfg, 2, &queue) != ESP_OK) {
+        free(audio_frame);
+        audio_frame = NULL;
+        return OSD_INIT_FAILED;
+    }
+    soundInitialized = true;
     // esp_i2s::i2s_pin_config_t pins = {
     //     .bck_io_num = LILKA_I2S_BCLK,
     //     .ws_io_num = LILKA_I2S_LRCK,
@@ -186,9 +280,16 @@ int osd_init_sound() {
 }
 
 void osd_stopsound() {
+    if (!xSoundMutex) {
+        return;
+    }
+
     Acquire lock(xSoundMutex);
-    if (i2s_driver_uninstall(esp_i2s::I2S_NUM_0) != ESP_OK) {
-        lilka::serial.err("Failed to uninstall I2S driver\n");
+    if (soundInitialized) {
+        if (i2s_driver_uninstall(esp_i2s::I2S_NUM_0) != ESP_OK) {
+            lilka::serial.err("Failed to uninstall I2S driver\n");
+        }
+        soundInitialized = false;
     }
     free(audio_frame);
     audio_frame = NULL;
@@ -228,6 +329,9 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
 #if LILKA_VERSION == 1
 #elif LILKA_VERSION == 2
     audio_callback = playfunc;
+    if (audioStoppedSemaphore) {
+        xSemaphoreTake(audioStoppedSemaphore, 0);
+    }
     xTaskCreatePinnedToCore(
         [](void* arg) {
             const TickType_t xFrequency = pdMS_TO_TICKS(1000 / NES_REFRESH_RATE);
@@ -243,7 +347,10 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
                 }
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
             }
-            vTaskDelete(NULL);
+            if (audioStoppedSemaphore) {
+                xSemaphoreGive(audioStoppedSemaphore);
+            }
+            vTaskSuspend(NULL);
         },
         "nes_audio",
         8192,
@@ -267,10 +374,37 @@ void osd_getvideoinfo(vidinfo_t* info) {
 }
 
 void osd_shutdown() {
+    prepareRuntimeShutdown();
+
+    if (timer) {
+        xTimerDelete(timer, portMAX_DELAY);
+        timer = NULL;
+    }
+    if (audioStoppedSemaphore) {
+        vSemaphoreDelete(audioStoppedSemaphore);
+        audioStoppedSemaphore = NULL;
+    }
+    if (xSoundMutex) {
+        vSemaphoreDelete(xSoundMutex);
+        xSoundMutex = NULL;
+    }
+}
+
+namespace {
+void prepareRuntimeShutdown() {
+    if (timer) {
+        xTimerStop(timer, portMAX_DELAY);
+    }
+
     osd_stopsound();
 
-    vTaskDelete(audioTaskHandle);
-    xTimerDelete(timer, 0);
-
-    vSemaphoreDelete(xSoundMutex);
+    TaskHandle_t taskToDelete = audioTaskHandle;
+    if (taskToDelete) {
+        if (audioStoppedSemaphore) {
+            xSemaphoreTake(audioStoppedSemaphore, AUDIO_STOP_TIMEOUT);
+        }
+        vTaskDelete(taskToDelete);
+        audioTaskHandle = NULL;
+    }
 }
+} // namespace
