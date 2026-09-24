@@ -1,0 +1,9 @@
+Quantity used,Recommended order quantity,Part,Value or model,Tolerance or rating,Notes
+1,10,Dual optocoupler,EL827S / LTV-827 / PC827,SOP-8,"Verify delivered-part pinout"
+2,10,Input resistor,2.2 kOhm,1/8 W or greater,"One in series with each optocoupler LED; 1% preferred"
+1,10,Charging tag resistor,33 kOhm,1% 1/8 W or greater,"VVAL to CHRG-channel collector"
+1,10,Charged tag resistor,10 kOhm,1% 1/8 W or greater,"VVAL to STDBY-channel collector"
+1,5,SOP-8 adapter,SOIC/SOP-8 to 2.54 mm or small prototyping PCB,N/A,"Recommended for hand assembly"
+As needed,1 spool,Fine insulated wire,30 AWG Kynar or enamelled wire,N/A,"Five signal connections plus local links"
+As needed,1 roll,Kapton tape,Electrical insulation,Heat resistant,"Insulate and secure adapter"
+As needed,1 tube,Flux,No-clean electronics flux,N/A,"For status LED pad soldering"

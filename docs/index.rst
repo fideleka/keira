@@ -18,6 +18,7 @@
     flashing
     sdcard
     custom_apps
+    battery_charge_status_mod
     lua/intro
     lua/reference/index
     mjs/intro
