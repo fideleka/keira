@@ -115,6 +115,8 @@ in isolated worktrees and emits ``build/lilka-engines/scumm.bin`` and
 ``build/lilka-engines/kyra.bin``.  A Kyrandia Book One manifest uses
 ``engine: "kyra"`` and ``gameId: "kyra1"``; ``kyra.dat`` belongs under
 ``/sd/scummvm/data/engine-data/``.
+The Kyra guest also searches ``/sd/scummvm/engines/kyra.dat`` as a fallback,
+for SD cards where the data file was placed beside ``kyra.bin``.
 
 Every engine image must fit in ``0x640000`` bytes (6.25 MiB).  The inspected
 T-Deck build is about 7.22 MiB because it includes five engines and HE; it is
