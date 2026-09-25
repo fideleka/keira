@@ -13,19 +13,21 @@ design work.
 First direct-launch test
 ------------------------
 
-Use **The Secret of Monkey Island** (1990) as the first SCUMM test using
-locally owned game files.  No game data is bundled with Keira or the
-engine image.  Place the files in a directory such as
-``/sd/games/scummvm/Monkey Island 1/`` and copy
-``docs/examples/monkey-island-1.scummvm`` into that same directory.  Its
-``path: "."`` means the manifest and data files share a folder.
+Use **Maniac Mansion** as the first small SCUMM test.  ScummVM recognizes its
+``maniac`` game ID, including the V1 DOS demo with numbered ``.MAN`` data
+files.  No game data is bundled with Keira or the engine image.  Place your
+compatible Maniac Mansion files in a directory such as
+``/sd/games/scummvm/Maniac Mansion/`` and copy
+``docs/examples/maniac-mansion.scummvm`` into that same directory.  Its
+``path: "."`` means the manifest and data files share a folder.  The existing
+Monkey Island 1 example remains available for a later test.
 
 Install the matching ``scumm.bin`` guest image at
 ``/sd/scummvm/engines/scumm.bin``.  With this Keira branch built and flashed,
 open the ``.scummvm`` file in File Manager.  Keira validates the manifest and
 engine image, offers a launch confirmation, writes the RTC handoff, and flashes
 the guest into ``app1``.  The guest rereads the manifest and invokes ScummVM
-with ``--game=monkey --path=<game-folder> --auto-detect`` to bypass the stock
+with ``--game=maniac --path=<game-folder> --auto-detect`` to bypass the stock
 launcher.  A normal game quit or Select + Start hold should return to Keira.
 
 Goals
