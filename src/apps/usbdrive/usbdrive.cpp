@@ -335,11 +335,8 @@ void USBDriveApp::run() {
             queueDraw();
 
             deinitUSBMSC();
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
-
-            // Reboot the device
-            ESP.restart();
-            return;
+            // Restore hardware CDC/JTAG and reset retained USB/GPIO state.
+            lilka::sys.restart();
         }
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
