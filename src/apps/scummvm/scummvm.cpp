@@ -107,7 +107,8 @@ String base64Url(const String& input) {
 
 } // namespace
 
-ScummVMManagerApp::ScummVMManagerApp(const String& path) : App("ScummVM"), manifestPath(path) {
+ScummVMManagerApp::ScummVMManagerApp(const String& path, bool confirmLaunch) :
+    App("ScummVM"), manifestPath(path), confirmLaunch(confirmLaunch) {
     setktStackSize(16384);
 }
 
@@ -188,6 +189,6 @@ void ScummVMManagerApp::run() {
         alert("ScummVM", "Manifest path is too long");
         return;
     }
-    if (!confirm("ScummVM", "Launch " + title + "?")) return;
-    ksystem.apps.spawn(new MultiBootApp(imagePath, command));
+    if (confirmLaunch && !confirm("ScummVM", "Launch " + title + "?")) return;
+    ksystem.apps.spawn(new MultiBootApp(imagePath, command, manifestPath, title));
 }

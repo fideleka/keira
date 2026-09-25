@@ -1,8 +1,14 @@
 #include "multiboot.h"
 #include "keira/keira.h"
 #include "keira/utils/string.h"
+#include "apps/scummvm/recent.h"
 
-MultiBootApp::MultiBootApp(const String& path, const String& command) : App("MultiBoot"), command(command) {
+#include <Preferences.h>
+
+MultiBootApp::MultiBootApp(
+    const String& path, const String& command, const String& gameManifest, const String& gameTitle
+) :
+    App("MultiBoot"), command(command), gameManifest(gameManifest), gameTitle(gameTitle) {
     this->firmwarePath = path;
     setktStackSize(8192); // Multiboot internally uses 4KB chunk
 }
@@ -24,6 +30,15 @@ void MultiBootApp::fileLoadAsRom(const String& path) {
     if (error) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 1, error));
         return;
+    }
+    // start() has already changed the SDK's last-image path. Hide any old
+    // game shortcut until this complete image and its metadata are installed.
+    {
+        Preferences prefs;
+        if (prefs.begin("lilka", false)) {
+            prefs.remove(scummvm_recent::kImageKey);
+            prefs.end();
+        }
     }
     dialog.setMessage(StringFormat(
         K_S_FMANAGER_MULTIBOOT_ABOUT_FMT,
@@ -47,9 +62,33 @@ void MultiBootApp::fileLoadAsRom(const String& path) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 2, error));
         return;
     }
+
+    // The SDK has already recorded the last image path. Commit game metadata
+    // only after a complete image write; a raw .bin replaces the prior game.
+    Preferences prefs;
+    if (prefs.begin("lilka", false)) {
+        prefs.remove(scummvm_recent::kImageKey);
+        if (!gameManifest.isEmpty() && !gameTitle.isEmpty()) {
+            const String imagePath = lilka::fileutils.getLocalPathInfo(path).path;
+            if (prefs.putString(scummvm_recent::kManifestKey, gameManifest) == gameManifest.length() &&
+                prefs.putString(scummvm_recent::kTitleKey, gameTitle) == gameTitle.length()) {
+                prefs.putString(scummvm_recent::kImageKey, imagePath);
+            }
+        } else {
+            prefs.remove(scummvm_recent::kManifestKey);
+            prefs.remove(scummvm_recent::kTitleKey);
+        }
+        prefs.end();
+    }
+
     if (!command.isEmpty()) lilka::multiboot.setCMDParams(command);
     error = lilka::multiboot.finishAndReboot();
     if (error) {
+        Preferences prefs;
+        if (prefs.begin("lilka", false)) {
+            prefs.remove(scummvm_recent::kImageKey);
+            prefs.end();
+        }
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 3, error));
         return;
     }

@@ -5,6 +5,7 @@
 #include "keira/keira.h"
 #include "launcher.h"
 #include "wallpaper.h"
+#include "apps/scummvm/recent.h"
 #include "keira/appmanager.h"
 
 #include "keira/servicemanager.h"
@@ -207,6 +208,9 @@ void LauncherApp::run() {
 
     // Check name of the last loaded guest OTA firmware
     String lastOTA = "";
+    String lastGameManifest;
+    String lastGameTitle;
+    String lastGameImage;
     Preferences prefs;
     prefs.begin("lilka", false);
 
@@ -216,11 +220,21 @@ void LauncherApp::run() {
     if (prefs.isKey(MULTIBOOT_PATH_KEY)) {
         lastOTA = prefs.getString(MULTIBOOT_PATH_KEY);
     }
+    lastGameManifest = prefs.getString(scummvm_recent::kManifestKey, "");
+    lastGameTitle = prefs.getString(scummvm_recent::kTitleKey, "");
+    lastGameImage = prefs.getString(scummvm_recent::kImageKey, "");
     prefs.end();
 
     // Insert it into the Applications menu
     if (!lastOTA.isEmpty()) {
-        appsItems.insert(appsItems.begin(), ITEM::APP(lastOTA.c_str(), [this]() { this->runApp<MultiBootApp>(); }));
+        if (lastOTA == lastGameImage && lastGameManifest.startsWith("/sd/") && lastGameManifest.length() <= 512 &&
+            !lastGameTitle.isEmpty() && lastGameTitle.length() <= 80) {
+            appsItems.insert(appsItems.begin(), ITEM::APP(lastGameTitle.c_str(), [this, lastGameManifest]() {
+                                 this->runApp<ScummVMManagerApp>(lastGameManifest, false);
+                             }));
+        } else {
+            appsItems.insert(appsItems.begin(), ITEM::APP(lastOTA.c_str(), [this]() { this->runApp<MultiBootApp>(); }));
+        }
     }
 
     item_t root_item = ITEM::SUBMENU(

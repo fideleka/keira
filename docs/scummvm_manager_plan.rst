@@ -254,6 +254,15 @@ The direct-open path is the first UI.  A standalone ScummVM library app may
 later scan the SD card for manifests and call the exact same parser and launch
 service.
 
+The Applications menu's first row shows the title of the last successfully
+loaded ScummVM game instead of the engine ``.bin`` name.  It stores the
+validated manifest path and title alongside the SDK's last-image path.  The
+row reopens the manifest through the same manager, so it starts that game
+directly; it still flashes the selected engine on each launch.  A raw binary
+load or interrupted replacement clears the game shortcut and retains the
+ordinary last-firmware behavior.  After installing this Keira change, launch
+a game from its manifest once to populate the row.
+
 Launch handoff
 --------------
 
@@ -328,6 +337,10 @@ Suggested first mapping::
     Start            Enter
     Select           Virtual keyboard
     Select + Start   Exit to Keira, with hold confirmation
+
+Lilka v2's physical A and B pins are GPIO5 and GPIO6 respectively.  The guest
+must preserve that order; a manifest's ``a``/``b`` actions then select the
+left and right mouse buttons.
 
 Pointer acceleration is required: fine motion for taps and faster motion while
 a direction remains held.  Exact B/C/D behavior should be tested with early
