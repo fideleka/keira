@@ -14,10 +14,11 @@ First direct-launch test
 ------------------------
 
 Use **Maniac Mansion** as the first small SCUMM test.  ScummVM recognizes its
-``maniac`` game ID, including the V1 DOS demo with numbered ``.MAN`` data
-files.  No game data is bundled with Keira or the engine image.  Place your
-compatible Maniac Mansion files in a directory such as
-``/sd/games/scummvm/Maniac Mansion/`` and copy
+``maniac`` game ID and numbered ``00.LFL``-style data files.  The V1 DOS demo
+uses ``.MAN`` files instead; the first device-test set has ``00.LFL`` through
+``53.LFL``.  No game data is bundled with Keira or the engine image.  Place
+your compatible Maniac Mansion files in a directory such as
+``/sd/scummvm/Maniac Mansion/`` and copy
 ``docs/examples/maniac-mansion.scummvm`` into that same directory.  Its
 ``path: "."`` means the manifest and data files share a folder.  The existing
 Monkey Island 1 example remains available for a later test.
