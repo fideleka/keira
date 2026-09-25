@@ -4,5 +4,18 @@
   "engine": "kyra",
   "gameId": "kyra1",
   "path": ".",
-  "description": "Book One; supply your own compatible game data"
+  "description": "Book One; supply your own compatible game data",
+  "controls": {
+    "a": "leftClick",
+    "b": "rightClick",
+    "c": "space",
+    "d": "escape",
+    "start": "enter",
+    "select": "virtualKeyboard"
+  },
+  "pointer": {
+    "slowStep": 1,
+    "fastStep": 4,
+    "accelerationMs": 500
+  }
 }
