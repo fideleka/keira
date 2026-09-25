@@ -93,17 +93,28 @@ Engine firmware images
 ----------------------
 
 Each guest image contains the shared ESP32-S3 backend and exactly one ScummVM
-engine.  Initial engine identifiers and binary locations are fixed by Keira::
+engine.  Keira's current fixed registry contains::
 
     scumm     /sd/scummvm/engines/scumm.bin
+    kyra      /sd/scummvm/engines/kyra.bin
+
+Future candidates, not yet accepted by the manager, include::
+
     agi       /sd/scummvm/engines/agi.bin
     sky       /sd/scummvm/engines/sky.bin
     queen     /sd/scummvm/engines/queen.bin
     dreamweb  /sd/scummvm/engines/dreamweb.bin
 
-The first proof build targets only ``scumm``.  The engine image must be a raw
-ESP-IDF application image, not a merged image containing a bootloader,
-partition table, or filesystem.
+The first proof build targets only ``scumm``; a separate ``kyra``-only image
+is the second candidate.  Each engine image must be a raw ESP-IDF application
+image, not a merged image containing a bootloader, partition table, or
+filesystem.
+
+The ScummVM fork's ``compile-all-lilka.sh`` builds both implemented engines
+in isolated worktrees and emits ``build/lilka-engines/scumm.bin`` and
+``build/lilka-engines/kyra.bin``.  A Kyrandia Book One manifest uses
+``engine: "kyra"`` and ``gameId: "kyra1"``; ``kyra.dat`` belongs under
+``/sd/scummvm/data/engine-data/``.
 
 Every engine image must fit in ``0x640000`` bytes (6.25 MiB).  The inspected
 T-Deck build is about 7.22 MiB because it includes five engines and HE; it is
@@ -122,6 +133,7 @@ Recommended layout::
     /sd/scummvm/
     |-- engines/
     |   |-- scumm.bin
+    |   |-- kyra.bin
     |   |-- agi.bin
     |   |-- sky.bin
     |   |-- queen.bin
@@ -129,6 +141,7 @@ Recommended layout::
     |-- data/
     |   |-- themes/
     |   `-- engine-data/
+    |       `-- kyra.dat
     `-- saves/
 
     /sd/games/scummvm/

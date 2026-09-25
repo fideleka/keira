@@ -11,7 +11,12 @@ namespace {
 
 constexpr size_t kMaxManifestBytes = 4096;
 constexpr size_t kMaxManifestPath = 512;
-constexpr const char* kScummImage = "/sd/scummvm/engines/scumm.bin";
+
+const char* engineImage(const String& engine) {
+    if (engine == "scumm") return "/sd/scummvm/engines/scumm.bin";
+    if (engine == "kyra") return "/sd/scummvm/engines/kyra.bin";
+    return nullptr;
+}
 
 bool isSafePath(const String& path, bool absolute) {
     if (path.isEmpty() || path.length() > kMaxManifestPath || path.indexOf('\\') >= 0) return false;
@@ -145,10 +150,10 @@ void ScummVMManagerApp::run() {
     String relativePath = doc["path"].as<String>();
     String language = doc["language"].as<String>();
     String platform = doc["platform"].as<String>();
-    if (schema != "keira-scummvm-v1" || title.isEmpty() || title.length() > 80 || engine != "scumm" ||
-        !isGameId(gameId) || !isSafePath(relativePath, false) || !isSafeOption(language) || !isSafeOption(platform) ||
-        !validControls(doc)) {
-        alert("ScummVM", "Unsupported or invalid SCUMM manifest");
+    const char* imagePath = engineImage(engine);
+    if (schema != "keira-scummvm-v1" || title.isEmpty() || title.length() > 80 || !imagePath || !isGameId(gameId) ||
+        !isSafePath(relativePath, false) || !isSafeOption(language) || !isSafeOption(platform) || !validControls(doc)) {
+        alert("ScummVM", "Unsupported or invalid ScummVM manifest");
         return;
     }
 
@@ -165,24 +170,24 @@ void ScummVMManagerApp::run() {
     }
 
     struct stat imageStat;
-    if (stat(kScummImage, &imageStat) != 0 || !S_ISREG(imageStat.st_mode) || imageStat.st_size <= 0 ||
+    if (stat(imagePath, &imageStat) != 0 || !S_ISREG(imageStat.st_mode) || imageStat.st_size <= 0 ||
         imageStat.st_size > 0x640000) {
-        alert("ScummVM", "SCUMM engine image is missing or too large");
+        alert("ScummVM", "Engine image is missing or too large");
         return;
     }
-    FILE* image = fopen(kScummImage, "rb");
+    FILE* image = fopen(imagePath, "rb");
     int magic = image ? fgetc(image) : EOF;
     if (image) fclose(image);
     if (magic != 0xE9) {
-        alert("ScummVM", "SCUMM engine image is invalid");
+        alert("ScummVM", "Engine image is invalid");
         return;
     }
 
-    String command = String(kScummImage) + " manifest=" + base64Url(manifestPath);
+    String command = String(imagePath) + " manifest=" + base64Url(manifestPath);
     if (command.length() >= 1024) {
         alert("ScummVM", "Manifest path is too long");
         return;
     }
     if (!confirm("ScummVM", "Launch " + title + "?")) return;
-    ksystem.apps.spawn(new MultiBootApp(kScummImage, command));
+    ksystem.apps.spawn(new MultiBootApp(imagePath, command));
 }

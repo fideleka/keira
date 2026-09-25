@@ -1,0 +1,8 @@
+{
+  "schema": "keira-scummvm-v1",
+  "title": "The Legend of Kyrandia",
+  "engine": "kyra",
+  "gameId": "kyra1",
+  "path": ".",
+  "description": "Book One; supply your own compatible game data"
+}
