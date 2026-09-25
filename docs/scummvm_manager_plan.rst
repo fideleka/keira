@@ -464,8 +464,8 @@ Keira-side manifest parsing, File Manager association, launch UI, and cache
 metadata belong to the Keira ``feature/scummvm-manager`` branch.
 
 The ScummVM ESP32-S3 backend and engine binaries belong in the separate
-``fideleka/scummvm-lilka`` fork (based on ``varna9000/scummvm-tdeck``), starting
-on ``feature/lilka-scumm-only``.  Both repositories form one integration unit
+``fideleka/scummvm-lilka`` fork (based on ``varna9000/scummvm-tdeck``), on the
+single ``feature/lilka-scummvm`` branch.  Both repositories form one integration unit
 for end-to-end testing, but engine source must not be copied into Keira merely
 to simplify a build.
 
