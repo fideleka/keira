@@ -31,6 +31,7 @@
 #include "apps/dynapp/dynapp.h"
 #include "apps/multiboot/multiboot.h"
 #include "apps/scummvm/scummvm.h"
+#include "apps/imageviewer/imageviewer.h"
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FILETYPE HANDLERS:  ////////////////////////////////////////////////////////////////////////////////
 #define K_FT_NES_HANDLER(X)        ksystem.apps.spawn(new NesApp(X))
@@ -41,6 +42,7 @@
 #define K_FT_SO_HANDLER(X)         ksystem.apps.spawn(new DynApp(X))
 #define K_FT_BIN_HANDLER(X)        ksystem.apps.spawn(new MultiBootApp(X))
 #define K_FT_SCUMMVM_HANDLER(X)    ksystem.apps.spawn(new ScummVMManagerApp(X))
+#define K_FT_IMAGE_HANDLER(X)      ksystem.apps.spawn(new ImageViewerApp(X))
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // GUIDELINE: Use Keira global filetype handlers(K_FT_) if possible
