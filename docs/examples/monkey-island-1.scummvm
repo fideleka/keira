@@ -1,0 +1,21 @@
+{
+  "schema": "keira-scummvm-v1",
+  "title": "The Secret of Monkey Island",
+  "engine": "scumm",
+  "gameId": "monkey",
+  "path": ".",
+  "description": "1990 LucasArts adventure",
+  "controls": {
+    "a": "leftClick",
+    "b": "rightClick",
+    "c": "f5",
+    "d": "escape",
+    "start": "enter",
+    "select": "virtualKeyboard"
+  },
+  "pointer": {
+    "slowStep": 1,
+    "fastStep": 4,
+    "accelerationMs": 500
+  }
+}

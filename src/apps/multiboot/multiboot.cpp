@@ -2,7 +2,7 @@
 #include "keira/keira.h"
 #include "keira/utils/string.h"
 
-MultiBootApp::MultiBootApp(const String& path) : App("MultiBoot") {
+MultiBootApp::MultiBootApp(const String& path, const String& command) : App("MultiBoot"), command(command) {
     this->firmwarePath = path;
     setktStackSize(8192); // Multiboot internally uses 4KB chunk
 }
@@ -47,6 +47,7 @@ void MultiBootApp::fileLoadAsRom(const String& path) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 2, error));
         return;
     }
+    if (!command.isEmpty()) lilka::multiboot.setCMDParams(command);
     error = lilka::multiboot.finishAndReboot();
     if (error) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 3, error));

@@ -30,6 +30,7 @@
 #include "apps/nes/nesapp.h"
 #include "apps/dynapp/dynapp.h"
 #include "apps/multiboot/multiboot.h"
+#include "apps/scummvm/scummvm.h"
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FILETYPE HANDLERS:  ////////////////////////////////////////////////////////////////////////////////
 #define K_FT_NES_HANDLER(X)        ksystem.apps.spawn(new NesApp(X))
@@ -39,6 +40,7 @@
 #define K_FT_LT_HANDLER(X)         ksystem.apps.spawn(new LilTrackerApp(X))
 #define K_FT_SO_HANDLER(X)         ksystem.apps.spawn(new DynApp(X))
 #define K_FT_BIN_HANDLER(X)        ksystem.apps.spawn(new MultiBootApp(X))
+#define K_FT_SCUMMVM_HANDLER(X)    ksystem.apps.spawn(new ScummVMManagerApp(X))
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // GUIDELINE: Use Keira global filetype handlers(K_FT_) if possible

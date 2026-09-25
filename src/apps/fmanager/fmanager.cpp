@@ -297,6 +297,10 @@ FMEntry FileManagerApp::pathToEntry(const String& path) {
         newEntry.type = FT_NES_ROM;
         newEntry.icon = FT_NES_ICON;
         newEntry.color = FT_NES_ROM_COLOR;
+    } else if (lowerCasedPath.endsWith(".scummvm")) {
+        newEntry.type = FT_SCUMMVM;
+        newEntry.icon = FT_BIN_ICON;
+        newEntry.color = FT_BIN_COLOR;
     } else if (lowerCasedPath.endsWith(".bin")) {
         newEntry.type = FT_BIN;
         newEntry.icon = FT_BIN_ICON;
@@ -350,6 +354,9 @@ void FileManagerApp::openCurrentEntry() {
             break;
         case FT_BIN:
             K_FT_BIN_HANDLER(path);
+            break;
+        case FT_SCUMMVM:
+            K_FT_SCUMMVM_HANDLER(path);
             break;
         case FT_LUA_SCRIPT:
             K_FT_LUA_SCRIPT_HANDLER(path);

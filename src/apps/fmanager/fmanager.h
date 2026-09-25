@@ -124,6 +124,7 @@ typedef enum {
     FT_NONE,
     FT_NES_ROM,
     FT_BIN,
+    FT_SCUMMVM,
     FT_LUA_SCRIPT,
     FT_JS_SCRIPT,
     FT_SOUND,

@@ -5,8 +5,28 @@ Status
 ------
 
 This document records the implementation decisions for running ScummVM games
-as Lilka multiboot applications.  It is a design document, not an indication
-that the feature is implemented.
+as Lilka multiboot applications.  The first direct-open ``.scummvm`` path is
+implemented on the ``feature/scummvm-manager`` branch but still requires a
+full build and device validation; the later library UI and engine cache remain
+design work.
+
+First direct-launch test
+------------------------
+
+Use **The Secret of Monkey Island** (1990) as the first SCUMM test using
+locally owned game files.  No game data is bundled with Keira or the
+engine image.  Place the files in a directory such as
+``/sd/games/scummvm/Monkey Island 1/`` and copy
+``docs/examples/monkey-island-1.scummvm`` into that same directory.  Its
+``path: "."`` means the manifest and data files share a folder.
+
+Install the matching ``scumm.bin`` guest image at
+``/sd/scummvm/engines/scumm.bin``.  With this Keira branch built and flashed,
+open the ``.scummvm`` file in File Manager.  Keira validates the manifest and
+engine image, offers a launch confirmation, writes the RTC handoff, and flashes
+the guest into ``app1``.  The guest rereads the manifest and invokes ScummVM
+with ``--game=monkey --path=<game-folder> --auto-detect`` to bypass the stock
+launcher.  A normal game quit or Select + Start hold should return to Keira.
 
 Goals
 -----
@@ -128,8 +148,11 @@ Manifest format
       "engine": "scumm",
       "gameId": "monkey",
       "path": ".",
-      "language": "en",
-      "platform": "pc"
+      "controls": {
+        "a": "leftClick", "b": "rightClick", "c": "f5",
+        "d": "escape", "start": "enter", "select": "virtualKeyboard"
+      },
+      "pointer": {"slowStep": 1, "fastStep": 4, "accelerationMs": 500}
     }
 
 Required fields
@@ -159,6 +182,19 @@ Optional fields
 
 ``platform``
     ScummVM platform identifier, such as ``pc`` or ``amiga``.
+
+``controls``
+    Optional per-game action map for physical ``a``, ``b``, ``c``, ``d``,
+    ``start``, and ``select``.  Allowed actions are ``leftClick``,
+    ``rightClick``, ``enter``, ``escape``, ``space``, ``f5``, ``f7``,
+    ``virtualKeyboard``, and ``none``.  Missing buttons retain the defaults
+    shown in :ref:`initial-control-mapping`.  The Select + Start hold-to-exit
+    chord is fixed and cannot be remapped.
+
+``pointer``
+    Optional D-pad pointer tuning: ``slowStep`` (1–4 pixels per poll),
+    ``fastStep`` (1–12, no smaller than ``slowStep``), and
+    ``accelerationMs`` (100–2000).  Defaults are 1, 4, and 500.
 
 ``description``
     Optional descriptive text for the future library view.
@@ -251,6 +287,8 @@ The Lilka ScummVM backend is based on
 * start the requested game directly;
 * call ``esp_restart()`` on exit;
 * never mark the guest OTA image valid, allowing rollback to Keira.
+
+.. _initial-control-mapping:
 
 Initial control mapping
 -----------------------
