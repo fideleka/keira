@@ -30,6 +30,10 @@ engine image, offers a launch confirmation, writes the RTC handoff, and flashes
 the guest into ``app1``.  The guest rereads the manifest and invokes ScummVM
 with ``--game=maniac --path=<game-folder> --auto-detect`` to bypass the stock
 launcher.  A normal game quit or Select + Start hold should return to Keira.
+On the first Lilka retest with shared SPI arbitration, Maniac Mansion reached
+gameplay; C (F5) opened Save/Load, saving/loading worked in-game, and Select +
+Start returned to Keira. Save persistence across a restart, normal game-quit
+return, and longer play remain unverified.
 
 Goals
 -----
