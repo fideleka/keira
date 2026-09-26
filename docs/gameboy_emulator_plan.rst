@@ -4,9 +4,18 @@ Game Boy / Game Boy Color emulator plan
 Status
 ------
 
-Planning only on ``feature/gameboy-emulator``. No emulator code, ROMs, build
-artifacts, or Keira runtime changes are included. Implementation starts in a
-later session; do not merge this branch into ``features/stage`` yet.
+First source milestone on ``feature/gameboy-emulator``. Keira now dispatches
+``.gb`` and ``.gbc`` from File Manager to a Walnut-CGB-based app. It loads ROMs
+into PSRAM, maps D-pad/A/B/Start/Select, draws at 240×216, returns to Keira on
+a 1.5-second Select+Start hold, and loads/writes cartridge RAM beside the ROM
+as ``game.gb.sav`` or ``game.gbc.sav``. **Audio is not connected yet.** No
+firmware build or device test has been done; do not merge into
+``features/stage`` yet.
+
+This first adapter keeps each ROM in PSRAM for fast reads. Large cartridges may
+be rejected when Keira cannot reserve enough contiguous PSRAM; SD-backed ROM
+paging is not implemented. Existing battery RAM is loaded on launch and saved
+on the normal exit gesture. Forced power loss before exit is not yet covered.
 
 Goal and first milestone
 ------------------------
@@ -22,11 +31,11 @@ Existing-solutions preflight
 
 Keira already integrates NES through Nofrendo, but this checkout has no GB/GBC
 emulator core. Prefer adapting an existing core rather than writing an emulator.
-Gnuboy and the GB/GBC code used by ESP32-focused retro-go are candidates to
-inspect. Their current maintenance state, license compatibility, GB/GBC
-coverage, memory use, and integration effort have **not** been verified; select
-a core only after that review. Do not import third-party code or ROMs during
-the planning phase.
+Walnut-CGB was selected for its MIT-licensed, single-header GB/GBC core and
+small integration surface. The imported source and license are under
+``src/apps/gameboy/vendor`` with provenance in ``UPSTREAM.md``. ESP32-oriented
+Gnuboy alternatives exist, but the reviewed copies are GPLv2 and require a
+larger port. No ROMs are included.
 
 Proposed integration
 --------------------
@@ -52,7 +61,7 @@ Implementation order and release gate
 
 1. Verify candidate cores and licenses; pick one with GB and GBC support.
 2. Integrate one ROM launch, frame output, controls, and clean return on a
-   feature branch. Keep Keira's other emulators and file types unchanged.
+   feature branch. Source is now in place, but hardware validation is pending.
 3. Add audio, frame pacing, and per-ROM battery saves; then test GB and GBC on
    device with user-supplied compatible ROMs.
 4. Measure flash/RAM and gameplay performance, fix concrete issues, and only

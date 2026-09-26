@@ -81,6 +81,14 @@ FileManagerApp::FileManagerApp(const String& path) :
         LILKA_MENU_CLBK_DATA_CAST(this)
     );
     fileOpenWithMenu.addItem(
+        K_S_FMANAGER_GB_EMULATOR,
+        0,
+        lilka::colors::White,
+        "",
+        LILKA_MENU_CLBK_CAST(&FileManagerApp::onFileOpenWithGameBoyEmulator),
+        LILKA_MENU_CLBK_DATA_CAST(this)
+    );
+    fileOpenWithMenu.addItem(
         K_S_FMANAGER_FIRMWARE_LOADER,
         0,
         lilka::colors::White,
@@ -305,6 +313,10 @@ FMEntry FileManagerApp::pathToEntry(const String& path) {
         newEntry.type = FT_NES_ROM;
         newEntry.icon = FT_NES_ICON;
         newEntry.color = FT_NES_ROM_COLOR;
+    } else if (lowerCasedPath.endsWith(".gb") || lowerCasedPath.endsWith(".gbc")) {
+        newEntry.type = FT_GB_ROM;
+        newEntry.icon = FT_GB_ICON;
+        newEntry.color = FT_GB_ROM_COLOR;
     } else if (lowerCasedPath.endsWith(".bin")) {
         newEntry.type = FT_BIN;
         newEntry.icon = FT_BIN_ICON;
@@ -360,6 +372,9 @@ void FileManagerApp::openCurrentEntry() {
     switch (currentEntry.type) {
         case FT_NES_ROM:
             K_FT_NES_HANDLER(path);
+            break;
+        case FT_GB_ROM:
+            K_FT_GB_HANDLER(path);
             break;
         case FT_BIN:
             K_FT_BIN_HANDLER(path);
@@ -474,6 +489,11 @@ void FileManagerApp::onFileOpenWithNESEmulator() {
     K_FT_NES_HANDLER(lilka::fileutils.joinPath(currentEntry.path, currentEntry.name));
 
     FM_DBG LXP;
+}
+
+void FileManagerApp::onFileOpenWithGameBoyEmulator() {
+    FM_MENU_HANDLE_EXIT(fileOpenWithMenu);
+    K_FT_GB_HANDLER(lilka::fileutils.joinPath(currentEntry.path, currentEntry.name));
 }
 
 void FileManagerApp::onFileOpenWithMultiBootLoader() {

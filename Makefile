@@ -38,6 +38,7 @@ clang-format: ## Run clang-format check
 		-not \( -name mJS -prune \) \
 		-not \( -name SimpleFTPServer -prune \) \
 		-not \( -name LodePNG -prune \) \
+		-not \( -path ./src/apps/gameboy/vendor -prune \) \
 		-iname *.h \
 		-o -iname *.cpp \
 		-o -iname *.c \
@@ -48,6 +49,7 @@ clang-format: ## Run clang-format check
 .PHONY: cppcheck
 cppcheck: ## Run cppcheck check
 	$(CPPCHECK) . -i.ccls-cache -i.pio -idoomgeneric -ibak -imJS -iSimpleFTPServer -iLodePNG \
+		-isrc/apps/gameboy/vendor \
 		--enable=performance,style \
 		--suppress=knownPointerToBool \
 		--suppress=noCopyConstructor \

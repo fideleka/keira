@@ -1,1 +1,2 @@
 lib/** linguist-vendored
+src/apps/gameboy/vendor/** linguist-vendored -whitespace

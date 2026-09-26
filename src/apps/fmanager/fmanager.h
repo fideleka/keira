@@ -28,6 +28,7 @@
 // COLORS:  //////////////////////////////////////////////////////////////////
 #define FT_NONE_COLOR       lilka::colors::Red
 #define FT_NES_ROM_COLOR    lilka::colors::Candy_pink
+#define FT_GB_ROM_COLOR     lilka::colors::Candy_pink
 #define FT_BIN_COLOR        lilka::colors::Mint_green
 #define FT_LUA_SCRIPT_COLOR lilka::colors::Maya_blue
 #define FT_JS_SCRIPT_COLOR  lilka::colors::Butterscotch
@@ -46,6 +47,7 @@
 // ICONS:  ///////////////////////////////////////////////////////////////////
 #define FT_NONE_ICON            &normalfile_img
 #define FT_NES_ICON             &nes_img
+#define FT_GB_ICON              &nes_img
 #define FT_BIN_ICON             &bin_img
 #define FT_LUA_SCRIPT_ICON      &lua_img
 #define FT_JS_SCRIPT_ICON       &js_img
@@ -125,6 +127,7 @@
 typedef enum {
     FT_NONE,
     FT_NES_ROM,
+    FT_GB_ROM,
     FT_BIN,
     FT_LUA_SCRIPT,
     FT_JS_SCRIPT,
@@ -299,6 +302,7 @@ private:
 
     // Callbacks [fileOpenWithMenu]:
     void onFileOpenWithNESEmulator();
+    void onFileOpenWithGameBoyEmulator();
     void onFileOpenWithMultiBootLoader();
     void onFileOpenWithLua();
     void onFileOpenWithMJS();
