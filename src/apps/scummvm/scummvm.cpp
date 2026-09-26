@@ -108,8 +108,8 @@ String base64Url(const String& input) {
 
 } // namespace
 
-ScummVMManagerApp::ScummVMManagerApp(const String& path, bool confirmLaunch) :
-    App("ScummVM"), manifestPath(path), confirmLaunch(confirmLaunch) {
+ScummVMManagerApp::ScummVMManagerApp(const String& path, bool confirmLaunch, bool reuseLoadedImage) :
+    App("ScummVM"), manifestPath(path), confirmLaunch(confirmLaunch), reuseLoadedImage(reuseLoadedImage) {
     setktStackSize(16384);
 }
 
@@ -196,5 +196,5 @@ void ScummVMManagerApp::run() {
         return;
     }
     if (confirmLaunch && !confirm("ScummVM", "Launch " + title + "?")) return;
-    ksystem.apps.spawn(new MultiBootApp(imagePath, command, manifestPath, title));
+    ksystem.apps.spawn(new MultiBootApp(imagePath, command, manifestPath, title, reuseLoadedImage));
 }

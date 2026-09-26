@@ -6,16 +6,38 @@
 #include <Preferences.h>
 
 MultiBootApp::MultiBootApp(
-    const String& path, const String& command, const String& gameManifest, const String& gameTitle
+    const String& path, const String& command, const String& gameManifest, const String& gameTitle,
+    bool reuseLoadedImage
 ) :
-    App("MultiBoot"), command(command), gameManifest(gameManifest), gameTitle(gameTitle) {
+    App("MultiBoot"), command(command), gameManifest(gameManifest), gameTitle(gameTitle),
+    reuseLoadedImage(reuseLoadedImage) {
     this->firmwarePath = path;
     setktStackSize(8192); // Multiboot internally uses 4KB chunk
 }
 
 void MultiBootApp::run() {
-    if (firmwarePath == "") lilka::multiboot.bootLast();
-    else fileLoadAsRom(firmwarePath);
+    if (firmwarePath == "") {
+        lilka::multiboot.bootLast();
+        return;
+    }
+    // The Applications shortcut can reuse app1 only while the SDK's last-image
+    // path and the completed game record still name this same guest.
+    if (reuseLoadedImage && !command.isEmpty()) {
+        const String localPath = lilka::fileutils.getLocalPathInfo(firmwarePath).path;
+        Preferences prefs;
+        if (prefs.begin("lilka", true)) {
+            bool isLastGame = prefs.getString("multiboot_path", "") == localPath &&
+                              prefs.getString(scummvm_recent::kImageKey, "") == localPath &&
+                              prefs.getString(scummvm_recent::kManifestKey, "") == gameManifest;
+            prefs.end();
+            if (isLastGame) {
+                lilka::multiboot.setCMDParams(command);
+                lilka::multiboot.bootLast();
+                return;
+            }
+        }
+    }
+    fileLoadAsRom(firmwarePath);
 }
 
 void MultiBootApp::fileLoadAsRom(const String& path) {

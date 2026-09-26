@@ -5,7 +5,7 @@ class MultiBootApp : public App {
 public:
     explicit MultiBootApp(
         const String& path = "", const String& command = "", const String& gameManifest = "",
-        const String& gameTitle = ""
+        const String& gameTitle = "", bool reuseLoadedImage = false
     );
 
     void run() override;
@@ -16,4 +16,5 @@ private:
     String command;
     String gameManifest;
     String gameTitle;
+    bool reuseLoadedImage;
 };

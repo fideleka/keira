@@ -230,7 +230,7 @@ void LauncherApp::run() {
         if (lastOTA == lastGameImage && lastGameManifest.startsWith("/sd/") && lastGameManifest.length() <= 512 &&
             !lastGameTitle.isEmpty() && lastGameTitle.length() <= 80) {
             appsItems.insert(appsItems.begin(), ITEM::APP(lastGameTitle.c_str(), [this, lastGameManifest]() {
-                                 this->runApp<ScummVMManagerApp>(lastGameManifest, false);
+                                 this->runApp<ScummVMManagerApp>(lastGameManifest, false, true);
                              }));
         } else {
             appsItems.insert(appsItems.begin(), ITEM::APP(lastOTA.c_str(), [this]() { this->runApp<MultiBootApp>(); }));
