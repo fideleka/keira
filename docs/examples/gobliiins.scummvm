@@ -1,0 +1,21 @@
+{
+  "schema": "keira-scummvm-v1",
+  "title": "Gobliiins",
+  "engine": "gob",
+  "gameId": "gob1",
+  "path": ".",
+  "description": "Supply your own compatible game data",
+  "controls": {
+    "a": "leftClick",
+    "b": "rightClick",
+    "c": "space",
+    "d": "escape",
+    "start": "enter",
+    "select": "virtualKeyboard"
+  },
+  "pointer": {
+    "slowStep": 1,
+    "fastStep": 4,
+    "accelerationMs": 500
+  }
+}

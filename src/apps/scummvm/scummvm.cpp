@@ -15,6 +15,7 @@ constexpr size_t kMaxManifestPath = 512;
 const char* engineImage(const String& engine) {
     if (engine == "scumm") return "/sd/scummvm/engines/scumm.bin";
     if (engine == "kyra") return "/sd/scummvm/engines/kyra.bin";
+    if (engine == "gob") return "/sd/scummvm/engines/gob.bin";
     return nullptr;
 }
 
