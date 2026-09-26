@@ -186,9 +186,9 @@ void ScreenshotService::run() {
         bool shortcutPressed = state.select.pressed && state.start.pressed;
         if (shortcutPressed && !activated) {
             activated = true;
-            // NES owns this chord so it can distinguish a short screenshot
-            // request from the long-press exit action.
-            if (!ksystem.apps.isTopAppNamed("NES")) {
+            // Emulators own this chord so a long-press exit never captures.
+            // They request a screenshot themselves on a short release.
+            if (!ksystem.apps.isTopAppNamed("NES") && !ksystem.apps.isTopAppNamed("Game Boy")) {
                 capture = true;
             }
         } else if (!shortcutPressed) {

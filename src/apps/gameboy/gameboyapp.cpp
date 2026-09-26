@@ -1,5 +1,6 @@
 #include "gameboyapp.h"
 #include "keira/keira_lang.h"
+#include "services/screenshot/request.h"
 
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
@@ -181,17 +182,12 @@ void GameBoyApp::drawLine(
     auto* app = static_cast<GameBoyApp*>(context);
     auto* framebuffer = app->canvas->getFramebuffer();
     const int width = app->canvas->width();
-    const int left = (width - 240) / 2;
-    const int top = (app->canvas->height() - 216) / 2;
-    const int firstRow = (line * 3) / 2;
-    const int lastRow = ((line + 1) * 3) / 2;
-
-    for (int row = firstRow; row < lastRow; ++row) {
-        uint16_t* output = framebuffer + (top + row) * width + left;
-        for (int x = 0; x < 240; ++x) {
-            const uint8_t pixel = pixels[(x * 2) / 3];
-            output[x] = color ? palette[pixel & 0x3F] : kDmgPalette[pixel & 0x03];
-        }
+    const int left = (width - 160) / 2;
+    const int top = (app->canvas->height() - 144) / 2;
+    uint16_t* output = framebuffer + (top + line) * width + left;
+    for (int x = 0; x < 160; ++x) {
+        const uint8_t pixel = pixels[x];
+        output[x] = color ? palette[pixel & 0x3F] : kDmgPalette[pixel & 0x03];
     }
 }
 
@@ -219,29 +215,40 @@ void GameBoyApp::run() {
     }
 
     uint32_t exitStartedAt = 0;
+    bool screenChordActive = false;
     uint8_t fractionalSamples = 0;
     int64_t nextFrameAt = esp_timer_get_time();
     while (true) {
         const lilka::State state = lilka::controller.getState();
         const bool exitChord = state.select.pressed && state.start.pressed;
         if (exitChord) {
-            if (!exitStartedAt) exitStartedAt = millis();
+            if (!screenChordActive) {
+                screenChordActive = true;
+                exitStartedAt = millis();
+            }
             if (millis() - exitStartedAt >= kExitHoldMs) break;
-        } else {
-            exitStartedAt = 0;
+        } else if (screenChordActive) {
+            screenChordActive = false;
+            screenshot::request();
         }
 
-        uint8_t buttons = 0;
-        if (state.a.pressed) buttons |= 0x01;
-        if (state.b.pressed) buttons |= 0x02;
-        if (state.select.pressed && !exitChord) buttons |= 0x04;
-        if (state.start.pressed && !exitChord) buttons |= 0x08;
-        if (state.right.pressed) buttons |= 0x10;
-        if (state.left.pressed) buttons |= 0x20;
-        if (state.up.pressed) buttons |= 0x40;
-        if (state.down.pressed) buttons |= 0x80;
+        // Walnut's joypad is active-low: 1 means released, 0 means pressed.
+        uint8_t buttons = 0xFF;
+        if (state.a.pressed) buttons &= ~0x01;
+        if (state.b.pressed) buttons &= ~0x02;
+        if (state.select.pressed && !exitChord) buttons &= ~0x04;
+        if (state.start.pressed && !exitChord) buttons &= ~0x08;
+        if (state.right.pressed) buttons &= ~0x10;
+        if (state.left.pressed) buttons &= ~0x20;
+        if (state.up.pressed) buttons &= ~0x40;
+        if (state.down.pressed) buttons &= ~0x80;
         gbcore_set_buttons(core, buttons);
 
+        // The LCD may be disabled or only draw part of a frame during startup.
+        // Clear the game area so a partial frame cannot retain stale rows.
+        canvas->fillRect(
+            (canvas->width() - 160) / 2, (canvas->height() - 144) / 2, 160, 144, lilka::colors::Black
+        );
         gbcore_run_frame(core);
         queueDraw();
         writeAudio(fractionalSamples);

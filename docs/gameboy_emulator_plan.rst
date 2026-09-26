@@ -6,8 +6,9 @@ Status
 
 First source milestone on ``feature/gameboy-emulator``. Keira now dispatches
 ``.gb`` and ``.gbc`` from File Manager to a Walnut-CGB-based app. It loads ROMs
-into PSRAM, maps D-pad/A/B/Start/Select, draws at 240×216, returns to Keira on
-a 1.5-second Select+Start hold, and loads/writes cartridge RAM beside the ROM
+into PSRAM, maps D-pad/A/B/Start/Select, draws crisp native 160×144 centered
+on the screen, returns to Keira on a 1.5-second Select+Start hold, and
+loads/writes cartridge RAM beside the ROM
 as ``game.gb.sav`` or ``game.gbc.sav``. Audio register reads/writes now feed
 the bundled MiniGB APU and its stereo samples go to Lilka's I2S output, with
 Keira's saved volume level. **Audio is not device-verified yet.** No
@@ -18,6 +19,14 @@ This first adapter keeps each ROM in PSRAM for fast reads. Large cartridges may
 be rejected when Keira cannot reserve enough contiguous PSRAM; SD-backed ROM
 paging is not implemented. Existing battery RAM is loaded on launch and saved
 on the normal exit gesture. Forced power loss before exit is not yet covered.
+
+Anton reported inverted/stuck game input, screenshot capture during long-press
+exit, unpleasant scaling, and artifacts in some startup logos. The first three
+have direct source fixes on this branch. The game area is now cleared before
+each emulated frame to avoid stale rows while the LCD is disabled or a startup
+frame is incomplete. Whether that fully resolves the logo artifacts still
+requires another device test; Walnut's line renderer may have other accuracy
+limits for individual games.
 
 Goal and first milestone
 ------------------------
@@ -46,11 +55,12 @@ Proposed integration
   ``.gbc``, no guest-firmware copy or reboot for each launch. Reassess this if
   the chosen core cannot fit Keira's flash/RAM budget cleanly.
 * GB and GBC both render 160×144. Start with a centered, aspect-preserving
-  240×216 nearest-neighbor view on the 280×240 Lilka screen, leaving margins
-  around the rounded corners. Offer native 160×144 later only if useful.
+  native 160×144 view on the 280×240 Lilka screen, leaving margins around the
+  rounded corners. The earlier uneven 240×216 nearest-neighbor view was
+  removed after Anton found it unpleasant on-device.
 * Map D-pad, A, B, Start, and Select directly. Reserve C/D for optional
-  actions; choose an exit gesture that does not collide with game input or
-  Keira's existing screenshot/exit behavior.
+  actions. Select+Start held for 1.5 seconds exits without a screenshot; a
+  short press/release requests one, as in Keira's NES app.
 * Use the established display, input, and audio paths where possible. Measure
   frame pacing, display transfer time, audio underruns, heap/PSRAM use, and
   input latency on hardware. Avoid assuming CPU speed alone proves 60 fps.
