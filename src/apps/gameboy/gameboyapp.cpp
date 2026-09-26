@@ -3,6 +3,7 @@
 
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
+#include <I2S.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -88,7 +89,84 @@ bool GameBoyApp::writeSave() {
     return true;
 }
 
+bool GameBoyApp::initAudio() {
+#if LILKA_VERSION == 2
+    const size_t samples = gbcore_audio_sample_frames();
+    audioFrame = static_cast<int16_t*>(malloc((samples + 1) * 2 * sizeof(int16_t)));
+    if (!audioFrame) return false;
+
+    lilka::audio.initPins();
+    esp_i2s::i2s_config_t config = {
+        .mode = (esp_i2s::i2s_mode_t)(esp_i2s::I2S_MODE_MASTER | esp_i2s::I2S_MODE_TX),
+        .sample_rate = 32768,
+        .bits_per_sample = esp_i2s::I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = esp_i2s::I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format =
+            (esp_i2s::i2s_comm_format_t)(esp_i2s::I2S_COMM_FORMAT_I2S | esp_i2s::I2S_COMM_FORMAT_I2S_MSB),
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 6,
+        .dma_buf_len = 256,
+        .use_apll = false,
+    };
+    if (esp_i2s::i2s_driver_install(esp_i2s::I2S_NUM_0, &config, 0, nullptr) != ESP_OK) return false;
+    audioReady = true;
+    volumeLevel = lilka::audio.getVolume();
+    esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
+    return true;
+#else
+    return false;
+#endif
+}
+
+void GameBoyApp::writeAudio(uint8_t& fractionalSamples) {
+    if (!audioFrame) return;
+    const size_t baseFrames = gbcore_audio_sample_frames();
+    gbcore_render_audio(core, audioFrame);
+    if (!audioReady) return;
+
+    // 70224 Game Boy clocks per frame / 128 clocks per 32768-Hz sample is
+    // 548.625 samples. MiniGB renders 548; duplicate the final stereo pair on
+    // five of every eight frames to keep I2S playback paced with video.
+    size_t frames = baseFrames;
+    fractionalSamples += 5;
+    if (fractionalSamples >= 8) {
+        fractionalSamples -= 8;
+        audioFrame[frames * 2] = audioFrame[(frames - 1) * 2];
+        audioFrame[frames * 2 + 1] = audioFrame[(frames - 1) * 2 + 1];
+        ++frames;
+    }
+
+    const size_t bytes = frames * 2 * sizeof(int16_t);
+    lilka::audio.adjustVolume(audioFrame, bytes, 16, volumeLevel);
+    size_t written = 0;
+    while (written < bytes) {
+        size_t chunk = 0;
+        const esp_err_t result = esp_i2s::i2s_write(
+            esp_i2s::I2S_NUM_0, reinterpret_cast<uint8_t*>(audioFrame) + written, bytes - written, &chunk,
+            pdMS_TO_TICKS(100)
+        );
+        if (result != ESP_OK || chunk == 0) {
+            stopAudio();
+            return;
+        }
+        written += chunk;
+    }
+}
+
+void GameBoyApp::stopAudio() {
+#if LILKA_VERSION == 2
+    if (audioReady) {
+        esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
+        esp_i2s::i2s_driver_uninstall(esp_i2s::I2S_NUM_0);
+        audioReady = false;
+    }
+#endif
+    free(audioFrame);
+    audioFrame = nullptr;
+}
+
 void GameBoyApp::releaseGame() {
+    stopAudio();
     gbcore_destroy(core);
     core = nullptr;
     free(save);
@@ -134,7 +212,14 @@ void GameBoyApp::run() {
     struct tm clock;
     if (localtime_r(&now, &clock)) gbcore_set_clock(core, &clock);
 
+    if (!initAudio()) {
+        alert("Game Boy", K_S_GB_AUDIO_UNAVAILABLE);
+        canvas->fillScreen(lilka::colors::Black);
+        backCanvas->fillScreen(lilka::colors::Black);
+    }
+
     uint32_t exitStartedAt = 0;
+    uint8_t fractionalSamples = 0;
     int64_t nextFrameAt = esp_timer_get_time();
     while (true) {
         const lilka::State state = lilka::controller.getState();
@@ -159,12 +244,14 @@ void GameBoyApp::run() {
 
         gbcore_run_frame(core);
         queueDraw();
+        writeAudio(fractionalSamples);
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
         if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));
         else if (waitUs < -kFrameUs) nextFrameAt = esp_timer_get_time();
     }
 
+    stopAudio();
     if (!writeSave()) alert("Game Boy", K_S_GB_SAVE_FAILED);
     releaseGame();
 }

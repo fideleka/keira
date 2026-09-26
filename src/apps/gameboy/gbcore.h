@@ -19,6 +19,9 @@ size_t gbcore_save_size(GbCore* core);
 void gbcore_set_save(GbCore* core, uint8_t* data, size_t size);
 void gbcore_set_buttons(GbCore* core, uint8_t buttons);
 void gbcore_run_frame(GbCore* core);
+// The renderer fills two interleaved int16_t channels per sample frame.
+size_t gbcore_audio_sample_frames(void);
+void gbcore_render_audio(GbCore* core, int16_t* samples);
 void gbcore_set_clock(GbCore* core, const struct tm* time);
 
 #ifdef __cplusplus

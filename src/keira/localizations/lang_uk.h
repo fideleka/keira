@@ -225,6 +225,7 @@
 #define K_S_GB_ROM_LOAD_FAILED                            "Не вдалося завантажити ROM або бракує PSRAM"
 #define K_S_GB_UNSUPPORTED_ROM                            "Непідтримуваний ROM або бракує пам’яті"
 #define K_S_GB_SAVE_FAILED                                "Не вдалося зберегти пам’ять картриджа"
+#define K_S_GB_AUDIO_UNAVAILABLE                          "Звук недоступний; гра продовжиться без звуку"
 #define K_S_FMANAGER_FIRMWARE_LOADER                      "Завантажувач прошивок"
 #define K_S_FMANAGER_LUA                                  "Lua"
 #define K_S_FMANAGER_MJS                                  "mJS"

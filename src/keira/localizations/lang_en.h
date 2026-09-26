@@ -232,6 +232,7 @@
 #define K_S_GB_ROM_LOAD_FAILED                     "Cannot load ROM or insufficient PSRAM"
 #define K_S_GB_UNSUPPORTED_ROM                     "Unsupported ROM or insufficient memory"
 #define K_S_GB_SAVE_FAILED                         "Could not save cartridge RAM"
+#define K_S_GB_AUDIO_UNAVAILABLE                   "Audio output unavailable; continuing silently"
 #define K_S_FMANAGER_FIRMWARE_LOADER               "Flash loader"
 #define K_S_FMANAGER_LUA                           "Lua"
 #define K_S_FMANAGER_MJS                           "mJS"

@@ -4,13 +4,26 @@
 #include <stdlib.h>
 #include <time.h>
 
-// Walnut expects audio callbacks by global name. Keep sound disabled until its
-// APU can be connected to Keira's I2S path without shared mutable app state.
-#define ENABLE_SOUND 0
+struct gb_s;
+static uint8_t read_audio(struct gb_s* gb, uint16_t address);
+static void write_audio(struct gb_s* gb, uint16_t address, uint8_t value);
+
+// Walnut calls audio_read/write without a context argument. All its call sites
+// are inside functions with a `gb` parameter, so adapt them at inclusion time
+// without changing the vendored core or introducing a global current instance.
+#define ENABLE_SOUND 1
+#define audio_read(address) read_audio(gb, (address))
+#define audio_write(address, value) write_audio(gb, (address), (value))
 #include "vendor/walnut_cgb.h"
+#undef audio_read
+#undef audio_write
+
+#define MINIGB_APU_AUDIO_FORMAT_S16SYS 1
+#include "vendor/minigb_apu.h"
 
 struct GbCore {
     struct gb_s gb;
+    struct minigb_apu_ctx apu;
     const uint8_t* rom;
     size_t rom_size;
     uint8_t* save;
@@ -21,6 +34,15 @@ struct GbCore {
 
 static struct GbCore* owner(struct gb_s* gb) {
     return (struct GbCore*)gb->direct.priv;
+}
+
+static uint8_t read_audio(struct gb_s* gb, uint16_t address) {
+    if (address < 0xFF10 || address > 0xFF3F) return 0xFF;
+    return minigb_apu_audio_read(&owner(gb)->apu, address);
+}
+
+static void write_audio(struct gb_s* gb, uint16_t address, uint8_t value) {
+    if (address >= 0xFF10 && address <= 0xFF3F) minigb_apu_audio_write(&owner(gb)->apu, address, value);
 }
 
 static uint8_t read_rom(struct gb_s* gb, const uint_fast32_t addr) {
@@ -68,6 +90,7 @@ GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void
     core->rom_size = rom_size;
     core->draw = draw;
     core->context = context;
+    minigb_apu_audio_init(&core->apu);
     if (gb_init(&core->gb, read_rom, read_rom16, read_rom32, read_save, write_save, core_error, core) !=
         GB_INIT_NO_ERROR) {
         free(core);
@@ -97,6 +120,14 @@ void gbcore_set_buttons(GbCore* core, uint8_t buttons) {
 
 void gbcore_run_frame(GbCore* core) {
     gb_run_frame(&core->gb);
+}
+
+size_t gbcore_audio_sample_frames(void) {
+    return AUDIO_SAMPLES;
+}
+
+void gbcore_render_audio(GbCore* core, int16_t* samples) {
+    minigb_apu_audio_callback(&core->apu, samples);
 }
 
 void gbcore_set_clock(GbCore* core, const struct tm* time) {

@@ -14,6 +14,9 @@ private:
     bool loadRom();
     bool loadSave();
     bool writeSave();
+    bool initAudio();
+    void writeAudio(uint8_t& fractionalSamples);
+    void stopAudio();
     void releaseGame();
 
     String romPath;
@@ -23,4 +26,7 @@ private:
     uint8_t* save = nullptr;
     size_t saveSize = 0;
     GbCore* core = nullptr;
+    int16_t* audioFrame = nullptr;
+    bool audioReady = false;
+    uint32_t volumeLevel = 100;
 };

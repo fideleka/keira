@@ -8,7 +8,9 @@ First source milestone on ``feature/gameboy-emulator``. Keira now dispatches
 ``.gb`` and ``.gbc`` from File Manager to a Walnut-CGB-based app. It loads ROMs
 into PSRAM, maps D-pad/A/B/Start/Select, draws at 240×216, returns to Keira on
 a 1.5-second Select+Start hold, and loads/writes cartridge RAM beside the ROM
-as ``game.gb.sav`` or ``game.gbc.sav``. **Audio is not connected yet.** No
+as ``game.gb.sav`` or ``game.gbc.sav``. Audio register reads/writes now feed
+the bundled MiniGB APU and its stereo samples go to Lilka's I2S output, with
+Keira's saved volume level. **Audio is not device-verified yet.** No
 firmware build or device test has been done; do not merge into
 ``features/stage`` yet.
 
