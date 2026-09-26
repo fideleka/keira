@@ -1,0 +1,21 @@
+{
+  "schema": "keira-scummvm-v1",
+  "title": "Goblins Quest 3",
+  "engine": "gob",
+  "gameId": "gob3",
+  "path": ".",
+  "description": "Supply your own compatible game data",
+  "controls": {
+    "a": "leftClick",
+    "b": "rightClick",
+    "c": "space",
+    "d": "escape",
+    "start": "enter",
+    "select": "virtualKeyboard"
+  },
+  "pointer": {
+    "slowStep": 1,
+    "fastStep": 4,
+    "accelerationMs": 500
+  }
+}
