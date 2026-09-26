@@ -12,11 +12,20 @@ namespace {
 constexpr size_t kMaxManifestBytes = 4096;
 constexpr size_t kMaxManifestPath = 512;
 
-const char* engineImage(const String& engine) {
-    if (engine == "scumm") return "/sd/scummvm/engines/scumm.bin";
-    if (engine == "kyra") return "/sd/scummvm/engines/kyra.bin";
-    if (engine == "gob") return "/sd/scummvm/engines/gob.bin";
-    return nullptr;
+bool isSafeId(const String& id) {
+    if (id.isEmpty() || id.length() > 48) return false;
+    for (size_t i = 0; i < id.length(); ++i) {
+        char c = id[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+    }
+    return true;
+}
+
+String engineImage(const String& engine) {
+    if (!isSafeId(engine)) return "";
+    String path = String("/sd/scummvm/engines/") + engine + ".bin";
+    struct stat imageStat;
+    return stat(path.c_str(), &imageStat) == 0 && S_ISREG(imageStat.st_mode) ? path : "";
 }
 
 bool isSafePath(const String& path, bool absolute) {
@@ -31,15 +40,6 @@ bool isSafePath(const String& path, bool absolute) {
         if (end < 0) end = path.length();
         if (path.substring(start, end) == "..") return false;
         start = end + 1;
-    }
-    return true;
-}
-
-bool isGameId(const String& id) {
-    if (id.isEmpty() || id.length() > 48) return false;
-    for (size_t i = 0; i < id.length(); ++i) {
-        char c = id[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
     }
     return true;
 }
@@ -152,10 +152,15 @@ void ScummVMManagerApp::run() {
     String relativePath = doc["path"].as<String>();
     String language = doc["language"].as<String>();
     String platform = doc["platform"].as<String>();
-    const char* imagePath = engineImage(engine);
-    if (schema != "keira-scummvm-v1" || title.isEmpty() || title.length() > 80 || !imagePath || !isGameId(gameId) ||
-        !isSafePath(relativePath, false) || !isSafeOption(language) || !isSafeOption(platform) || !validControls(doc)) {
+    if (schema != "keira-scummvm-v1" || title.isEmpty() || title.length() > 80 || !isSafeId(engine) ||
+        !isSafeId(gameId) || !isSafePath(relativePath, false) || !isSafeOption(language) ||
+        !isSafeOption(platform) || !validControls(doc)) {
         alert("ScummVM", "Unsupported or invalid ScummVM manifest");
+        return;
+    }
+    String imagePath = engineImage(engine);
+    if (imagePath.isEmpty()) {
+        alert("ScummVM", "Engine image is missing");
         return;
     }
 
@@ -172,12 +177,12 @@ void ScummVMManagerApp::run() {
     }
 
     struct stat imageStat;
-    if (stat(imagePath, &imageStat) != 0 || !S_ISREG(imageStat.st_mode) || imageStat.st_size <= 0 ||
+    if (stat(imagePath.c_str(), &imageStat) != 0 || !S_ISREG(imageStat.st_mode) || imageStat.st_size <= 0 ||
         imageStat.st_size > 0x640000) {
         alert("ScummVM", "Engine image is missing or too large");
         return;
     }
-    FILE* image = fopen(imagePath, "rb");
+    FILE* image = fopen(imagePath.c_str(), "rb");
     int magic = image ? fgetc(image) : EOF;
     if (image) fclose(image);
     if (magic != 0xE9) {
@@ -185,7 +190,7 @@ void ScummVMManagerApp::run() {
         return;
     }
 
-    String command = String(imagePath) + " manifest=" + base64Url(manifestPath);
+    String command = imagePath + " manifest=" + base64Url(manifestPath);
     if (command.length() >= 1024) {
         alert("ScummVM", "Manifest path is too long");
         return;
