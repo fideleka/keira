@@ -65,9 +65,11 @@ Proposed integration
   become their two original colours with a blended pixel between; adjacent
   scanlines use the same method. It avoids the uneven block widths of the
   earlier nearest-neighbor scaler while remaining larger than native size.
-* Map D-pad, A, B, Start, and Select directly. Reserve C/D for optional
-  actions. Select+Start held for 1.5 seconds exits without a screenshot; a
-  short press/release requests one, as in Keira's NES app.
+* Map D-pad, A, B, Start, and Select directly. Select+Start held for 1.5
+  seconds exits without a screenshot; a short press/release requests one, as
+  in Keira's NES app. C toggles automatic frameskip so Anton can compare
+  full-visual and speed-prioritised modes without another firmware build.
+  D remains available for a later control.
 * Use the established display, input, and audio paths where possible. Measure
   frame pacing, display transfer time, audio underruns, heap/PSRAM use, and
   input latency on hardware. Walnut's last device log showed 27–31 fps,
@@ -75,7 +77,14 @@ Proposed integration
   The Gnuboy wrapper keeps the same scaler and smaller 240×216 display canvas,
   but its core uses direct memory maps and less frequent timer updates.
   ``GB perf [Gnuboy]`` and ``GB display`` must establish the actual device
-  improvement. The ST7789 still has no proven frame-sync mechanism on Lilka.
+  improvement. The first Gnuboy log showed ~40–41 emulated fps, ~16–18 ms of
+  core work, ~4.6–5.3 ms of scaling, ~1–3 ms of audio/queue work, and ~18 ms
+  per SPI transfer. Adaptive frame skipping now lets Gnuboy emulate without
+  LCD work when a rendered frame misses its deadline, while preserving input,
+  game logic, and audio. It shows at least one frame out of every three. The
+  next log distinguishes emulated fps, queued visual fps, and actual displayed
+  fps. This is a speed-versus-visual-smoothness tradeoff, not proof of full
+  speed. The ST7789 still has no proven frame-sync mechanism on Lilka.
 * Store per-ROM battery RAM on SD and flush it safely on normal exit. Check
   mapper and RTC behavior (especially MBC3) separately; do not promise every
   cartridge type in the first milestone.

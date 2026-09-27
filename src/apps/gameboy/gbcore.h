@@ -22,7 +22,8 @@ size_t gbcore_save_size(GbCore* core);
 void gbcore_set_save(GbCore* core, uint8_t* data, size_t size);
 void gbcore_copy_save(GbCore* core);
 void gbcore_set_buttons(GbCore* core, uint8_t buttons);
-void gbcore_run_frame(GbCore* core);
+// Always emulate a full frame; skip only LCD rendering when draw is false.
+void gbcore_run_frame(GbCore* core, bool draw);
 // The renderer fills two interleaved int16_t channels per sample frame.
 size_t gbcore_audio_sample_frames(void);
 size_t gbcore_render_audio(GbCore* core, int16_t* samples);

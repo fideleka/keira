@@ -249,12 +249,18 @@ void GameBoyApp::run() {
     uint64_t audioTimeUs = 0;
     uint64_t frameTimeUs = 0;
     uint32_t timedFrames = 0;
+    uint32_t displayedFrames = 0;
+    uint8_t skippedInRow = 0;
+    bool videoSampled = false;
+    bool autoFrameskip = true;
     int64_t timingWindowStart = nextFrameAt;
     while (true) {
-        profileVideo = timedFrames == 0;
-        if (profileVideo) sampledVideoUs = 0;
         const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
+        if (state.c.justPressed) {
+            autoFrameskip = !autoFrameskip;
+            lilka::serial.log("GB frameskip: %s", autoFrameskip ? "auto" : "off");
+        }
         const bool exitChord = state.select.pressed && state.start.pressed;
         if (exitChord) {
             if (!screenChordActive) {
@@ -267,7 +273,18 @@ void GameBoyApp::run() {
             screenshot::request();
         }
 
-        // Walnut's joypad is active-low: 1 means released, 0 means pressed.
+        // Keep CPU, input and audio at the Game Boy frame rate. If a rendered
+        // frame missed its deadline, let Gnuboy skip LCD work on the next one.
+        // Force a visible frame after at most two skips. C toggles this mode.
+        const bool drawFrame = !autoFrameskip || skippedInRow >= 2 || frameStart <= nextFrameAt + 1500;
+        skippedInRow = drawFrame ? 0 : skippedInRow + 1;
+        profileVideo = drawFrame && !videoSampled;
+        if (profileVideo) {
+            sampledVideoUs = 0;
+            videoSampled = true;
+        }
+
+        // The adapter accepts an active-low mask and maps it to Gnuboy's pad.
         uint8_t buttons = 0xFF;
         if (state.a.pressed) buttons &= ~0x01;
         if (state.b.pressed) buttons &= ~0x02;
@@ -279,14 +296,19 @@ void GameBoyApp::run() {
         if (state.down.pressed) buttons &= ~0x80;
         gbcore_set_buttons(core, buttons);
 
-        // A complete frame replaces every row. Only clear rows the core did
-        // not draw, for example while the LCD is disabled during startup.
-        memset(drawnLines, 0, sizeof(drawnLines));
-        drawnLineCount = 0;
-        gbcore_run_frame(core);
-        clearMissingLines();
+        if (drawFrame) {
+            memset(drawnLines, 0, sizeof(drawnLines));
+            drawnLineCount = 0;
+        }
+        gbcore_run_frame(core, drawFrame);
+        if (drawFrame) {
+            clearMissingLines();
+        }
         const int64_t coreEnd = esp_timer_get_time();
-        queueDraw();
+        if (drawFrame) {
+            queueDraw();
+            ++displayedFrames;
+        }
         writeAudio();
         const int64_t audioEnd = esp_timer_get_time();
         coreTimeUs += coreEnd - frameStart;
@@ -296,23 +318,28 @@ void GameBoyApp::run() {
             const int64_t elapsedUs = audioEnd - timingWindowStart;
             lilka::serial.log(
                 "GB perf [Gnuboy]: core+video %lu us, scale(sample) %lu us, audio+queue %lu us, frame %lu us, "
-                "%lu fps, internal=%d, cache=%u, reloads=%lu",
+                "%lu emu fps, %lu queued fps (%lu/120), skip=%s, internal=%d, cache=%u, reloads=%lu",
                 static_cast<unsigned long>(coreTimeUs / timedFrames),
                 static_cast<unsigned long>(sampledVideoUs),
                 static_cast<unsigned long>(audioTimeUs / timedFrames),
                 static_cast<unsigned long>(frameTimeUs / timedFrames),
                 static_cast<unsigned long>(elapsedUs > 0 ? 120000000LL / elapsedUs : 0),
+                static_cast<unsigned long>(elapsedUs > 0 ? displayedFrames * 1000000LL / elapsedUs : 0),
+                static_cast<unsigned long>(displayedFrames),
+                autoFrameskip ? "auto" : "off",
                 gbcore_uses_internal_ram(core), gbcore_cached_rom_banks(core),
                 static_cast<unsigned long>(gbcore_take_cache_reloads(core))
             );
             coreTimeUs = audioTimeUs = frameTimeUs = 0;
             timedFrames = 0;
+            displayedFrames = 0;
+            videoSampled = false;
             timingWindowStart = audioEnd;
         }
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
         if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));
-        else if (waitUs < -kFrameUs) nextFrameAt = esp_timer_get_time();
+        else if (waitUs < -3 * kFrameUs) nextFrameAt = esp_timer_get_time();
     }
 
     stopAudio();

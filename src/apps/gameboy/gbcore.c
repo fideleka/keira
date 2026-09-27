@@ -135,8 +135,9 @@ void gbcore_set_buttons(GbCore* core, uint8_t buttons) {
     }
 }
 
-void gbcore_run_frame(GbCore* core) {
-    gnuboy_run(true);
+void gbcore_run_frame(GbCore* core, bool draw) {
+    gnuboy_run(draw);
+    if (!draw) return;
     if (!(R_LCDC & 0x80)) memset(core->indexed_frame, 0, GB_FRAME_WIDTH * GB_FRAME_HEIGHT);
     if (core->draw) {
         for (int y = 0; y < GB_FRAME_HEIGHT; ++y) {
