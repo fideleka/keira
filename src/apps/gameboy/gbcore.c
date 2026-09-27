@@ -116,6 +116,7 @@ void gbcore_set_save(GbCore* core, uint8_t* data, size_t size) {
 
 void gbcore_set_buttons(GbCore* core, uint8_t buttons) {
     core->gb.direct.joypad = buttons;
+    walnut_refresh_joypad(&core->gb, core->gb.hram_io[IO_JOYP]);
 }
 
 void gbcore_run_frame(GbCore* core) {

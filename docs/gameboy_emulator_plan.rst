@@ -4,16 +4,17 @@ Game Boy / Game Boy Color emulator plan
 Status
 ------
 
-First source milestone on ``feature/gameboy-emulator``. Keira now dispatches
+Experimental implementation on ``feature/gameboy-emulator``. Keira dispatches
 ``.gb`` and ``.gbc`` from File Manager to a Walnut-CGB-based app. It loads ROMs
-into PSRAM, maps D-pad/A/B/Start/Select, draws crisp native 160×144 centered
-on the screen, returns to Keira on a 1.5-second Select+Start hold, and
-loads/writes cartridge RAM beside the ROM
-as ``game.gb.sav`` or ``game.gbc.sav``. Audio register reads/writes now feed
-the bundled MiniGB APU and its stereo samples go to Lilka's I2S output, with
-Keira's saved volume level. **Audio is not device-verified yet.** No
-firmware build or device test has been done; do not merge into
-``features/stage`` yet.
+into PSRAM, maps D-pad/A/B/Start/Select, draws a centered 240×216 area-weighted
+image, returns to Keira on a 1.5-second Select+Start hold, and loads/writes
+cartridge RAM beside the ROM as ``game.gb.sav`` or ``game.gbc.sav``. Audio
+register reads/writes feed the bundled MiniGB APU and its stereo samples go to
+Lilka's I2S output, with
+Keira's saved volume level. **Audio is not device-verified yet.** Anton has
+tested an earlier revision on-device, but the latest input and scaling fixes
+have not been retested. The assistant has not run a firmware build; do not
+merge into ``features/stage`` yet.
 
 This first adapter keeps each ROM in PSRAM for fast reads. Large cartridges may
 be rejected when Keira cannot reserve enough contiguous PSRAM; SD-backed ROM
@@ -22,9 +23,13 @@ on the normal exit gesture. Forced power loss before exit is not yet covered.
 
 Anton reported inverted/stuck game input, screenshot capture during long-press
 exit, unpleasant scaling, and artifacts in some startup logos. The first three
-have direct source fixes on this branch. The game area is now cleared before
-each emulated frame to avoid stale rows while the LCD is disabled or a startup
-frame is incomplete. Whether that fully resolves the logo artifacts still
+have direct source fixes on this branch. A later Bomberman GB report showed
+Start did not skip an intro; Walnut's joypad register was updated only on game
+writes, so the adapter now refreshes it on physical input changes and the
+local core patch handles row selection and joypad interrupts correctly. The
+game area is cleared before each emulated frame to avoid stale rows while the
+LCD is disabled or a startup frame is incomplete. Whether that fully resolves
+the logo artifacts still
 requires another device test; Walnut's line renderer may have other accuracy
 limits for individual games.
 
@@ -54,10 +59,11 @@ Proposed integration
 * Prefer an in-Keira ``App`` like NES: File Manager association for ``.gb`` and
   ``.gbc``, no guest-firmware copy or reboot for each launch. Reassess this if
   the chosen core cannot fit Keira's flash/RAM budget cleanly.
-* GB and GBC both render 160×144. Start with a centered, aspect-preserving
-  native 160×144 view on the 280×240 Lilka screen, leaving margins around the
-  rounded corners. The earlier uneven 240×216 nearest-neighbor view was
-  removed after Anton found it unpleasant on-device.
+* GB and GBC both render 160×144. The current view is a centered 240×216
+  area-weighted 1.5× scaler on the 280×240 Lilka screen. Each two source pixels
+  become their two original colours with a blended pixel between; adjacent
+  scanlines use the same method. It avoids the uneven block widths of the
+  earlier nearest-neighbor scaler while remaining larger than native size.
 * Map D-pad, A, B, Start, and Select directly. Reserve C/D for optional
   actions. Select+Start held for 1.5 seconds exits without a screenshot; a
   short press/release requests one, as in Keira's NES app.

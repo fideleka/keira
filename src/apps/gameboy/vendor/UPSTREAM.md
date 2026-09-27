@@ -6,9 +6,13 @@
   `examples/sdl2/minigb_apu/{minigb_apu.c,minigb_apu.h,LICENSE}` (renamed here
   to `MINIGB_APU_LICENSE`).
 - License: MIT; the header retains its original Peanut-GB and SameBoy attributions.
-- The Walnut header has no semantic upstream changes; its CRLF line endings
-  were normalized to LF for this repository. The MiniGB source has one Keira
-  build define (`MINIGB_APU_AUDIO_FORMAT_S16SYS`) before its header include.
+- The Walnut header's CRLF line endings were normalized to LF. Keira adds a
+  small `walnut_refresh_joypad` helper and uses it for `FF00` writes: low input
+  bits are read-only, both selected rows are combined, and a falling input
+  edge requests the joypad interrupt. The adapter also refreshes `FF00` when
+  physical input changes, so games need not rewrite the register to see Start.
+  The MiniGB source has one Keira build define
+  (`MINIGB_APU_AUDIO_FORMAT_S16SYS`) before its header include.
 
 The Keira adapter routes Walnut's APU register hooks through the per-instance
 `GbCore` context, then sends MiniGB's stereo samples to Lilka's I2S output.

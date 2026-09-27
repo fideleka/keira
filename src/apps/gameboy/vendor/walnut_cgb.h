@@ -902,6 +902,23 @@ struct gb_s
 #define IO_BOOT	0x50
 #define IO_IE	0xFF
 
+/* Keira integration: FF00 is live input, not a latch updated only on writes.
+ * The low nibble is read-only; either selected row can pull a bit low. */
+static inline void walnut_refresh_joypad(struct gb_s *gb, uint8_t selection)
+{
+	const uint8_t previous = gb->hram_io[IO_JOYP];
+	const uint8_t select = selection & 0x30;
+	uint8_t lines = 0x0F;
+	if((select & 0x10) == 0)
+		lines &= gb->direct.joypad >> 4;
+	if((select & 0x20) == 0)
+		lines &= gb->direct.joypad & 0x0F;
+	const uint8_t current = 0xC0 | select | lines;
+	gb->hram_io[IO_JOYP] = current;
+	if(previous & ~current & 0x0F)
+		gb->hram_io[IO_IF] |= CONTROL_INTR;
+}
+
 #define IO_TAC_RATE_MASK	0x3
 #define IO_TAC_ENABLE_MASK	0x4
 
@@ -1896,18 +1913,7 @@ void __gb_write(struct gb_s *gb, uint_fast16_t addr, uint8_t val)
 		{
 		/* Joypad */
 		case 0x00:
-			/* Only bits 5 and 4 are R/W.
-			 * The lower bits are overwritten later, and the two most
-			 * significant bits are unused. */
-			gb->hram_io[IO_JOYP] = val;
-
-			/* Direction keys selected */
-			if((gb->hram_io[IO_JOYP] & 0x10) == 0)
-				gb->hram_io[IO_JOYP] |= (gb->direct.joypad >> 4);
-			/* Button keys selected */
-			else
-				gb->hram_io[IO_JOYP] |= (gb->direct.joypad & 0x0F);
-
+			walnut_refresh_joypad(gb, val);
 			return;
 
 		/* Serial */
@@ -9910,7 +9916,6 @@ void __gb_step_cpu_x(struct gb_s *gb)
 #undef WGB_GET_ARITH
 #undef WGB_GET_ZERO
 #endif //WALNUT_GB_H
-
 
 
 

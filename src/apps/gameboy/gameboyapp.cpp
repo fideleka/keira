@@ -18,6 +18,10 @@ constexpr size_t kRomBankSize = 0x4000;
 constexpr int64_t kFrameUs = 16743;
 constexpr uint32_t kExitHoldMs = 1500;
 constexpr uint16_t kDmgPalette[4] = {0xFFFF, 0xBDF7, 0x738E, 0x0000};
+
+uint16_t blend565(uint16_t a, uint16_t b) {
+    return ((a & 0xF7DE) >> 1) + ((b & 0xF7DE) >> 1) + (a & b & 0x0821);
+}
 } // namespace
 
 GameBoyApp::GameBoyApp(const String& path) : App("Game Boy"), romPath(path), savePath(path + ".sav") {
@@ -182,12 +186,23 @@ void GameBoyApp::drawLine(
     auto* app = static_cast<GameBoyApp*>(context);
     auto* framebuffer = app->canvas->getFramebuffer();
     const int width = app->canvas->width();
-    const int left = (width - 160) / 2;
-    const int top = (app->canvas->height() - 144) / 2;
-    uint16_t* output = framebuffer + (top + line) * width + left;
-    for (int x = 0; x < 160; ++x) {
-        const uint8_t pixel = pixels[x];
-        output[x] = color ? palette[pixel & 0x3F] : kDmgPalette[pixel & 0x03];
+    const int left = (width - 240) / 2;
+    const int top = (app->canvas->height() - 216) / 2;
+    const int row = top + (line / 2) * 3 + (line & 1 ? 2 : 0);
+    uint16_t* output = framebuffer + row * width + left;
+    for (int pair = 0; pair < 80; ++pair) {
+        const uint8_t first = pixels[pair * 2];
+        const uint8_t second = pixels[pair * 2 + 1];
+        const uint16_t a = color ? palette[first & 0x3F] : kDmgPalette[first & 0x03];
+        const uint16_t b = color ? palette[second & 0x3F] : kDmgPalette[second & 0x03];
+        output[pair * 3] = a;
+        output[pair * 3 + 1] = blend565(a, b);
+        output[pair * 3 + 2] = b;
+    }
+    if (line & 1) {
+        const uint16_t* upper = output - width * 2;
+        uint16_t* middle = output - width;
+        for (int x = 0; x < 240; ++x) middle[x] = blend565(upper[x], output[x]);
     }
 }
 
@@ -247,7 +262,7 @@ void GameBoyApp::run() {
         // The LCD may be disabled or only draw part of a frame during startup.
         // Clear the game area so a partial frame cannot retain stale rows.
         canvas->fillRect(
-            (canvas->width() - 160) / 2, (canvas->height() - 144) / 2, 160, 144, lilka::colors::Black
+            (canvas->width() - 240) / 2, (canvas->height() - 216) / 2, 240, 216, lilka::colors::Black
         );
         gbcore_run_frame(core);
         queueDraw();
