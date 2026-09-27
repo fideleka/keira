@@ -3,6 +3,7 @@
 #include <esp_heap_caps.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include <gnuboy.h>
 #include <hw.h>
@@ -13,7 +14,6 @@
 
 struct GbCore {
     const uint8_t* rom;
-    bool fast_ram;
     uint8_t* indexed_frame;
     int16_t* audio;
     uint8_t* save;
@@ -54,7 +54,6 @@ GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void
             free(GB.vbanks);
             GB.rambanks = wram;
             GB.vbanks = vram;
-            core->fast_ram = true;
         } else {
             free(wram);
             free(vram);
@@ -89,20 +88,6 @@ void gbcore_destroy(GbCore* core) {
     free(core);
 }
 
-bool gbcore_uses_internal_ram(const GbCore* core) {
-    return core->fast_ram;
-}
-
-unsigned gbcore_cached_rom_banks(const GbCore* core) {
-    (void)core;
-    return 0; // Gnuboy maps cartridge banks directly into the emulated address space.
-}
-
-uint32_t gbcore_take_cache_reloads(GbCore* core) {
-    (void)core;
-    return 0;
-}
-
 size_t gbcore_save_size(GbCore* core) {
     (void)core;
     if (!cart.has_battery) return 0;
@@ -117,6 +102,43 @@ void gbcore_set_save(GbCore* core, uint8_t* data, size_t size) {
 
 void gbcore_copy_save(GbCore* core) {
     if (core->save && cart.rambanks) memcpy(core->save, cart.rambanks, core->save_size);
+}
+
+static size_t state_file_size(void) {
+    const size_t wram_blocks = GB.hwtype == GB_HW_CGB ? 8 : 2;
+    const size_t vram_blocks = GB.hwtype == GB_HW_CGB ? 4 : 2;
+    return (1 + wram_blocks + vram_blocks + cart.ramsize * 2) * 4096;
+}
+
+static bool valid_state_file(const char* path) {
+    struct stat info;
+    if (stat(path, &info) != 0 || info.st_size != (off_t)state_file_size()) return false;
+    FILE* file = fopen(path, "rb");
+    if (!file) return false;
+    uint8_t header[4096];
+    const bool read_ok = fread(header, 1, sizeof(header), file) == sizeof(header);
+    fclose(file);
+    if (!read_ok || memcmp(header, "GbSs", 4) != 0) return false;
+    const uint32_t version = (uint32_t)header[4] | ((uint32_t)header[5] << 8) |
+                             ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
+    if (version != 0x107) return false; // Gnuboy SAVE_VERSION.
+    for (size_t offset = 8; offset < sizeof(header); offset += 8) {
+        if (header[offset] == 0 && header[offset + 1] == 0 && header[offset + 2] == 0 &&
+            header[offset + 3] == 0) return true;
+    }
+    return false;
+}
+
+bool gbcore_save_state(GbCore* core, const char* path) {
+    (void)core;
+    return gnuboy_save_state(path) == 0 && valid_state_file(path);
+}
+
+bool gbcore_load_state(GbCore* core, const char* path) {
+    if (!valid_state_file(path) || gnuboy_load_state(path) != 0) return false;
+    core->last_pad = -1; // Saved pad bits must not suppress the next physical update.
+    memset(core->indexed_frame, 0, GB_FRAME_WIDTH * GB_FRAME_HEIGHT);
+    return true;
 }
 
 void gbcore_set_buttons(GbCore* core, uint8_t buttons) {

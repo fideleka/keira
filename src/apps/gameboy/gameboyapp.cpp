@@ -1,5 +1,6 @@
 #include "gameboyapp.h"
 #include "keira/keira_lang.h"
+#include "keira/ksystem.h"
 #include "services/screenshot/request.h"
 
 #include <esp_heap_caps.h>
@@ -24,7 +25,8 @@ uint16_t blend565(uint16_t a, uint16_t b) {
 }
 } // namespace
 
-GameBoyApp::GameBoyApp(const String& path) : App("Game Boy"), romPath(path), savePath(path + ".sav") {
+GameBoyApp::GameBoyApp(const String& path) :
+    App("Game Boy"), romPath(path), savePath(path + ".sav"), statePath(path + ".ss0") {
     setktStackSize(8192);
     setCanvasBounds((lilka::display.width() - 240) / 2, (lilka::display.height() - 216) / 2, 240, 216);
     setFlags(AppFlags::APP_FLAG_FULLSCREEN);
@@ -76,19 +78,37 @@ bool GameBoyApp::loadSave() {
 bool GameBoyApp::writeSave() {
     if (!saveSize) return true;
     const String temporary = savePath + ".tmp";
-    const String backup = savePath + ".bak";
     FILE* file = fopen(temporary.c_str(), "wb");
     if (!file) return false;
     bool written = fwrite(save, 1, saveSize, file) == saveSize && fflush(file) == 0;
     if (fclose(file) != 0) written = false;
     if (!written) return false;
 
-    if (rename(temporary.c_str(), savePath.c_str()) == 0) return true;
+    return promoteTemporaryFile(savePath);
+}
+
+bool GameBoyApp::saveState() {
+    const String temporary = statePath + ".tmp";
+    return gbcore_save_state(core, temporary.c_str()) && promoteTemporaryFile(statePath);
+}
+
+bool GameBoyApp::loadState() {
+    if (!gbcore_load_state(core, statePath.c_str())) return false;
+#if LILKA_VERSION == 2
+    if (audioReady) esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
+#endif
+    return true;
+}
+
+bool GameBoyApp::promoteTemporaryFile(const String& path) {
+    const String temporary = path + ".tmp";
+    const String backup = path + ".bak";
+    if (rename(temporary.c_str(), path.c_str()) == 0) return true;
     struct stat info;
-    if (stat(savePath.c_str(), &info) != 0 || stat(backup.c_str(), &info) == 0) return false;
-    if (rename(savePath.c_str(), backup.c_str()) != 0) return false;
-    if (rename(temporary.c_str(), savePath.c_str()) != 0) {
-        rename(backup.c_str(), savePath.c_str());
+    if (stat(path.c_str(), &info) != 0 || stat(backup.c_str(), &info) == 0) return false;
+    if (rename(path.c_str(), backup.c_str()) != 0) return false;
+    if (rename(temporary.c_str(), path.c_str()) != 0) {
+        rename(backup.c_str(), path.c_str());
         return false;
     }
     remove(backup.c_str());
@@ -193,7 +213,6 @@ void GameBoyApp::drawLine(
     void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette
 ) {
     auto* app = static_cast<GameBoyApp*>(context);
-    const int64_t videoStart = app->profileVideo ? esp_timer_get_time() : 0;
     if (!app->drawnLines[line]) ++app->drawnLineCount;
     app->drawnLines[line] = true;
     auto* framebuffer = app->canvas->getFramebuffer();
@@ -216,7 +235,6 @@ void GameBoyApp::drawLine(
         uint16_t* middle = output - width;
         for (int x = 0; x < 240; ++x) middle[x] = blend565(upper[x], output[x]);
     }
-    if (app->profileVideo) app->sampledVideoUs += esp_timer_get_time() - videoStart;
 }
 
 void GameBoyApp::run() {
@@ -244,25 +262,18 @@ void GameBoyApp::run() {
 
     uint32_t exitStartedAt = 0;
     bool screenChordActive = false;
+    bool saveChordActive = false;
+    bool loadChordActive = false;
+    bool selectWasPressed = false;
+    bool selectConsumed = false;
     int64_t nextFrameAt = esp_timer_get_time();
-    uint64_t coreTimeUs = 0;
-    uint64_t audioTimeUs = 0;
-    uint64_t frameTimeUs = 0;
-    uint32_t timedFrames = 0;
-    uint32_t displayedFrames = 0;
     uint8_t skippedInRow = 0;
-    bool videoSampled = false;
-    bool autoFrameskip = true;
-    int64_t timingWindowStart = nextFrameAt;
     while (true) {
         const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
-        if (state.c.justPressed) {
-            autoFrameskip = !autoFrameskip;
-            lilka::serial.log("GB frameskip: %s", autoFrameskip ? "auto" : "off");
-        }
         const bool exitChord = state.select.pressed && state.start.pressed;
         if (exitChord) {
+            selectConsumed = true;
             if (!screenChordActive) {
                 screenChordActive = true;
                 exitStartedAt = millis();
@@ -273,22 +284,43 @@ void GameBoyApp::run() {
             screenshot::request();
         }
 
+        // As in NES, Select is a modifier for save/load and screenshot/exit.
+        // Suppress a game Select tap if it formed any chord, regardless of
+        // which button was pressed first. Ambiguous C+D never fires a state.
+        if (state.select.pressed && state.c.pressed && state.d.pressed) selectConsumed = true;
+        const bool saveChord = state.select.pressed && state.c.pressed && !state.d.pressed &&
+                               !state.start.pressed && !selectConsumed;
+        const bool loadChord = state.select.pressed && state.d.pressed && !state.c.pressed &&
+                               !state.start.pressed && !selectConsumed;
+        if (saveChord && !saveChordActive) {
+            ksystem.apps.startToast(saveState() ? K_S_GB_STATE_SAVED : K_S_GB_STATE_SAVE_ERROR);
+            selectConsumed = true;
+            nextFrameAt = esp_timer_get_time();
+            skippedInRow = 0;
+        }
+        if (loadChord && !loadChordActive) {
+            ksystem.apps.startToast(loadState() ? K_S_GB_STATE_LOADED : K_S_GB_STATE_LOAD_ERROR);
+            selectConsumed = true;
+            nextFrameAt = esp_timer_get_time();
+            skippedInRow = 0;
+        }
+        saveChordActive = saveChord;
+        loadChordActive = loadChord;
+        const bool selectTap = selectWasPressed && !state.select.pressed && !selectConsumed;
+        if (!state.select.pressed) selectConsumed = false;
+        selectWasPressed = state.select.pressed;
+
         // Keep CPU, input and audio at the Game Boy frame rate. If a rendered
         // frame missed its deadline, let Gnuboy skip LCD work on the next one.
-        // Force a visible frame after at most two skips. C toggles this mode.
-        const bool drawFrame = !autoFrameskip || skippedInRow >= 2 || frameStart <= nextFrameAt + 1500;
+        // Force a visible frame after at most two skips.
+        const bool drawFrame = skippedInRow >= 2 || frameStart <= nextFrameAt + 1500;
         skippedInRow = drawFrame ? 0 : skippedInRow + 1;
-        profileVideo = drawFrame && !videoSampled;
-        if (profileVideo) {
-            sampledVideoUs = 0;
-            videoSampled = true;
-        }
 
         // The adapter accepts an active-low mask and maps it to Gnuboy's pad.
         uint8_t buttons = 0xFF;
         if (state.a.pressed) buttons &= ~0x01;
         if (state.b.pressed) buttons &= ~0x02;
-        if (state.select.pressed && !exitChord) buttons &= ~0x04;
+        if (selectTap) buttons &= ~0x04;
         if (state.start.pressed && !exitChord) buttons &= ~0x08;
         if (state.right.pressed) buttons &= ~0x10;
         if (state.left.pressed) buttons &= ~0x20;
@@ -304,38 +336,10 @@ void GameBoyApp::run() {
         if (drawFrame) {
             clearMissingLines();
         }
-        const int64_t coreEnd = esp_timer_get_time();
         if (drawFrame) {
             queueDraw();
-            ++displayedFrames;
         }
         writeAudio();
-        const int64_t audioEnd = esp_timer_get_time();
-        coreTimeUs += coreEnd - frameStart;
-        audioTimeUs += audioEnd - coreEnd;
-        frameTimeUs += audioEnd - frameStart;
-        if (++timedFrames == 120) {
-            const int64_t elapsedUs = audioEnd - timingWindowStart;
-            lilka::serial.log(
-                "GB perf [Gnuboy]: core+video %lu us, scale(sample) %lu us, audio+queue %lu us, frame %lu us, "
-                "%lu emu fps, %lu queued fps (%lu/120), skip=%s, internal=%d, cache=%u, reloads=%lu",
-                static_cast<unsigned long>(coreTimeUs / timedFrames),
-                static_cast<unsigned long>(sampledVideoUs),
-                static_cast<unsigned long>(audioTimeUs / timedFrames),
-                static_cast<unsigned long>(frameTimeUs / timedFrames),
-                static_cast<unsigned long>(elapsedUs > 0 ? 120000000LL / elapsedUs : 0),
-                static_cast<unsigned long>(elapsedUs > 0 ? displayedFrames * 1000000LL / elapsedUs : 0),
-                static_cast<unsigned long>(displayedFrames),
-                autoFrameskip ? "auto" : "off",
-                gbcore_uses_internal_ram(core), gbcore_cached_rom_banks(core),
-                static_cast<unsigned long>(gbcore_take_cache_reloads(core))
-            );
-            coreTimeUs = audioTimeUs = frameTimeUs = 0;
-            timedFrames = 0;
-            displayedFrames = 0;
-            videoSampled = false;
-            timingWindowStart = audioEnd;
-        }
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
         if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));

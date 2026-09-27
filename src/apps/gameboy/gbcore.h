@@ -15,12 +15,11 @@ typedef void (*GbDrawLine)(void* context, const uint8_t* pixels, uint8_t line, b
 // The ROM buffer must remain valid until gbcore_destroy().
 GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void* context);
 void gbcore_destroy(GbCore* core);
-bool gbcore_uses_internal_ram(const GbCore* core);
-unsigned gbcore_cached_rom_banks(const GbCore* core);
-uint32_t gbcore_take_cache_reloads(GbCore* core);
 size_t gbcore_save_size(GbCore* core);
 void gbcore_set_save(GbCore* core, uint8_t* data, size_t size);
 void gbcore_copy_save(GbCore* core);
+bool gbcore_save_state(GbCore* core, const char* path);
+bool gbcore_load_state(GbCore* core, const char* path);
 void gbcore_set_buttons(GbCore* core, uint8_t buttons);
 // Always emulate a full frame; skip only LCD rendering when draw is false.
 void gbcore_run_frame(GbCore* core, bool draw);

@@ -14,7 +14,11 @@
 
 #define MESSAGE_ERROR(x, ...) LOG_PRINTF(1, "!! %s: " x, __func__, ## __VA_ARGS__)
 #define MESSAGE_WARN(x, ...)  LOG_PRINTF(2, "** %s: " x, __func__, ## __VA_ARGS__)
-#define MESSAGE_INFO(x, ...)  LOG_PRINTF(3, " * %s: " x, __func__, ## __VA_ARGS__)
+#ifdef GNUBOY_QUIET
+#define MESSAGE_INFO(x, ...) ((void)0)
+#else
+#define MESSAGE_INFO(x, ...) LOG_PRINTF(3, " * %s: " x, __func__, ## __VA_ARGS__)
+#endif
 // #define MESSAGE_DEBUG(x, ...) LOG_PRINTF(4, ">> %s: " x, __func__, ## __VA_ARGS__)
 #define MESSAGE_DEBUG(x, ...) {}
 

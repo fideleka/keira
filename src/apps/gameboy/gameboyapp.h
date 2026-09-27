@@ -14,6 +14,9 @@ private:
     bool loadRom();
     bool loadSave();
     bool writeSave();
+    bool saveState();
+    bool loadState();
+    static bool promoteTemporaryFile(const String& path);
     bool initAudio();
     void writeAudio();
     void stopAudio();
@@ -22,6 +25,7 @@ private:
 
     String romPath;
     String savePath;
+    String statePath;
     uint8_t* rom = nullptr;
     size_t romSize = 0;
     uint8_t* save = nullptr;
@@ -32,6 +36,4 @@ private:
     uint32_t volumeLevel = 100;
     bool drawnLines[144] = {};
     uint16_t drawnLineCount = 0;
-    bool profileVideo = false;
-    uint32_t sampledVideoUs = 0;
 };

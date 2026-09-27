@@ -5,18 +5,19 @@ Status
 ------
 
 Experimental implementation on ``feature/gameboy-emulator``. Keira dispatches
-``.gb`` and ``.gbc`` from File Manager to an in-Keira emulator app. This
-local spike substitutes the ESP32-oriented Gnuboy core for Walnut-CGB while
-retaining the app, display scaling, controls, and save-file interface. It loads ROMs
+``.gb`` and ``.gbc`` from File Manager to an in-Keira emulator app. The
+ESP32-oriented Gnuboy core replaced Walnut-CGB while retaining Keira's app,
+display scaling, controls, and save-file interface. It loads ROMs
 into PSRAM, maps D-pad/A/B/Start/Select, draws a centered 240×216 area-weighted
 image, returns to Keira on a 1.5-second Select+Start hold, and loads/writes
 cartridge RAM beside the ROM as ``game.gb.sav`` or ``game.gbc.sav``. Gnuboy's
 own APU supplies stereo samples to Lilka's I2S output at Keira's saved volume.
-**The new core and its audio are not device-verified yet.** Anton has
-tested an earlier revision on-device and reported Bomberman GBC as much slower
-than his reference device. The latest input, scaling, and speed changes have
-not been retested. The assistant has not run a firmware build; do not
-merge into ``features/stage`` yet.
+NES-style Select+C / Select+D chords now save and load one state file per ROM,
+for example ``game.gbc.ss0``. This is distinct from battery RAM. **State and
+battery-save persistence are not yet device-verified.** Anton confirmed
+Bomberman GBC runs at ~59–60 emulated fps with auto frameskip, displaying
+~24–28 fps; he likes this speed/visual tradeoff. The assistant has not run a
+firmware build. Do not merge into ``features/stage`` yet.
 
 This first adapter keeps each ROM in PSRAM for fast reads. Large cartridges may
 be rejected when Keira cannot reserve enough contiguous PSRAM; SD-backed ROM
@@ -27,9 +28,10 @@ Anton reported inverted/stuck game input, screenshot capture during long-press
 exit, unpleasant scaling, and artifacts in some startup logos. The first three
 have direct source fixes on this branch. A later Bomberman GB report showed
 Start did not skip an intro under Walnut; its joypad patch resolved that on
-device. The new Gnuboy adapter maps physical buttons to Gnuboy's pad handler;
-Start and the other controls must be retested. Whether the new renderer resolves
-startup-logo artifacts also needs a device test.
+device. Under Gnuboy, Select was forwarded immediately and could trigger an
+in-game action while used as a modifier. It is now withheld until a solitary
+Select release, as in NES. Whether the new renderer resolves startup-logo
+artifacts still needs a device test.
 
 Goal and first milestone
 ------------------------
@@ -47,8 +49,8 @@ Keira already integrates NES through Nofrendo, but this checkout has no GB/GBC
 emulator core. Prefer adapting an existing core rather than writing an emulator.
 Walnut-CGB was initially selected for its MIT-licensed, single-header GB/GBC
 core and small integration surface. Device logs then showed 27–31 fps, with
-26–31 ms of core CPU time after subtracting the scaler. This local experiment
-uses the ESP32-oriented Gnuboy core from retro-go under GPLv2; imported source,
+26–31 ms of core CPU time after subtracting the scaler. This feature uses the
+ESP32-oriented Gnuboy core from retro-go under GPLv2; imported source,
 license, and provenance are in ``lib/Gnuboy``. It is not an upstream Keira PR,
 and no ROMs are included. A synthetic host comparison with video enabled was
 about 0.11 ms/frame for Gnuboy versus 0.21 ms/frame for Walnut; that is **not**
@@ -65,29 +67,32 @@ Proposed integration
   become their two original colours with a blended pixel between; adjacent
   scanlines use the same method. It avoids the uneven block widths of the
   earlier nearest-neighbor scaler while remaining larger than native size.
-* Map D-pad, A, B, Start, and Select directly. Select+Start held for 1.5
-  seconds exits without a screenshot; a short press/release requests one, as
-  in Keira's NES app. C toggles automatic frameskip so Anton can compare
-  full-visual and speed-prioritised modes without another firmware build.
-  D remains available for a later control.
+* Map D-pad, A, B, and Start directly. A solitary Select press becomes a short
+  game tap on release; Select is withheld when used as a modifier. Select+Start
+  held for 1.5 seconds exits without a screenshot; a short press/release
+  requests one. Select+C saves state slot 0; Select+D loads it. Both chords
+  fire once per press and show a toast. Auto frameskip stays enabled by default.
 * Use the established display, input, and audio paths where possible. Measure
   frame pacing, display transfer time, audio underruns, heap/PSRAM use, and
   input latency on hardware. Walnut's last device log showed 27–31 fps,
   ~26–31 ms of core work plus ~4.5 ms of scaling, and ~18 ms per SPI transfer.
   The Gnuboy wrapper keeps the same scaler and smaller 240×216 display canvas,
   but its core uses direct memory maps and less frequent timer updates.
-  ``GB perf [Gnuboy]`` and ``GB display`` must establish the actual device
-  improvement. The first Gnuboy log showed ~40–41 emulated fps, ~16–18 ms of
+  The first Gnuboy log showed ~40–41 emulated fps, ~16–18 ms of
   core work, ~4.6–5.3 ms of scaling, ~1–3 ms of audio/queue work, and ~18 ms
   per SPI transfer. Adaptive frame skipping now lets Gnuboy emulate without
   LCD work when a rendered frame misses its deadline, while preserving input,
   game logic, and audio. It shows at least one frame out of every three. The
-  next log distinguishes emulated fps, queued visual fps, and actual displayed
-  fps. This is a speed-versus-visual-smoothness tradeoff, not proof of full
-  speed. The ST7789 still has no proven frame-sync mechanism on Lilka.
+  device log showed ~59–60 emulated fps, ~24–28 displayed fps, and ~18 ms per
+  SPI transfer. Anton accepted this speed-versus-visual-smoothness tradeoff.
+  The temporary ``GB perf`` and ``GB display`` serial diagnostics have been
+  removed. The ST7789 still has no proven frame-sync mechanism on Lilka.
 * Store per-ROM battery RAM on SD and flush it safely on normal exit. Check
   mapper and RTC behavior (especially MBC3) separately; do not promise every
   cartridge type in the first milestone.
+* Store state slot 0 beside each ROM as ``<rom-filename>.ss0`` using a temporary
+  file and replacement/rollback. Validate state size and format before loading
+  because Gnuboy's loader writes into live state as it reads.
 
 Implementation order and release gate
 -------------------------------------

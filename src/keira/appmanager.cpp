@@ -1,6 +1,5 @@
 // Libraries
 #include <lilka/controller.h>
-#include <esp_timer.h>
 #include <cstring>
 
 #include "keira/appmanager.h"
@@ -41,13 +40,7 @@ void AppManager::threadsRun() {
 /// Performs Apps Run/Stop/Suspend/Draw if necessary
 void AppManager::run() {
     K_AMG_DBG lilka::serial.log("Starting apps update loop");
-    uint64_t gbDisplayTimeUs = 0;
-    uint32_t gbDisplayFrames = 0;
-    int64_t gbDisplayWindowStart = 0;
     while (1) {
-        bool reportGbDisplay = false;
-        unsigned long gbDisplayAverageUs = 0;
-        unsigned long gbDisplayFps = 0;
         threadsRun();
 
         ThreadManager::threadsClean();
@@ -62,20 +55,9 @@ void AppManager::run() {
         if (!(topApp)) {
             // Absolutely possible situation and can happen
 
-            gbDisplayTimeUs = 0;
-            gbDisplayFrames = 0;
-            gbDisplayWindowStart = 0;
-
             /// UNLOCK THREADS LIST
             KMTX_UNLOCK(ThreadManager::lock);
             continue;
-        }
-
-        const bool gbTop = strcmp(topApp->getName(), "Game Boy") == 0;
-        if (!gbTop) {
-            gbDisplayTimeUs = 0;
-            gbDisplayFrames = 0;
-            gbDisplayWindowStart = 0;
         }
 
         // Ensure topApp not sleeping
@@ -114,25 +96,10 @@ void AppManager::run() {
 
             // Redraw app
             if (app->getRedraw()) {
-                const bool timeGbDisplay = app == topApp && gbTop;
-                const int64_t displayStart = timeGbDisplay ? esp_timer_get_time() : 0;
                 if (app->flags & AppFlags::APP_FLAG_INTERLACED) {
                     lilka::display.drawCanvasInterlaced(app->backCanvas, app->frame % 2);
                 } else {
                     lilka::display.drawCanvas(app->backCanvas);
-                }
-                if (timeGbDisplay) {
-                    const int64_t displayEnd = esp_timer_get_time();
-                    if (gbDisplayFrames == 0) gbDisplayWindowStart = displayStart;
-                    gbDisplayTimeUs += displayEnd - displayStart;
-                    if (++gbDisplayFrames == 120) {
-                        gbDisplayAverageUs = gbDisplayTimeUs / gbDisplayFrames;
-                        const int64_t elapsedUs = displayEnd - gbDisplayWindowStart;
-                        gbDisplayFps = elapsedUs > 0 ? static_cast<unsigned long>(120000000LL / elapsedUs) : 0;
-                        gbDisplayTimeUs = 0;
-                        gbDisplayFrames = 0;
-                        reportGbDisplay = true;
-                    }
                 }
                 app->setRedraw(false);
             }
@@ -142,9 +109,6 @@ void AppManager::run() {
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
-        if (reportGbDisplay) {
-            lilka::serial.log("GB display: %lu us/transfer, %lu displayed fps (240x216)", gbDisplayAverageUs, gbDisplayFps);
-        }
         vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
         //K_AMG_DBG lilka::serial.log("Last frame tick = %d", lastFrameTick);
     }

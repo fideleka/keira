@@ -7,6 +7,7 @@
       "-DGNUBOY_NO_MINIZIP",
       "-DGNUBOY_NO_SCREENSHOT",
       "-DIS_LITTLE_ENDIAN",
+      "-DGNUBOY_QUIET",
       "-O3"
     ]
   }

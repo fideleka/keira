@@ -820,7 +820,7 @@ static int do_save_load(const char *file, bool save)
 
 		for (int i = 0; blocks[i].ptr != NULL; i++)
 		{
-			if (fwrite(blocks[i].ptr, 4096, blocks[i].len, fp) < 1)
+			if (fwrite(blocks[i].ptr, 4096, blocks[i].len, fp) != blocks[i].len)
 			{
 				MESSAGE_ERROR("Write error in block %d\n", i);
 				goto _error;
@@ -834,7 +834,7 @@ static int do_save_load(const char *file, bool save)
 
 		for (int i = 0; blocks[i].ptr != NULL; i++)
 		{
-			if (fread(blocks[i].ptr, 4096, blocks[i].len, fp) < 1)
+			if (fread(blocks[i].ptr, 4096, blocks[i].len, fp) != blocks[i].len)
 			{
 				MESSAGE_ERROR("Read error in block %d\n", i);
 				goto _error;
@@ -887,7 +887,11 @@ static int do_save_load(const char *file, bool save)
 		gb_hw_updatemap();
 	}
 
-	fclose(fp);
+	if (fclose(fp) != 0)
+	{
+		free(buf);
+		return -1;
+	}
 	free(buf);
 
 	return 0;
