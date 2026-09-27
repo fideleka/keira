@@ -1,5 +1,6 @@
 // Libraries
 #include <lilka/controller.h>
+#include <esp_timer.h>
 #include <cstring>
 
 #include "keira/appmanager.h"
@@ -40,7 +41,11 @@ void AppManager::threadsRun() {
 /// Performs Apps Run/Stop/Suspend/Draw if necessary
 void AppManager::run() {
     K_AMG_DBG lilka::serial.log("Starting apps update loop");
+    uint64_t gbDisplayTimeUs = 0;
+    uint32_t gbDisplayFrames = 0;
     while (1) {
+        bool reportGbDisplay = false;
+        unsigned long gbDisplayAverageUs = 0;
         threadsRun();
 
         ThreadManager::threadsClean();
@@ -84,6 +89,11 @@ void AppManager::run() {
             /// LOCK APP CANVAS
             KMTX_LOCK(app->canvasMutex);
 
+            if (app == topApp && app->backgroundDirty) {
+                lilka::display.fillScreen(lilka::colors::Black);
+                app->backgroundDirty = false;
+            }
+
             // Draw toast message on app's canvas to prevent flickering
             if (millis() < toast.endTime) {
                 renderToast(topApp->backCanvas);
@@ -91,10 +101,21 @@ void AppManager::run() {
 
             // Redraw app
             if (app->getRedraw()) {
+                const bool timeGbDisplay = app == topApp && strcmp(topApp->getName(), "Game Boy") == 0;
+                const int64_t displayStart = timeGbDisplay ? esp_timer_get_time() : 0;
                 if (app->flags & AppFlags::APP_FLAG_INTERLACED) {
                     lilka::display.drawCanvasInterlaced(app->backCanvas, app->frame % 2);
                 } else {
                     lilka::display.drawCanvas(app->backCanvas);
+                }
+                if (timeGbDisplay) {
+                    gbDisplayTimeUs += esp_timer_get_time() - displayStart;
+                    if (++gbDisplayFrames == 120) {
+                        gbDisplayAverageUs = gbDisplayTimeUs / gbDisplayFrames;
+                        gbDisplayTimeUs = 0;
+                        gbDisplayFrames = 0;
+                        reportGbDisplay = true;
+                    }
                 }
                 app->setRedraw(false);
             }
@@ -104,6 +125,7 @@ void AppManager::run() {
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
+        if (reportGbDisplay) lilka::serial.log("GB display: %lu us/transfer (240x216)", gbDisplayAverageUs);
         vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
         //K_AMG_DBG lilka::serial.log("Last frame tick = %d", lastFrameTick);
     }
@@ -180,7 +202,7 @@ void AppManager::renderToast(lilka::Canvas* canvas) {
         yOffset = (time - toast.endTime + 300) * 50 / 300;
     }
 
-    lilka::Canvas toastCanvas(cx - w / 2 - 5, cy - h - 5 + yOffset, w + 10, h + 10);
+    lilka::Canvas toastCanvas(cx - w / 2 - 5 - canvas->x(), cy - h - 5 + yOffset - canvas->y(), w + 10, h + 10);
 
     toastCanvas.setFont(FONT_8x13);
     toastCanvas.fillScreen(lilka::colors::Dark_sienna);

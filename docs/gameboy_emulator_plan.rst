@@ -74,12 +74,17 @@ Proposed integration
   After Anton reported slow Bomberman GBC gameplay, the adapter prefers
   internal RAM for the hot emulator state (with PSRAM fallback), uses Walnut's
   faster dual-fetch CPU loop, and clears only scanlines missing from a frame.
-  A serial ``GB perf`` line every 120 emulated frames reports core+video time,
-  audio+draw-queue time, total active frame time, observed emulation FPS, and
-  whether internal RAM was available. The line does **not** time the separate
-  AppManager SPI display transfer. Compare observed emulation FPS with the
-  59.7 fps target: if emulation is near target but the visible image still
-  lags, measure that display path next.
+  Anton's device log showed only 27–29 fps with 31–35 ms/frame in core+video,
+  1–2 ms in audio+queue, and the core already in internal RAM. The next pass
+  builds only the core translation unit at ``-O2``, caches the fixed and
+  selected ROM banks in internal RAM when available, and samples scaler time
+  separately. A serial ``GB perf`` line every 120 emulated
+  frames reports those values, active frame time, observed emulation FPS,
+  internal-memory status, and cache reload count. ``GB display`` measures the
+  separate SPI transfer. Keira now uses a centered 240×216 canvas for this app
+  instead of transferring a full 280×240 framebuffer every redraw; the border
+  is cleared once on entry/resume. This may reduce visible tearing, but the
+  ST7789 still has no proven frame-sync mechanism on Lilka.
 * Store per-ROM battery RAM on SD and flush it safely on normal exit. Check
   mapper and RTC behavior (especially MBC3) separately; do not promise every
   cartridge type in the first milestone.

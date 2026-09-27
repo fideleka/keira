@@ -26,6 +26,7 @@ uint16_t blend565(uint16_t a, uint16_t b) {
 
 GameBoyApp::GameBoyApp(const String& path) : App("Game Boy"), romPath(path), savePath(path + ".sav") {
     setktStackSize(8192);
+    setCanvasBounds((lilka::display.width() - 240) / 2, (lilka::display.height() - 216) / 2, 240, 216);
     setFlags(AppFlags::APP_FLAG_FULLSCREEN);
 }
 
@@ -205,6 +206,7 @@ void GameBoyApp::drawLine(
     void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette
 ) {
     auto* app = static_cast<GameBoyApp*>(context);
+    const int64_t videoStart = app->profileVideo ? esp_timer_get_time() : 0;
     if (!app->drawnLines[line]) ++app->drawnLineCount;
     app->drawnLines[line] = true;
     auto* framebuffer = app->canvas->getFramebuffer();
@@ -227,6 +229,7 @@ void GameBoyApp::drawLine(
         uint16_t* middle = output - width;
         for (int x = 0; x < 240; ++x) middle[x] = blend565(upper[x], output[x]);
     }
+    if (app->profileVideo) app->sampledVideoUs += esp_timer_get_time() - videoStart;
 }
 
 void GameBoyApp::run() {
@@ -262,6 +265,8 @@ void GameBoyApp::run() {
     uint32_t timedFrames = 0;
     int64_t timingWindowStart = nextFrameAt;
     while (true) {
+        profileVideo = timedFrames == 0;
+        if (profileVideo) sampledVideoUs = 0;
         const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
         const bool exitChord = state.select.pressed && state.start.pressed;
@@ -304,12 +309,15 @@ void GameBoyApp::run() {
         if (++timedFrames == 120) {
             const int64_t elapsedUs = audioEnd - timingWindowStart;
             lilka::serial.log(
-                "GB perf: core+video %lu us, audio+drawqueue %lu us, frame %lu us, %lu fps, internal=%d",
+                "GB perf: core+video %lu us, scale(sample) %lu us, audio+queue %lu us, frame %lu us, "
+                "%lu fps, internal=%d, cache=%u, reloads=%lu",
                 static_cast<unsigned long>(coreTimeUs / timedFrames),
+                static_cast<unsigned long>(sampledVideoUs),
                 static_cast<unsigned long>(audioTimeUs / timedFrames),
                 static_cast<unsigned long>(frameTimeUs / timedFrames),
                 static_cast<unsigned long>(elapsedUs > 0 ? 120000000LL / elapsedUs : 0),
-                gbcore_uses_internal_ram(core)
+                gbcore_uses_internal_ram(core), gbcore_cached_rom_banks(core),
+                static_cast<unsigned long>(gbcore_take_cache_reloads(core))
             );
             coreTimeUs = audioTimeUs = frameTimeUs = 0;
             timedFrames = 0;

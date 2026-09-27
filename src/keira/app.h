@@ -77,6 +77,8 @@ protected:
     bool getRedraw();
     //  Set redraw status
     void setRedraw(bool redraw);
+    // Draw only a fixed display rectangle while retaining fullscreen app UI.
+    void setCanvasBounds(uint16_t x, uint16_t y, uint16_t width, uint16_t height);
     // Initializes canvas, recreates canvas on flag changes
     void initCanvas();
     // Clear existing canvases memory
@@ -90,4 +92,10 @@ private:
     SemaphoreHandle_t canvasMutex = xSemaphoreCreateMutex();
     bool redraw = false;
     AppFlags_t flags = AppFlags::APP_FLAG_NONE;
+    bool hasCanvasBounds = false;
+    bool backgroundDirty = false;
+    uint16_t canvasX = 0;
+    uint16_t canvasY = 0;
+    uint16_t canvasWidth = 0;
+    uint16_t canvasHeight = 0;
 };

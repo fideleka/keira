@@ -132,6 +132,16 @@ void App::setRedraw(bool redraw) {
     this->redraw = redraw;
 }
 //-----------------------------------------------------------------------------
+void App::setCanvasBounds(uint16_t x, uint16_t y, uint16_t width, uint16_t height) {
+    if (!width || !height || x + width > lilka::display.width() || y + height > lilka::display.height()) return;
+    hasCanvasBounds = true;
+    canvasX = x;
+    canvasY = y;
+    canvasWidth = width;
+    canvasHeight = height;
+    initCanvas();
+}
+//-----------------------------------------------------------------------------
 void App::initCanvas() {
     KMTX_LOCK(canvasMutex);
 
@@ -161,6 +171,13 @@ void App::initCanvas() {
         h = KEIRA_STATUSBAR_HEIGHT;
     }
 
+    if (hasCanvasBounds) {
+        x = canvasX;
+        y = canvasY;
+        w = canvasWidth;
+        h = canvasHeight;
+    }
+
     // Ensure init/reinit needed
     if (canvas && backCanvas) {
         uint16_t cx = canvas->x();
@@ -187,6 +204,7 @@ void App::initCanvas() {
     // Fill them with black
     canvas->fillScreen(lilka::colors::Black);
     backCanvas->fillScreen(lilka::colors::Black);
+    backgroundDirty = hasCanvasBounds;
 
     // Cleanup old canvases if them exist
     if (oldCanvas) delete oldCanvas;

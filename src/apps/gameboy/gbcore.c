@@ -1,7 +1,14 @@
+// Keira is built for size by default. Keep the emulator's instruction loop
+// speed-optimized without changing optimization of the rest of the firmware.
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC optimize("O2")
+#endif
+
 #include "gbcore.h"
 
 #include <esp_heap_caps.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 struct gb_s;
@@ -27,6 +34,10 @@ struct GbCore {
     bool internal_ram;
     const uint8_t* rom;
     size_t rom_size;
+    uint8_t* rom_cache0;
+    uint8_t* rom_cache1;
+    uint16_t cached_bank1;
+    uint32_t cache_reloads;
     uint8_t* save;
     size_t save_size;
     GbDrawLine draw;
@@ -46,24 +57,37 @@ static void write_audio(struct gb_s* gb, uint16_t address, uint8_t value) {
     if (address >= 0xFF10 && address <= 0xFF3F) minigb_apu_audio_write(&owner(gb)->apu, address, value);
 }
 
+static const uint8_t* rom_bytes(struct GbCore* core, uint_fast32_t addr, size_t count) {
+    if (addr >= core->rom_size || count > core->rom_size - addr) return NULL;
+    const size_t offset = addr & (ROM_BANK_SIZE - 1);
+    if (offset + count > ROM_BANK_SIZE) return core->rom + addr;
+    const uint_fast32_t bank = addr / ROM_BANK_SIZE;
+    if (bank == 0 && core->rom_cache0) return core->rom_cache0 + offset;
+    if (bank != 0 && core->rom_cache1) {
+        if (core->cached_bank1 != bank) {
+            memcpy(core->rom_cache1, core->rom + bank * ROM_BANK_SIZE, ROM_BANK_SIZE);
+            core->cached_bank1 = bank;
+            ++core->cache_reloads;
+        }
+        return core->rom_cache1 + offset;
+    }
+    return core->rom + addr;
+}
+
 static uint8_t read_rom(struct gb_s* gb, const uint_fast32_t addr) {
-    struct GbCore* core = owner(gb);
-    return addr < core->rom_size ? core->rom[addr] : 0xFF;
+    const uint8_t* bytes = rom_bytes(owner(gb), addr, 1);
+    return bytes ? bytes[0] : 0xFF;
 }
 
 static uint16_t read_rom16(struct gb_s* gb, const uint_fast32_t addr) {
-    struct GbCore* core = owner(gb);
-    if (addr < core->rom_size && core->rom_size - addr >= 2) {
-        const uint8_t* bytes = core->rom + addr;
-        return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
-    }
+    const uint8_t* bytes = rom_bytes(owner(gb), addr, 2);
+    if (bytes) return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
     return (uint16_t)read_rom(gb, addr) | ((uint16_t)read_rom(gb, addr + 1) << 8);
 }
 
 static uint32_t read_rom32(struct gb_s* gb, const uint_fast32_t addr) {
-    struct GbCore* core = owner(gb);
-    if (addr < core->rom_size && core->rom_size - addr >= 4) {
-        const uint8_t* bytes = core->rom + addr;
+    const uint8_t* bytes = rom_bytes(owner(gb), addr, 4);
+    if (bytes) {
         return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) |
                ((uint32_t)bytes[3] << 24);
     }
@@ -109,6 +133,7 @@ GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void
     core->internal_ram = internal_ram;
     core->rom = rom;
     core->rom_size = rom_size;
+    core->cached_bank1 = UINT16_MAX;
     core->draw = draw;
     core->context = context;
     minigb_apu_audio_init(&core->apu);
@@ -117,16 +142,40 @@ GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void
         free(core);
         return NULL;
     }
+    // Opcode fetches dominate a running game. Keep the fixed bank and, when
+    // internal RAM permits, the currently selected bank out of PSRAM.
+    const uint32_t cache_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    const size_t cache_reserve = 48 * 1024;
+    if (heap_caps_get_free_size(cache_caps) > ROM_BANK_SIZE + cache_reserve) {
+        core->rom_cache0 = heap_caps_malloc(ROM_BANK_SIZE, cache_caps);
+        if (core->rom_cache0) memcpy(core->rom_cache0, rom, ROM_BANK_SIZE);
+    }
+    if (rom_size > ROM_BANK_SIZE && heap_caps_get_free_size(cache_caps) > ROM_BANK_SIZE + cache_reserve) {
+        core->rom_cache1 = heap_caps_malloc(ROM_BANK_SIZE, cache_caps);
+    }
     gb_init_lcd(&core->gb, draw_line);
     return core;
 }
 
 void gbcore_destroy(GbCore* core) {
+    if (!core) return;
+    free(core->rom_cache1);
+    free(core->rom_cache0);
     free(core);
 }
 
 bool gbcore_uses_internal_ram(const GbCore* core) {
     return core->internal_ram;
+}
+
+unsigned gbcore_cached_rom_banks(const GbCore* core) {
+    return (core->rom_cache0 != NULL) + (core->rom_cache1 != NULL);
+}
+
+uint32_t gbcore_take_cache_reloads(GbCore* core) {
+    const uint32_t count = core->cache_reloads;
+    core->cache_reloads = 0;
+    return count;
 }
 
 size_t gbcore_save_size(GbCore* core) {

@@ -32,4 +32,6 @@ private:
     uint32_t volumeLevel = 100;
     bool drawnLines[144] = {};
     uint16_t drawnLineCount = 0;
+    bool profileVideo = false;
+    uint32_t sampledVideoUs = 0;
 };
