@@ -15,7 +15,7 @@ private:
     bool loadSave();
     bool writeSave();
     bool initAudio();
-    void writeAudio(uint8_t& fractionalSamples);
+    void writeAudio();
     void stopAudio();
     void clearMissingLines();
     void releaseGame();

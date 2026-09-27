@@ -5,13 +5,14 @@ Status
 ------
 
 Experimental implementation on ``feature/gameboy-emulator``. Keira dispatches
-``.gb`` and ``.gbc`` from File Manager to a Walnut-CGB-based app. It loads ROMs
+``.gb`` and ``.gbc`` from File Manager to an in-Keira emulator app. This
+local spike substitutes the ESP32-oriented Gnuboy core for Walnut-CGB while
+retaining the app, display scaling, controls, and save-file interface. It loads ROMs
 into PSRAM, maps D-pad/A/B/Start/Select, draws a centered 240×216 area-weighted
 image, returns to Keira on a 1.5-second Select+Start hold, and loads/writes
-cartridge RAM beside the ROM as ``game.gb.sav`` or ``game.gbc.sav``. Audio
-register reads/writes feed the bundled MiniGB APU and its stereo samples go to
-Lilka's I2S output, with
-Keira's saved volume level. **Audio is not device-verified yet.** Anton has
+cartridge RAM beside the ROM as ``game.gb.sav`` or ``game.gbc.sav``. Gnuboy's
+own APU supplies stereo samples to Lilka's I2S output at Keira's saved volume.
+**The new core and its audio are not device-verified yet.** Anton has
 tested an earlier revision on-device and reported Bomberman GBC as much slower
 than his reference device. The latest input, scaling, and speed changes have
 not been retested. The assistant has not run a firmware build; do not
@@ -25,14 +26,10 @@ on the normal exit gesture. Forced power loss before exit is not yet covered.
 Anton reported inverted/stuck game input, screenshot capture during long-press
 exit, unpleasant scaling, and artifacts in some startup logos. The first three
 have direct source fixes on this branch. A later Bomberman GB report showed
-Start did not skip an intro; Walnut's joypad register was updated only on game
-writes, so the adapter now refreshes it on physical input changes and the
-local core patch handles row selection and joypad interrupts correctly. The
-game area is cleared before each emulated frame to avoid stale rows while the
-LCD is disabled or a startup frame is incomplete. Whether that fully resolves
-the logo artifacts still
-requires another device test; Walnut's line renderer may have other accuracy
-limits for individual games.
+Start did not skip an intro under Walnut; its joypad patch resolved that on
+device. The new Gnuboy adapter maps physical buttons to Gnuboy's pad handler;
+Start and the other controls must be retested. Whether the new renderer resolves
+startup-logo artifacts also needs a device test.
 
 Goal and first milestone
 ------------------------
@@ -48,11 +45,14 @@ Existing-solutions preflight
 
 Keira already integrates NES through Nofrendo, but this checkout has no GB/GBC
 emulator core. Prefer adapting an existing core rather than writing an emulator.
-Walnut-CGB was selected for its MIT-licensed, single-header GB/GBC core and
-small integration surface. The imported source and license are under
-``src/apps/gameboy/vendor`` with provenance in ``UPSTREAM.md``. ESP32-oriented
-Gnuboy alternatives exist, but the reviewed copies are GPLv2 and require a
-larger port. No ROMs are included.
+Walnut-CGB was initially selected for its MIT-licensed, single-header GB/GBC
+core and small integration surface. Device logs then showed 27–31 fps, with
+26–31 ms of core CPU time after subtracting the scaler. This local experiment
+uses the ESP32-oriented Gnuboy core from retro-go under GPLv2; imported source,
+license, and provenance are in ``lib/Gnuboy``. It is not an upstream Keira PR,
+and no ROMs are included. A synthetic host comparison with video enabled was
+about 0.11 ms/frame for Gnuboy versus 0.21 ms/frame for Walnut; that is **not**
+an ESP32 or Bomberman speed measurement.
 
 Proposed integration
 --------------------
@@ -70,21 +70,12 @@ Proposed integration
   short press/release requests one, as in Keira's NES app.
 * Use the established display, input, and audio paths where possible. Measure
   frame pacing, display transfer time, audio underruns, heap/PSRAM use, and
-  input latency on hardware. Avoid assuming CPU speed alone proves 60 fps.
-  After Anton reported slow Bomberman GBC gameplay, the adapter prefers
-  internal RAM for the hot emulator state (with PSRAM fallback), uses Walnut's
-  faster dual-fetch CPU loop, and clears only scanlines missing from a frame.
-  Anton's device log showed only 27–29 fps with 31–35 ms/frame in core+video,
-  1–2 ms in audio+queue, and the core already in internal RAM. The next pass
-  builds only the core translation unit at ``-O2``, caches the fixed and
-  selected ROM banks in internal RAM when available, and samples scaler time
-  separately. A serial ``GB perf`` line every 120 emulated
-  frames reports those values, active frame time, observed emulation FPS,
-  internal-memory status, and cache reload count. ``GB display`` measures the
-  separate SPI transfer. Keira now uses a centered 240×216 canvas for this app
-  instead of transferring a full 280×240 framebuffer every redraw; the border
-  is cleared once on entry/resume. This may reduce visible tearing, but the
-  ST7789 still has no proven frame-sync mechanism on Lilka.
+  input latency on hardware. Walnut's last device log showed 27–31 fps,
+  ~26–31 ms of core work plus ~4.5 ms of scaling, and ~18 ms per SPI transfer.
+  The Gnuboy wrapper keeps the same scaler and smaller 240×216 display canvas,
+  but its core uses direct memory maps and less frequent timer updates.
+  ``GB perf [Gnuboy]`` and ``GB display`` must establish the actual device
+  improvement. The ST7789 still has no proven frame-sync mechanism on Lilka.
 * Store per-ROM battery RAM on SD and flush it safely on normal exit. Check
   mapper and RTC behavior (especially MBC3) separately; do not promise every
   cartridge type in the first milestone.

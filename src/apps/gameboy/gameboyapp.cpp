@@ -104,7 +104,7 @@ bool GameBoyApp::initAudio() {
     lilka::audio.initPins();
     esp_i2s::i2s_config_t config = {
         .mode = (esp_i2s::i2s_mode_t)(esp_i2s::I2S_MODE_MASTER | esp_i2s::I2S_MODE_TX),
-        .sample_rate = 32768,
+        .sample_rate = 32000,
         .bits_per_sample = esp_i2s::I2S_BITS_PER_SAMPLE_16BIT,
         .channel_format = esp_i2s::I2S_CHANNEL_FMT_RIGHT_LEFT,
         .communication_format =
@@ -124,23 +124,10 @@ bool GameBoyApp::initAudio() {
 #endif
 }
 
-void GameBoyApp::writeAudio(uint8_t& fractionalSamples) {
+void GameBoyApp::writeAudio() {
     if (!audioFrame) return;
-    const size_t baseFrames = gbcore_audio_sample_frames();
-    gbcore_render_audio(core, audioFrame);
-    if (!audioReady) return;
-
-    // 70224 Game Boy clocks per frame / 128 clocks per 32768-Hz sample is
-    // 548.625 samples. MiniGB renders 548; duplicate the final stereo pair on
-    // five of every eight frames to keep I2S playback paced with video.
-    size_t frames = baseFrames;
-    fractionalSamples += 5;
-    if (fractionalSamples >= 8) {
-        fractionalSamples -= 8;
-        audioFrame[frames * 2] = audioFrame[(frames - 1) * 2];
-        audioFrame[frames * 2 + 1] = audioFrame[(frames - 1) * 2 + 1];
-        ++frames;
-    }
+    const size_t frames = gbcore_render_audio(core, audioFrame);
+    if (!audioReady || !frames) return;
 
     const size_t bytes = frames * 2 * sizeof(int16_t);
     lilka::audio.adjustVolume(audioFrame, bytes, 16, volumeLevel);
@@ -257,7 +244,6 @@ void GameBoyApp::run() {
 
     uint32_t exitStartedAt = 0;
     bool screenChordActive = false;
-    uint8_t fractionalSamples = 0;
     int64_t nextFrameAt = esp_timer_get_time();
     uint64_t coreTimeUs = 0;
     uint64_t audioTimeUs = 0;
@@ -301,7 +287,7 @@ void GameBoyApp::run() {
         clearMissingLines();
         const int64_t coreEnd = esp_timer_get_time();
         queueDraw();
-        writeAudio(fractionalSamples);
+        writeAudio();
         const int64_t audioEnd = esp_timer_get_time();
         coreTimeUs += coreEnd - frameStart;
         audioTimeUs += audioEnd - coreEnd;
@@ -309,7 +295,7 @@ void GameBoyApp::run() {
         if (++timedFrames == 120) {
             const int64_t elapsedUs = audioEnd - timingWindowStart;
             lilka::serial.log(
-                "GB perf: core+video %lu us, scale(sample) %lu us, audio+queue %lu us, frame %lu us, "
+                "GB perf [Gnuboy]: core+video %lu us, scale(sample) %lu us, audio+queue %lu us, frame %lu us, "
                 "%lu fps, internal=%d, cache=%u, reloads=%lu",
                 static_cast<unsigned long>(coreTimeUs / timedFrames),
                 static_cast<unsigned long>(sampledVideoUs),
@@ -330,6 +316,7 @@ void GameBoyApp::run() {
     }
 
     stopAudio();
+    gbcore_copy_save(core);
     if (!writeSave()) alert("Game Boy", K_S_GB_SAVE_FAILED);
     releaseGame();
 }
