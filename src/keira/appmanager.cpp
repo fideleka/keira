@@ -126,9 +126,12 @@ void AppManager::renderToCanvas(lilka::Canvas* canvas) {
         return;
     }
 
-    // Draw panel and top app
+    // Match the physical display: fullscreen apps own a black background and
+    // hide the panel, even when their canvas covers only part of the screen.
+    canvas->fillScreen(lilka::colors::Black);
     KMTX_LOCK(panelMtx);
     for (App* app : {panel, topApp}) {
+        if (app == panel && (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN)) continue;
         KMTX_LOCK(app->canvasMutex);
         canvas->drawCanvas(app->backCanvas);
         KMTX_UNLOCK(app->canvasMutex);
