@@ -12,8 +12,9 @@ cartridge RAM beside the ROM as ``game.gb.sav`` or ``game.gbc.sav``. Audio
 register reads/writes feed the bundled MiniGB APU and its stereo samples go to
 Lilka's I2S output, with
 Keira's saved volume level. **Audio is not device-verified yet.** Anton has
-tested an earlier revision on-device, but the latest input and scaling fixes
-have not been retested. The assistant has not run a firmware build; do not
+tested an earlier revision on-device and reported Bomberman GBC as much slower
+than his reference device. The latest input, scaling, and speed changes have
+not been retested. The assistant has not run a firmware build; do not
 merge into ``features/stage`` yet.
 
 This first adapter keeps each ROM in PSRAM for fast reads. Large cartridges may
@@ -70,6 +71,15 @@ Proposed integration
 * Use the established display, input, and audio paths where possible. Measure
   frame pacing, display transfer time, audio underruns, heap/PSRAM use, and
   input latency on hardware. Avoid assuming CPU speed alone proves 60 fps.
+  After Anton reported slow Bomberman GBC gameplay, the adapter prefers
+  internal RAM for the hot emulator state (with PSRAM fallback), uses Walnut's
+  faster dual-fetch CPU loop, and clears only scanlines missing from a frame.
+  A serial ``GB perf`` line every 120 emulated frames reports core+video time,
+  audio+draw-queue time, total active frame time, observed emulation FPS, and
+  whether internal RAM was available. The line does **not** time the separate
+  AppManager SPI display transfer. Compare observed emulation FPS with the
+  59.7 fps target: if emulation is near target but the visible image still
+  lags, measure that display path next.
 * Store per-ROM battery RAM on SD and flush it safely on normal exit. Check
   mapper and RTC behavior (especially MBC3) separately; do not promise every
   cartridge type in the first milestone.

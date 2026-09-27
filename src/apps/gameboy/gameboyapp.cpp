@@ -180,10 +180,33 @@ void GameBoyApp::releaseGame() {
     rom = nullptr;
 }
 
+void GameBoyApp::clearMissingLines() {
+    if (drawnLineCount == 144) return;
+    const int width = canvas->width();
+    const int left = (width - 240) / 2;
+    const int top = (canvas->height() - 216) / 2;
+    if (drawnLineCount == 0) {
+        canvas->fillRect(left, top, 240, 216, lilka::colors::Black);
+        return;
+    }
+
+    uint16_t* framebuffer = canvas->getFramebuffer() + top * width + left;
+    for (int pair = 0; pair < 72; ++pair) {
+        const bool even = drawnLines[pair * 2];
+        const bool odd = drawnLines[pair * 2 + 1];
+        uint16_t* topRow = framebuffer + pair * 3 * width;
+        if (!even) memset(topRow, 0, 240 * sizeof(uint16_t));
+        if (!even || !odd) memset(topRow + width, 0, 240 * sizeof(uint16_t));
+        if (!odd) memset(topRow + width * 2, 0, 240 * sizeof(uint16_t));
+    }
+}
+
 void GameBoyApp::drawLine(
     void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette
 ) {
     auto* app = static_cast<GameBoyApp*>(context);
+    if (!app->drawnLines[line]) ++app->drawnLineCount;
+    app->drawnLines[line] = true;
     auto* framebuffer = app->canvas->getFramebuffer();
     const int width = app->canvas->width();
     const int left = (width - 240) / 2;
@@ -233,7 +256,13 @@ void GameBoyApp::run() {
     bool screenChordActive = false;
     uint8_t fractionalSamples = 0;
     int64_t nextFrameAt = esp_timer_get_time();
+    uint64_t coreTimeUs = 0;
+    uint64_t audioTimeUs = 0;
+    uint64_t frameTimeUs = 0;
+    uint32_t timedFrames = 0;
+    int64_t timingWindowStart = nextFrameAt;
     while (true) {
+        const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
         const bool exitChord = state.select.pressed && state.start.pressed;
         if (exitChord) {
@@ -259,14 +288,33 @@ void GameBoyApp::run() {
         if (state.down.pressed) buttons &= ~0x80;
         gbcore_set_buttons(core, buttons);
 
-        // The LCD may be disabled or only draw part of a frame during startup.
-        // Clear the game area so a partial frame cannot retain stale rows.
-        canvas->fillRect(
-            (canvas->width() - 240) / 2, (canvas->height() - 216) / 2, 240, 216, lilka::colors::Black
-        );
+        // A complete frame replaces every row. Only clear rows the core did
+        // not draw, for example while the LCD is disabled during startup.
+        memset(drawnLines, 0, sizeof(drawnLines));
+        drawnLineCount = 0;
         gbcore_run_frame(core);
+        clearMissingLines();
+        const int64_t coreEnd = esp_timer_get_time();
         queueDraw();
         writeAudio(fractionalSamples);
+        const int64_t audioEnd = esp_timer_get_time();
+        coreTimeUs += coreEnd - frameStart;
+        audioTimeUs += audioEnd - coreEnd;
+        frameTimeUs += audioEnd - frameStart;
+        if (++timedFrames == 120) {
+            const int64_t elapsedUs = audioEnd - timingWindowStart;
+            lilka::serial.log(
+                "GB perf: core+video %lu us, audio+drawqueue %lu us, frame %lu us, %lu fps, internal=%d",
+                static_cast<unsigned long>(coreTimeUs / timedFrames),
+                static_cast<unsigned long>(audioTimeUs / timedFrames),
+                static_cast<unsigned long>(frameTimeUs / timedFrames),
+                static_cast<unsigned long>(elapsedUs > 0 ? 120000000LL / elapsedUs : 0),
+                gbcore_uses_internal_ram(core)
+            );
+            coreTimeUs = audioTimeUs = frameTimeUs = 0;
+            timedFrames = 0;
+            timingWindowStart = audioEnd;
+        }
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
         if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));

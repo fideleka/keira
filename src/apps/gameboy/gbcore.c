@@ -24,6 +24,7 @@ static void write_audio(struct gb_s* gb, uint16_t address, uint8_t value);
 struct GbCore {
     struct gb_s gb;
     struct minigb_apu_ctx apu;
+    bool internal_ram;
     const uint8_t* rom;
     size_t rom_size;
     uint8_t* save;
@@ -51,10 +52,21 @@ static uint8_t read_rom(struct gb_s* gb, const uint_fast32_t addr) {
 }
 
 static uint16_t read_rom16(struct gb_s* gb, const uint_fast32_t addr) {
+    struct GbCore* core = owner(gb);
+    if (addr < core->rom_size && core->rom_size - addr >= 2) {
+        const uint8_t* bytes = core->rom + addr;
+        return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
+    }
     return (uint16_t)read_rom(gb, addr) | ((uint16_t)read_rom(gb, addr + 1) << 8);
 }
 
 static uint32_t read_rom32(struct gb_s* gb, const uint_fast32_t addr) {
+    struct GbCore* core = owner(gb);
+    if (addr < core->rom_size && core->rom_size - addr >= 4) {
+        const uint8_t* bytes = core->rom + addr;
+        return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) | ((uint32_t)bytes[2] << 16) |
+               ((uint32_t)bytes[3] << 24);
+    }
     return (uint32_t)read_rom16(gb, addr) | ((uint32_t)read_rom16(gb, addr + 2) << 16);
 }
 
@@ -84,8 +96,17 @@ static void draw_line(struct gb_s* gb, const uint8_t* pixels, const uint_fast8_t
 }
 
 GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void* context) {
-    struct GbCore* core = heap_caps_calloc(1, sizeof(struct GbCore), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    const uint32_t fast_caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    const size_t fast_reserve = 64 * 1024;
+    struct GbCore* core = NULL;
+    bool internal_ram = false;
+    if (heap_caps_get_free_size(fast_caps) > sizeof(struct GbCore) + fast_reserve) {
+        core = heap_caps_calloc(1, sizeof(struct GbCore), fast_caps);
+        internal_ram = core != NULL;
+    }
+    if (!core) core = heap_caps_calloc(1, sizeof(struct GbCore), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!core) return NULL;
+    core->internal_ram = internal_ram;
     core->rom = rom;
     core->rom_size = rom_size;
     core->draw = draw;
@@ -104,6 +125,10 @@ void gbcore_destroy(GbCore* core) {
     free(core);
 }
 
+bool gbcore_uses_internal_ram(const GbCore* core) {
+    return core->internal_ram;
+}
+
 size_t gbcore_save_size(GbCore* core) {
     size_t size = 0;
     return gb_get_save_size_s(&core->gb, &size) == 0 ? size : 0;
@@ -120,7 +145,7 @@ void gbcore_set_buttons(GbCore* core, uint8_t buttons) {
 }
 
 void gbcore_run_frame(GbCore* core) {
-    gb_run_frame(&core->gb);
+    gb_run_frame_dualfetch(&core->gb);
 }
 
 size_t gbcore_audio_sample_frames(void) {

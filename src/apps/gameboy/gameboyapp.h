@@ -17,6 +17,7 @@ private:
     bool initAudio();
     void writeAudio(uint8_t& fractionalSamples);
     void stopAudio();
+    void clearMissingLines();
     void releaseGame();
 
     String romPath;
@@ -29,4 +30,6 @@ private:
     int16_t* audioFrame = nullptr;
     bool audioReady = false;
     uint32_t volumeLevel = 100;
+    bool drawnLines[144] = {};
+    uint16_t drawnLineCount = 0;
 };
