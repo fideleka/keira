@@ -6,6 +6,7 @@
 #include "launcher.h"
 #include "wallpaper.h"
 #include "keira/appmanager.h"
+#include "apps/multiboot/guestshortcuts.h"
 
 #include "keira/servicemanager.h"
 // Services:
@@ -205,22 +206,22 @@ void LauncherApp::run() {
         appsItems.push_back(std::move(item));
     }
 
-    // Check name of the last loaded guest OTA firmware
-    String lastOTA = "";
-    Preferences prefs;
-    prefs.begin("lilka", false);
-
-//TODO: make the corresponding define public in libdeps/lilka/multiboot.h
-#define MULTIBOOT_PATH_KEY "multiboot_path"
-
-    if (prefs.isKey(MULTIBOOT_PATH_KEY)) {
-        lastOTA = prefs.getString(MULTIBOOT_PATH_KEY);
+    // Keep several previously launched guest firmwares available at once.
+    const std::vector<String> guests = readGuestShortcuts();
+    guestShortcutNames_.clear();
+    guestShortcutNames_.reserve(guests.size());
+    for (const String& path : guests) {
+        String name = path.substring(path.lastIndexOf('/') + 1);
+        if (name.endsWith(".bin")) name.remove(name.length() - 4);
+        if (name.equalsIgnoreCase("doom")) name = "Doom";
+        else if (name.equalsIgnoreCase("lasertank")) name = "LaserTank";
+        guestShortcutNames_.push_back(name);
     }
-    prefs.end();
-
-    // Insert it into the Applications menu
-    if (!lastOTA.isEmpty()) {
-        appsItems.insert(appsItems.begin(), ITEM::APP(lastOTA.c_str(), [this]() { this->runApp<MultiBootApp>(); }));
+    for (int i = static_cast<int>(guests.size()) - 1; i >= 0; --i) {
+        const String path = guests[i];
+        appsItems.insert(appsItems.begin(), ITEM::APP(guestShortcutNames_[i].c_str(), [this, path]() {
+                             this->runApp<MultiBootApp>(path);
+                         }));
     }
 
     item_t root_item = ITEM::SUBMENU(

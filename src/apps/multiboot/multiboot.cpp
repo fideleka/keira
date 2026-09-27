@@ -1,4 +1,5 @@
 #include "multiboot.h"
+#include "guestshortcuts.h"
 #include "keira/keira.h"
 #include "keira/utils/string.h"
 
@@ -13,6 +14,7 @@ void MultiBootApp::run() {
 }
 
 void MultiBootApp::fileLoadAsRom(const String& path) {
+    const std::vector<String> previousGuests = readGuestShortcuts();
     // Draw Welcome message
     lilka::ProgressDialog dialog(K_S_FMANAGER_LOADING, path + "\n\n" K_S_FMANAGER_MULTIBOOT_STARTING);
     dialog.draw(canvas);
@@ -47,6 +49,7 @@ void MultiBootApp::fileLoadAsRom(const String& path) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 2, error));
         return;
     }
+    rememberGuestShortcut(path, previousGuests);
     error = lilka::multiboot.finishAndReboot();
     if (error) {
         alert(K_S_ERROR, StringFormat(K_S_FMANAGER_MULTIBOOT_ERROR_FMT, 3, error));
