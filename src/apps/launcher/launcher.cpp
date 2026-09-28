@@ -82,11 +82,12 @@ constexpr TimezonePreset TIMEZONE_PRESETS[] = {
     {CLOCK_TIMEZONE_MADRID, K_S_LAUNCHER_TIMEZONE_MADRID, 1 * 60},
     {CLOCK_TIMEZONE_ISTANBUL, K_S_LAUNCHER_TIMEZONE_ISTANBUL, 3 * 60},
     {CLOCK_TIMEZONE_BEIJING, K_S_LAUNCHER_TIMEZONE_BEIJING, 8 * 60},
+    {CLOCK_TIMEZONE_KHARKIV, K_S_LAUNCHER_TIMEZONE_KHARKIV, 2 * 60},
 };
 constexpr int TIMEZONE_PRESET_COUNT = sizeof(TIMEZONE_PRESETS) / sizeof(TIMEZONE_PRESETS[0]);
 
 int findTimezonePreset(const String& timezone, int savedPresetId) {
-    // Warsaw and Madrid share a POSIX rule, so preserve the explicit choice.
+    // Some cities share POSIX rules; preserve the explicit city choice.
     if (savedPresetId >= 0 && savedPresetId < TIMEZONE_PRESET_COUNT &&
         timezone == TIMEZONE_PRESETS[savedPresetId].rule) {
         return savedPresetId;
