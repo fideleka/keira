@@ -98,7 +98,7 @@
 #define K_S_LAUNCHER_TIMEZONE_MADRID   "Мадрид"
 #define K_S_LAUNCHER_TIMEZONE_ISTANBUL "Стамбул"
 #define K_S_LAUNCHER_TIMEZONE_BEIJING  "Пекін"
-#define K_S_LAUNCHER_TIMEZONE_PRESET   "Готовий пояс"
+#define K_S_LAUNCHER_TIMEZONE_PRESET   "Часовий пояс"
 #define K_S_LAUNCHER_TIMEZONE_CUSTOM   "Власний"
 #define K_S_LAUNCHER_TIMEZONE_FIXED_OFFSET "Зсув UTC"
 #define K_S_LAUNCHER_TIMEZONE_ADVANCED "POSIX (розширене)"
