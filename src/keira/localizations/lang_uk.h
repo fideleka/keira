@@ -92,6 +92,7 @@
 #define K_S_LAUNCHER_TIMEZONE          "Часовий пояс"
 #define K_S_LAUNCHER_TIMEZONE_UTC      "UTC"
 #define K_S_LAUNCHER_TIMEZONE_KYIV     "Київ"
+#define K_S_LAUNCHER_TIMEZONE_KHARKIV  "Харків"
 #define K_S_LAUNCHER_TIMEZONE_TORONTO  "Торонто"
 #define K_S_LAUNCHER_TIMEZONE_LOS_ANGELES "Лос-Анджелес"
 #define K_S_LAUNCHER_TIMEZONE_WARSAW   "Варшава"

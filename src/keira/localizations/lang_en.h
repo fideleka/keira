@@ -93,6 +93,7 @@
 #define K_S_LAUNCHER_TIMEZONE          "Time zone"
 #define K_S_LAUNCHER_TIMEZONE_UTC      "UTC"
 #define K_S_LAUNCHER_TIMEZONE_KYIV     "Kyiv"
+#define K_S_LAUNCHER_TIMEZONE_KHARKIV  "Kharkiv"
 #define K_S_LAUNCHER_TIMEZONE_TORONTO  "Toronto"
 #define K_S_LAUNCHER_TIMEZONE_LOS_ANGELES "Los Angeles"
 #define K_S_LAUNCHER_TIMEZONE_WARSAW   "Warsaw"

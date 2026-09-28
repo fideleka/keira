@@ -5,6 +5,7 @@
 
 constexpr char CLOCK_TIMEZONE_UTC[] = "UTC0";
 constexpr char CLOCK_TIMEZONE_KYIV[] = "EET-2EEST,M3.5.0/3,M10.5.0/4";
+constexpr char CLOCK_TIMEZONE_KHARKIV[] = "EET-2EEST,M3.5.0/3,M10.5.0/4";
 constexpr char CLOCK_TIMEZONE_TORONTO[] = "EST5EDT,M3.2.0/2,M11.1.0/2";
 constexpr char CLOCK_TIMEZONE_LOS_ANGELES[] = "PST8PDT,M3.2.0/2,M11.1.0/2";
 constexpr char CLOCK_TIMEZONE_WARSAW[] = "CET-1CEST,M3.5.0/2,M10.5.0/3";
