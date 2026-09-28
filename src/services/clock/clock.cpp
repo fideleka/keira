@@ -8,6 +8,7 @@
 
 namespace {
 constexpr char CLOCK_NVS_TIMEZONE_KEY[] = "timezone";
+constexpr char CLOCK_NVS_TIMEZONE_PRESET_KEY[] = "timezonePreset";
 constexpr size_t CLOCK_MAX_TIMEZONE_LENGTH = 63;
 } // namespace
 
@@ -15,14 +16,17 @@ ClockService::ClockService() : Service("clock") {
     NVS_LOCK;
     Preferences prefs;
     String savedTimezone = CLOCK_DEFAULT_TIMEZONE;
+    int savedPresetId = -1;
     if (prefs.begin(getName(), true)) {
         savedTimezone = prefs.getString(CLOCK_NVS_TIMEZONE_KEY, CLOCK_DEFAULT_TIMEZONE);
+        savedPresetId = prefs.getInt(CLOCK_NVS_TIMEZONE_PRESET_KEY, -1);
         prefs.end();
     }
     NVS_UNLOCK;
 
     if (!savedTimezone.isEmpty() && savedTimezone.length() <= CLOCK_MAX_TIMEZONE_LENGTH) {
         timezone = savedTimezone;
+        timezonePresetId = savedPresetId;
     }
     applyTimezone(timezone);
 }
@@ -65,7 +69,14 @@ String ClockService::getTimezone() {
     return currentTimezone;
 }
 
-void ClockService::setTimezone(const String& newTimezone, bool persist) {
+int ClockService::getTimezonePresetId() {
+    KMTX_LOCK(timezoneMutex);
+    int currentPresetId = timezonePresetId;
+    KMTX_UNLOCK(timezoneMutex);
+    return currentPresetId;
+}
+
+void ClockService::setTimezone(const String& newTimezone, bool persist, int presetId) {
     if (newTimezone.isEmpty() || newTimezone.length() > CLOCK_MAX_TIMEZONE_LENGTH) {
         return;
     }
@@ -75,6 +86,7 @@ void ClockService::setTimezone(const String& newTimezone, bool persist) {
         timezone = newTimezone;
         applyTimezone(timezone);
     }
+    timezonePresetId = presetId;
     KMTX_UNLOCK(timezoneMutex);
 
     if (!persist) {
@@ -85,6 +97,7 @@ void ClockService::setTimezone(const String& newTimezone, bool persist) {
     Preferences prefs;
     prefs.begin(getName(), false);
     prefs.putString(CLOCK_NVS_TIMEZONE_KEY, newTimezone);
+    prefs.putInt(CLOCK_NVS_TIMEZONE_PRESET_KEY, presetId);
     prefs.end();
     NVS_UNLOCK;
 }

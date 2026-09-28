@@ -75,7 +75,7 @@ private:
     void setTimezone();
     void setCustomTimezone();
     void setFixedUtcOffset();
-    String getTimezoneLabel(const String& timezone);
+    String getTimezoneLabel(const String& timezone, int presetId);
     void about();
     void info();
     void showEasterEgg();
