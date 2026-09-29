@@ -4,6 +4,7 @@
 #include "keira/utils/mem.h"
 #include "keira/keira.h"
 #include "launcher.h"
+#include "recentroms.h"
 #include "wallpaper.h"
 #include "keira/appmanager.h"
 #include "apps/multiboot/guestshortcuts.h"
@@ -39,6 +40,7 @@
 #include "apps/lua/luarunner.h"
 #include "apps/mjs/mjsrunner.h"
 #include "apps/nes/nesapp.h"
+#include "apps/gameboy/gameboyapp.h"
 #include "apps/weather/weather.h"
 #include "apps/madplayer/madplayer.h"
 #include "apps/lilcatalog/lilcatalog.h"
@@ -707,6 +709,7 @@ void LauncherApp::homeScreen(item_t& mainMenu) {
     }
 }
 void LauncherApp::showMenu(const char* title, ITEM_LIST& list, bool back) {
+    if (strcmp(title, K_S_LAUNCHER_APPS) == 0) refreshRecentRomFolders(list);
     int itemCount = list.size();
     lilka::Menu menu(title);
     for (int i = 0; i < list.size(); i++) {
@@ -744,6 +747,40 @@ void LauncherApp::showMenu(const char* title, ITEM_LIST& list, bool back) {
         }
         if (!item.submenu.empty()) {
             showMenu(item.name, item.submenu);
+        }
+    }
+}
+
+void LauncherApp::refreshRecentRomFolders(ITEM_LIST& apps) {
+    recentRomNames_.clear();
+    recentRomNames_.reserve(60);
+    size_t folderCount = 0;
+
+    struct Folder {
+        RomSystem system;
+        const char* title;
+    };
+    const Folder folders[] = {
+        {RomSystem::NES, K_S_LAUNCHER_NES_FOLDER},
+        {RomSystem::GameBoy, K_S_LAUNCHER_GB_FOLDER},
+        {RomSystem::GameBoyColor, K_S_LAUNCHER_GBC_FOLDER},
+    };
+    for (const Folder& folder : folders) {
+        ITEM_LIST romItems;
+        for (const String& path : readRecentRoms(folder.system)) {
+            recentRomNames_.push_back(path.substring(path.lastIndexOf('/') + 1));
+            const char* name = recentRomNames_.back().c_str();
+            if (folder.system == RomSystem::NES) {
+                romItems.push_back(ITEM::APP(name, [path]() { K_FT_NES_HANDLER(path); }));
+            } else {
+                romItems.push_back(ITEM::APP(name, [path]() { K_FT_GB_HANDLER(path); }));
+            }
+        }
+        if (!romItems.empty()) {
+            apps.insert(
+                apps.begin() + folderCount, ITEM::SUBMENU(folder.title, romItems, &app_group_img, lilka::colors::White)
+            );
+            ++folderCount;
         }
     }
 }

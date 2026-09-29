@@ -1,4 +1,5 @@
 #include "nesapp.h"
+#include "apps/launcher/recentroms.h"
 #include "driver.h"
 
 extern "C" {
@@ -27,7 +28,7 @@ NesApp::~NesApp() {
 void NesApp::run() {
     // Load the ROM
     Driver::setNesApp(this);
-    nofrendo_main(1, argv);
+    const int result = nofrendo_main(1, argv);
 
     // Nofrendo normally relies on process-exit cleanup. Keira keeps running, so
     // release every emulator subsystem before returning to the launcher.
@@ -37,4 +38,5 @@ void NesApp::run() {
     vid_shutdown();
     nofrendo_log_shutdown();
     Driver::setNesApp(NULL);
+    if (result == 0) rememberRecentRom(argv[0]);
 }

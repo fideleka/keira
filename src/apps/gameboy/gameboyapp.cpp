@@ -1,4 +1,5 @@
 #include "gameboyapp.h"
+#include "apps/launcher/recentroms.h"
 #include "keira/keira_lang.h"
 #include "keira/ksystem.h"
 #include "services/screenshot/request.h"
@@ -155,7 +156,10 @@ void GameBoyApp::writeAudio() {
     while (written < bytes) {
         size_t chunk = 0;
         const esp_err_t result = esp_i2s::i2s_write(
-            esp_i2s::I2S_NUM_0, reinterpret_cast<uint8_t*>(audioFrame) + written, bytes - written, &chunk,
+            esp_i2s::I2S_NUM_0,
+            reinterpret_cast<uint8_t*>(audioFrame) + written,
+            bytes - written,
+            &chunk,
             pdMS_TO_TICKS(100)
         );
         if (result != ESP_OK || chunk == 0) {
@@ -209,9 +213,7 @@ void GameBoyApp::clearMissingLines() {
     }
 }
 
-void GameBoyApp::drawLine(
-    void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette
-) {
+void GameBoyApp::drawLine(void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette) {
     auto* app = static_cast<GameBoyApp*>(context);
     if (!app->drawnLines[line]) ++app->drawnLineCount;
     app->drawnLines[line] = true;
@@ -233,7 +235,8 @@ void GameBoyApp::drawLine(
     if (line & 1) {
         const uint16_t* upper = output - width * 2;
         uint16_t* middle = output - width;
-        for (int x = 0; x < 240; ++x) middle[x] = blend565(upper[x], output[x]);
+        for (int x = 0; x < 240; ++x)
+            middle[x] = blend565(upper[x], output[x]);
     }
 }
 
@@ -249,6 +252,7 @@ void GameBoyApp::run() {
         releaseGame();
         return;
     }
+    rememberRecentRom(romPath);
 
     time_t now = time(nullptr);
     struct tm clock;
@@ -288,10 +292,10 @@ void GameBoyApp::run() {
         // Suppress a game Select tap if it formed any chord, regardless of
         // which button was pressed first. Ambiguous C+D never fires a state.
         if (state.select.pressed && state.c.pressed && state.d.pressed) selectConsumed = true;
-        const bool saveChord = state.select.pressed && state.c.pressed && !state.d.pressed &&
-                               !state.start.pressed && !selectConsumed;
-        const bool loadChord = state.select.pressed && state.d.pressed && !state.c.pressed &&
-                               !state.start.pressed && !selectConsumed;
+        const bool saveChord =
+            state.select.pressed && state.c.pressed && !state.d.pressed && !state.start.pressed && !selectConsumed;
+        const bool loadChord =
+            state.select.pressed && state.d.pressed && !state.c.pressed && !state.start.pressed && !selectConsumed;
         if (saveChord && !saveChordActive) {
             ksystem.apps.startToast(saveState() ? K_S_GB_STATE_SAVED : K_S_GB_STATE_SAVE_ERROR);
             selectConsumed = true;
