@@ -58,6 +58,7 @@
 #include "apps/icons/settings.h"
 #include "apps/icons/info.h"
 #include "apps/icons/app_group.h"
+#include "apps/icons/nes.h"
 
 // Libs
 #include <WiFi.h> // for setWiFiTxPower
@@ -771,9 +772,13 @@ void LauncherApp::refreshRecentRomFolders(ITEM_LIST& apps) {
             recentRomNames_.push_back(path.substring(path.lastIndexOf('/') + 1));
             const char* name = recentRomNames_.back().c_str();
             if (folder.system == RomSystem::NES) {
-                romItems.push_back(ITEM::APP(name, [path]() { K_FT_NES_HANDLER(path); }));
+                romItems.push_back(
+                    ITEM::APP(name, [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+                );
             } else {
-                romItems.push_back(ITEM::APP(name, [path]() { K_FT_GB_HANDLER(path); }));
+                romItems.push_back(
+                    ITEM::APP(name, [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+                );
             }
         }
         if (!romItems.empty()) {
