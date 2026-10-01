@@ -32,6 +32,8 @@ NesApp::~NesApp() {
 }
 
 void NesApp::run() {
+    // The SDK controller disables all ESP tags; opt in only to bounded NES diagnostics.
+    esp_log_level_set("NES-startup", ESP_LOG_WARN);
     startupDiagnostics = NesStartupDiagnostics();
     ESP_LOGW("NES-startup", "launch core=%s", nes6502_irq_fix_identity_v1());
     // Header only: never print ROM contents, path or framebuffer data.
