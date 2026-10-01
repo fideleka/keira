@@ -1,0 +1,399 @@
+{
+  "commit": "a5a5c1a1fdc603434e09079c817ec99209b1824e",
+  "repository": "https://github.com/lilka-dev/arduino-nofrendo.git",
+  "files": {
+    "bitmap.c": {
+      "original": "afde416c7b1b5c6cdc743fec029c85c9e72e0703c849c75d722d3c417a001ef3",
+      "patched": "afde416c7b1b5c6cdc743fec029c85c9e72e0703c849c75d722d3c417a001ef3"
+    },
+    "bitmap.h": {
+      "original": "4dda461925550848edb1a7fdf4e76a619f80076803da5f98f0ed80df58c98209",
+      "patched": "4dda461925550848edb1a7fdf4e76a619f80076803da5f98f0ed80df58c98209"
+    },
+    "config.c": {
+      "original": "660853849e22fe70ddf59479315eae595447c8eb75105f7f23fe47d4290ac6b9",
+      "patched": "660853849e22fe70ddf59479315eae595447c8eb75105f7f23fe47d4290ac6b9"
+    },
+    "cpu/dis6502.c": {
+      "original": "d2d06b6b9616018e0865f3dd21a7a1420b493dda4e0fdcd6ce2d89ad73eb31e0",
+      "patched": "d2d06b6b9616018e0865f3dd21a7a1420b493dda4e0fdcd6ce2d89ad73eb31e0"
+    },
+    "cpu/dis6502.h": {
+      "original": "11430b8283f5ea779f5415e22eb28d834104b2c79b248024cb3171472325cc35",
+      "patched": "11430b8283f5ea779f5415e22eb28d834104b2c79b248024cb3171472325cc35"
+    },
+    "cpu/nes6502.c": {
+      "original": "8c7d5574ba0e00b70edda4fe06ca0960cbaed2f07de4dc1dd52c7e12543f11ef",
+      "patched": "a17676bfa8491669f059b1562c112bd8a7b6c358feeef97594ab300e623a56b2"
+    },
+    "cpu/nes6502.h": {
+      "original": "756664237efcceb17a40617ba31bb2fbdb637a3dfed055e3cb6c3571f23f6d53",
+      "patched": "a902cd38dead4c81fe58784eec71416592cacc80941cc463829826e8e9d63514"
+    },
+    "event.c": {
+      "original": "d7e2ca48046d5ea031b20ed8f10111f956c39e3ea4dddd16a988e1f51cf680d6",
+      "patched": "d7e2ca48046d5ea031b20ed8f10111f956c39e3ea4dddd16a988e1f51cf680d6"
+    },
+    "event.h": {
+      "original": "93f17a9380de3a97e2e2ca6a9961ce4d32e6866c5ab133caa1c63aefc2cc1cde",
+      "patched": "93f17a9380de3a97e2e2ca6a9961ce4d32e6866c5ab133caa1c63aefc2cc1cde"
+    },
+    "gui.c": {
+      "original": "725bde2ab51ea2cf79420d1dc4cd1e8910e723fb296604f9942f66d61a53629b",
+      "patched": "725bde2ab51ea2cf79420d1dc4cd1e8910e723fb296604f9942f66d61a53629b"
+    },
+    "gui.h": {
+      "original": "540b77d6bdea4a2395d0e8346031daf6acbcc8d754fe0aba0a82ffeb8fe5056e",
+      "patched": "540b77d6bdea4a2395d0e8346031daf6acbcc8d754fe0aba0a82ffeb8fe5056e"
+    },
+    "gui_elem.c": {
+      "original": "8665cc159bc474107ce7665bff60b7c25d3ca91a88a079a69ac58a2df337ed7e",
+      "patched": "8665cc159bc474107ce7665bff60b7c25d3ca91a88a079a69ac58a2df337ed7e"
+    },
+    "gui_elem.h": {
+      "original": "e8b39fac41829217515e611a05be65bcac4ceb99c550227b14ba8457bb198166",
+      "patched": "e8b39fac41829217515e611a05be65bcac4ceb99c550227b14ba8457bb198166"
+    },
+    "intro.c": {
+      "original": "1133d6d10d39605c15f7d45030413a45926ea5b957e944c375371c8f2bd8e4e2",
+      "patched": "1133d6d10d39605c15f7d45030413a45926ea5b957e944c375371c8f2bd8e4e2"
+    },
+    "intro.h": {
+      "original": "b516541b78f15ad1065203064c50a09cdd43665945147a41488829a5a81e6a6b",
+      "patched": "b516541b78f15ad1065203064c50a09cdd43665945147a41488829a5a81e6a6b"
+    },
+    "libsnss/libsnss.c": {
+      "original": "b878cd1988ade204d9779fe30bf8b2c33be0c4ab0109173d1e45710eba13de9e",
+      "patched": "b878cd1988ade204d9779fe30bf8b2c33be0c4ab0109173d1e45710eba13de9e"
+    },
+    "libsnss/libsnss.h": {
+      "original": "804f7dcfd7462e357bc30d1a147a723a776484ed70865a0efb3ea990ed3bca80",
+      "patched": "804f7dcfd7462e357bc30d1a147a723a776484ed70865a0efb3ea990ed3bca80"
+    },
+    "log.c": {
+      "original": "806bc4daf1d9c1f7c615990c72fc6fc299685ee968ccd09c53df50978a2f64f1",
+      "patched": "806bc4daf1d9c1f7c615990c72fc6fc299685ee968ccd09c53df50978a2f64f1"
+    },
+    "log.h": {
+      "original": "914beea9d893c167f632e3de05ea20de0ca9bdb44a85daae640e2a8226ea41d4",
+      "patched": "914beea9d893c167f632e3de05ea20de0ca9bdb44a85daae640e2a8226ea41d4"
+    },
+    "mappers/map000.c": {
+      "original": "fc216e0bce56b87092d4793e27d5e079e3f6ae7bc5e9cd6ebb123511505ccb0c",
+      "patched": "fc216e0bce56b87092d4793e27d5e079e3f6ae7bc5e9cd6ebb123511505ccb0c"
+    },
+    "mappers/map001.c": {
+      "original": "b67c8854e12b802afa51268aa17829f181cbd5f1f2db823e192586d00acadd26",
+      "patched": "b67c8854e12b802afa51268aa17829f181cbd5f1f2db823e192586d00acadd26"
+    },
+    "mappers/map002.c": {
+      "original": "5cd699ce38cec577074d9606e520b629ad9635a3a4b199af14572917389bf9cb",
+      "patched": "5cd699ce38cec577074d9606e520b629ad9635a3a4b199af14572917389bf9cb"
+    },
+    "mappers/map003.c": {
+      "original": "f02690ba8207b0bb77ba27b073f3005c72a51ce10bb76476d2999da8257d9bfc",
+      "patched": "f02690ba8207b0bb77ba27b073f3005c72a51ce10bb76476d2999da8257d9bfc"
+    },
+    "mappers/map004.c": {
+      "original": "fedb7d1a3e31811548b28257315e94c7f59c63291fea10637254c4ec6411645d",
+      "patched": "227fd30f33b2c9d9df1ee40566b2f8b2cbf1b7fc0a91169ace3d6afff1846d51"
+    },
+    "mappers/map005.c": {
+      "original": "71ad4a63b3bd96cb2dc7ffd6170d7a71a44cc0354058d12bd9acf0a86ad9a9c3",
+      "patched": "71ad4a63b3bd96cb2dc7ffd6170d7a71a44cc0354058d12bd9acf0a86ad9a9c3"
+    },
+    "mappers/map007.c": {
+      "original": "25144de34d793041aa9be9c0756693683f05ad5b6add9071e1b9749d95d43dc4",
+      "patched": "25144de34d793041aa9be9c0756693683f05ad5b6add9071e1b9749d95d43dc4"
+    },
+    "mappers/map008.c": {
+      "original": "5796264aae3c2f6b15d7c6621b4b501907312cf573e5c5a2afb11ade7fa70c88",
+      "patched": "5796264aae3c2f6b15d7c6621b4b501907312cf573e5c5a2afb11ade7fa70c88"
+    },
+    "mappers/map009.c": {
+      "original": "44476d4a614b3a7ae38531a3e369f67f4d3f9237985fafafea2cb94cae2ca80b",
+      "patched": "44476d4a614b3a7ae38531a3e369f67f4d3f9237985fafafea2cb94cae2ca80b"
+    },
+    "mappers/map010.c": {
+      "original": "6cf0a63904715a5183f3de193dcea27e29270fbaebcaddf71ed4d727d5f3414e",
+      "patched": "6cf0a63904715a5183f3de193dcea27e29270fbaebcaddf71ed4d727d5f3414e"
+    },
+    "mappers/map011.c": {
+      "original": "76cb71c76a2f0618e928b48d9c2b5e6ac49a00d01ed678280232b86e9154c664",
+      "patched": "76cb71c76a2f0618e928b48d9c2b5e6ac49a00d01ed678280232b86e9154c664"
+    },
+    "mappers/map015.c": {
+      "original": "ae23e110ed5361aa59dc4cba193ee0abbfeab21ab3dbd853be363b091a68a770",
+      "patched": "ae23e110ed5361aa59dc4cba193ee0abbfeab21ab3dbd853be363b091a68a770"
+    },
+    "mappers/map016.c": {
+      "original": "22cbc519790861e5fd8525de403542b0e43a38a0c0a2de13072000b149934d78",
+      "patched": "22cbc519790861e5fd8525de403542b0e43a38a0c0a2de13072000b149934d78"
+    },
+    "mappers/map018.c": {
+      "original": "2fba3f80f98827d3d6b7f4fd357acbf42ef811958b289323a749339001e86821",
+      "patched": "2fba3f80f98827d3d6b7f4fd357acbf42ef811958b289323a749339001e86821"
+    },
+    "mappers/map019.c": {
+      "original": "ed18d131fad815db7e43ac7fa86bf0c67a19ed038c11eed01a3b90cd72530bc6",
+      "patched": "ed18d131fad815db7e43ac7fa86bf0c67a19ed038c11eed01a3b90cd72530bc6"
+    },
+    "mappers/map024.c": {
+      "original": "836b9d93a11b54add98625e14928cd994a1597826e4a964d29184a91cfb78f75",
+      "patched": "836b9d93a11b54add98625e14928cd994a1597826e4a964d29184a91cfb78f75"
+    },
+    "mappers/map032.c": {
+      "original": "aa4696e76ddda20dc742356198221d441b61453405ef5365b9f9eef6cacbb6f8",
+      "patched": "aa4696e76ddda20dc742356198221d441b61453405ef5365b9f9eef6cacbb6f8"
+    },
+    "mappers/map033.c": {
+      "original": "beb71677d3a746a714d296c465ad5f9ad30985d12378e73807d057d82105aae0",
+      "patched": "beb71677d3a746a714d296c465ad5f9ad30985d12378e73807d057d82105aae0"
+    },
+    "mappers/map034.c": {
+      "original": "3578953bad3cf43d3baa9236cfe85051c7c405ab6aabcf7e89e44260b4e86c03",
+      "patched": "3578953bad3cf43d3baa9236cfe85051c7c405ab6aabcf7e89e44260b4e86c03"
+    },
+    "mappers/map040.c": {
+      "original": "409b5669c52ee5d8179f6876b66f2630c58d0437f8a5d239a2c1e7661c50cd40",
+      "patched": "409b5669c52ee5d8179f6876b66f2630c58d0437f8a5d239a2c1e7661c50cd40"
+    },
+    "mappers/map041.c": {
+      "original": "6238d528938ee38ddd9682f1eedcff9df6c17b95dadf6c65b2c535cd3680a355",
+      "patched": "6238d528938ee38ddd9682f1eedcff9df6c17b95dadf6c65b2c535cd3680a355"
+    },
+    "mappers/map042.c": {
+      "original": "94b4587ab8f8a1e6c193fc496d38a09138e8205812827abd7678e4480e2c7456",
+      "patched": "94b4587ab8f8a1e6c193fc496d38a09138e8205812827abd7678e4480e2c7456"
+    },
+    "mappers/map046.c": {
+      "original": "3745dda815252aca5a4b8495d0cf25e13d908f734fa8ec7a6e1014952c2e97e7",
+      "patched": "3745dda815252aca5a4b8495d0cf25e13d908f734fa8ec7a6e1014952c2e97e7"
+    },
+    "mappers/map050.c": {
+      "original": "1da8ef9e373f6441fcefb9f746bd33a2f5dc3aeedbd99d353bf9a88dc6767d52",
+      "patched": "1da8ef9e373f6441fcefb9f746bd33a2f5dc3aeedbd99d353bf9a88dc6767d52"
+    },
+    "mappers/map064.c": {
+      "original": "c38ad2f4106c133dd63f0001b594675c86cde8477066989d8b8f2b89d450b974",
+      "patched": "c38ad2f4106c133dd63f0001b594675c86cde8477066989d8b8f2b89d450b974"
+    },
+    "mappers/map065.c": {
+      "original": "1a82a08323b90d05f974a06f64b730f40c26ef4feddc98f8567fec1b0cd7308c",
+      "patched": "1a82a08323b90d05f974a06f64b730f40c26ef4feddc98f8567fec1b0cd7308c"
+    },
+    "mappers/map066.c": {
+      "original": "b797e217a4554e07204fad22fd79da07bf356f8a34283e4dc9cdcdfffe34c594",
+      "patched": "b797e217a4554e07204fad22fd79da07bf356f8a34283e4dc9cdcdfffe34c594"
+    },
+    "mappers/map070.c": {
+      "original": "4b03b9abfe5bd12b0bd09353ddffad8c041beaeae7145a5e78f7da786a5ce532",
+      "patched": "4b03b9abfe5bd12b0bd09353ddffad8c041beaeae7145a5e78f7da786a5ce532"
+    },
+    "mappers/map073.c": {
+      "original": "062b5c8fa6dc542e2404bed92c65513ad0169fab0f13611ac10f32f099006a89",
+      "patched": "062b5c8fa6dc542e2404bed92c65513ad0169fab0f13611ac10f32f099006a89"
+    },
+    "mappers/map075.c": {
+      "original": "fe4f53b5b5d9906751decd0419e330520d6a09a3acb8f68753901456ac3d22c3",
+      "patched": "fe4f53b5b5d9906751decd0419e330520d6a09a3acb8f68753901456ac3d22c3"
+    },
+    "mappers/map078.c": {
+      "original": "dbf98e1aa0a1f010c72e69b1f22b417491140f0fb7f4403fa0ee8cad68fef049",
+      "patched": "dbf98e1aa0a1f010c72e69b1f22b417491140f0fb7f4403fa0ee8cad68fef049"
+    },
+    "mappers/map079.c": {
+      "original": "6ef54bc6a776a274a25655ffe29b370ae72ccb57142145120d7fa1484a6e8d60",
+      "patched": "6ef54bc6a776a274a25655ffe29b370ae72ccb57142145120d7fa1484a6e8d60"
+    },
+    "mappers/map085.c": {
+      "original": "3597521fde598f8adbef64b393a545ca52a33bfad0d0ec32f753925e716c7206",
+      "patched": "3597521fde598f8adbef64b393a545ca52a33bfad0d0ec32f753925e716c7206"
+    },
+    "mappers/map087.c": {
+      "original": "59dc9031f130be4f1077a2b528174a262a728396e7ed2311f75d407977033f55",
+      "patched": "59dc9031f130be4f1077a2b528174a262a728396e7ed2311f75d407977033f55"
+    },
+    "mappers/map093.c": {
+      "original": "b60e922b5906f37cbbc289eb8cd85d535f23a60c8af954c995389d89cf997f77",
+      "patched": "b60e922b5906f37cbbc289eb8cd85d535f23a60c8af954c995389d89cf997f77"
+    },
+    "mappers/map094.c": {
+      "original": "77831b250dbde6cfbf8850ac49120a824df2ea240e8048ee3d4560b60d52719f",
+      "patched": "77831b250dbde6cfbf8850ac49120a824df2ea240e8048ee3d4560b60d52719f"
+    },
+    "mappers/map099.c": {
+      "original": "dca3b179ee19c08e562001629559812613bc10565d4131259bfa2a88459b08e3",
+      "patched": "dca3b179ee19c08e562001629559812613bc10565d4131259bfa2a88459b08e3"
+    },
+    "mappers/map160.c": {
+      "original": "a7e9dba1ee0713503dc291c0ee5f822c5b11be8db676e6e3d5c6e72ffce8f203",
+      "patched": "a7e9dba1ee0713503dc291c0ee5f822c5b11be8db676e6e3d5c6e72ffce8f203"
+    },
+    "mappers/map229.c": {
+      "original": "588bf30f9365bf29bde7cc69ae251dff814a27d2f63288d01069ada4f9c7c1ae",
+      "patched": "588bf30f9365bf29bde7cc69ae251dff814a27d2f63288d01069ada4f9c7c1ae"
+    },
+    "mappers/map231.c": {
+      "original": "59d5c4757e7a0c3a7c4335214cdf5c082e66b7dc374e3ff97b30c05e61bf2fc2",
+      "patched": "59d5c4757e7a0c3a7c4335214cdf5c082e66b7dc374e3ff97b30c05e61bf2fc2"
+    },
+    "mappers/mapvrc.c": {
+      "original": "3667c1e45444edafaa80e538c4737eab73f93f74d2791d2337cf2e8f1ea10b1c",
+      "patched": "3667c1e45444edafaa80e538c4737eab73f93f74d2791d2337cf2e8f1ea10b1c"
+    },
+    "memguard.c": {
+      "original": "2a0af330f21c6b597e07011d785912f21b34ed5d640f79f04e6c88d0a5bc33fd",
+      "patched": "2a0af330f21c6b597e07011d785912f21b34ed5d640f79f04e6c88d0a5bc33fd"
+    },
+    "memguard.h": {
+      "original": "46b4dd8bef2e4ff0a27f79a5ff493887670c17858cd71119c7b5333a97b6983c",
+      "patched": "46b4dd8bef2e4ff0a27f79a5ff493887670c17858cd71119c7b5333a97b6983c"
+    },
+    "nes/mmclist.c": {
+      "original": "7525ea98d58a7a92ffc47307e019744b50ce35657f3bc56296b4bf2b7b109ab3",
+      "patched": "7525ea98d58a7a92ffc47307e019744b50ce35657f3bc56296b4bf2b7b109ab3"
+    },
+    "nes/mmclist.h": {
+      "original": "9bb4ed175a24d34d250c32f7d00f239676b9a409876c266dbb4ee1222512c8d1",
+      "patched": "9bb4ed175a24d34d250c32f7d00f239676b9a409876c266dbb4ee1222512c8d1"
+    },
+    "nes/nes.c": {
+      "original": "aa611a5ec9b7d72f937dd570efe7c8a92e4cc84c04ebd0eb33e5d1a85736609b",
+      "patched": "0357ccff731a8cfa055a831fdc8e319b5103a984d2262709b245f302376aa7b7"
+    },
+    "nes/nes.h": {
+      "original": "703575977da25703a918d63cfcb74cd1e506eb2ff79f5bf8c318cad58fe340b6",
+      "patched": "703575977da25703a918d63cfcb74cd1e506eb2ff79f5bf8c318cad58fe340b6"
+    },
+    "nes/nes_mmc.c": {
+      "original": "e6eeefcb779b322dcc40fae1b39834bebb02cfd09c70bff4aa393b0753380501",
+      "patched": "e6eeefcb779b322dcc40fae1b39834bebb02cfd09c70bff4aa393b0753380501"
+    },
+    "nes/nes_mmc.h": {
+      "original": "66181e230b0c5a834707d9aeba9e6eac7ddcd13ef6d1534390f16aa6ca1ffc47",
+      "patched": "66181e230b0c5a834707d9aeba9e6eac7ddcd13ef6d1534390f16aa6ca1ffc47"
+    },
+    "nes/nes_pal.c": {
+      "original": "d2c356d5c94e384e3c7d95763c16c424d1fcfedff14ed8ebfc71f1a0607c4ad2",
+      "patched": "d2c356d5c94e384e3c7d95763c16c424d1fcfedff14ed8ebfc71f1a0607c4ad2"
+    },
+    "nes/nes_pal.h": {
+      "original": "0a87d59821c58f6571f4f5eb97d3dbb1f5dd40058f4735dad2715faab4706c6f",
+      "patched": "0a87d59821c58f6571f4f5eb97d3dbb1f5dd40058f4735dad2715faab4706c6f"
+    },
+    "nes/nes_ppu.c": {
+      "original": "f69bbf63b4346272938e5586a0985f6987c789a0cd40c17e1f526b2c3c9e2d71",
+      "patched": "f69bbf63b4346272938e5586a0985f6987c789a0cd40c17e1f526b2c3c9e2d71"
+    },
+    "nes/nes_ppu.h": {
+      "original": "c1e537a5c38a1f289ac87a4bc4b4af2f0ed5974880bfb9857df7078e26d28eef",
+      "patched": "c1e537a5c38a1f289ac87a4bc4b4af2f0ed5974880bfb9857df7078e26d28eef"
+    },
+    "nes/nes_rom.c": {
+      "original": "d1104ef7e5a4120c9e678375b6e858e3b5ea28e07011d9464dea8754665e695d",
+      "patched": "d1104ef7e5a4120c9e678375b6e858e3b5ea28e07011d9464dea8754665e695d"
+    },
+    "nes/nes_rom.h": {
+      "original": "4a75140f337b0b9a23f1a3a42bb1be66adf0f203bae5ea16cae10eaa551ba2c0",
+      "patched": "4a75140f337b0b9a23f1a3a42bb1be66adf0f203bae5ea16cae10eaa551ba2c0"
+    },
+    "nes/nesinput.c": {
+      "original": "18f93cd2e67e301f589b2f3ec978a2011446420bc55765e616a3441b8e87a58a",
+      "patched": "18f93cd2e67e301f589b2f3ec978a2011446420bc55765e616a3441b8e87a58a"
+    },
+    "nes/nesinput.h": {
+      "original": "2b8e61826d1f4652a9e1ee9f449a9511a9d77e09b4c4ca58ba7c247e909b20d3",
+      "patched": "2b8e61826d1f4652a9e1ee9f449a9511a9d77e09b4c4ca58ba7c247e909b20d3"
+    },
+    "nes/nesstate.c": {
+      "original": "030d82413162ab1c5ac698b55f7ac77514272969714eb6cb1dce3f5cc928079a",
+      "patched": "030d82413162ab1c5ac698b55f7ac77514272969714eb6cb1dce3f5cc928079a"
+    },
+    "nes/nesstate.h": {
+      "original": "70c6332b7a4a03a444e098a1dbe7aaa0a47259b787be1d7a640496366b97df8e",
+      "patched": "70c6332b7a4a03a444e098a1dbe7aaa0a47259b787be1d7a640496366b97df8e"
+    },
+    "nofconfig.h": {
+      "original": "11da8e9e1cc6235849e8535e498fd8eb9babdffb6f1d5ece146272448b00b659",
+      "patched": "11da8e9e1cc6235849e8535e498fd8eb9babdffb6f1d5ece146272448b00b659"
+    },
+    "nofrendo.c": {
+      "original": "c8011df7256711fb00154245fc5a2cd8a57be5a4667f6678431560830ef2b8a1",
+      "patched": "c8011df7256711fb00154245fc5a2cd8a57be5a4667f6678431560830ef2b8a1"
+    },
+    "nofrendo.h": {
+      "original": "4b290148d3b03c2175c16c8a741fb45e9be60d2ec5a924ef698ea62d3dea648a",
+      "patched": "4b290148d3b03c2175c16c8a741fb45e9be60d2ec5a924ef698ea62d3dea648a"
+    },
+    "noftypes.h": {
+      "original": "dea6580ab64e01a1e47c2c0ef65704eb9779f9f1b608eb3a6218d8d595db2380",
+      "patched": "dea6580ab64e01a1e47c2c0ef65704eb9779f9f1b608eb3a6218d8d595db2380"
+    },
+    "osd.h": {
+      "original": "2229b9f45b452baef62513a3f6c4082c6d9e68bfad48ce6881da2a2689bdab56",
+      "patched": "2229b9f45b452baef62513a3f6c4082c6d9e68bfad48ce6881da2a2689bdab56"
+    },
+    "pcx.c": {
+      "original": "178aa654279dbd0b632a9f923587ea149936d95b86231c77b701391d09fbfcf9",
+      "patched": "178aa654279dbd0b632a9f923587ea149936d95b86231c77b701391d09fbfcf9"
+    },
+    "pcx.h": {
+      "original": "6300cab145117f1ffd5e8275d34c6da4e8c626da2e3f4bd1b7d8b3c53d89aa3f",
+      "patched": "6300cab145117f1ffd5e8275d34c6da4e8c626da2e3f4bd1b7d8b3c53d89aa3f"
+    },
+    "sdl/sdl.c": {
+      "original": "b39baf919aabffcb35e4d21fddadd413f8a98f9e7d3e93ea357d6f8186578af8",
+      "patched": "b39baf919aabffcb35e4d21fddadd413f8a98f9e7d3e93ea357d6f8186578af8"
+    },
+    "sndhrdw/fds_snd.c": {
+      "original": "3b46c4112901ad156316e2a7cded723e4c07470a5a12d9305b954bb8db6894a8",
+      "patched": "3b46c4112901ad156316e2a7cded723e4c07470a5a12d9305b954bb8db6894a8"
+    },
+    "sndhrdw/fds_snd.h": {
+      "original": "0d49636ba970aeb3d8a8ef639639deb44b209f102518b056c4f7bd810df48c35",
+      "patched": "0d49636ba970aeb3d8a8ef639639deb44b209f102518b056c4f7bd810df48c35"
+    },
+    "sndhrdw/mmc5_snd.c": {
+      "original": "858316eb12cbea301eac111cfa25ad40ef8a2a2375ad375f988cea26f34a2108",
+      "patched": "858316eb12cbea301eac111cfa25ad40ef8a2a2375ad375f988cea26f34a2108"
+    },
+    "sndhrdw/mmc5_snd.h": {
+      "original": "10e96b0bff05bb949bab2125548d9415d832b7456b78786bdd47a6f8f8d2b87e",
+      "patched": "10e96b0bff05bb949bab2125548d9415d832b7456b78786bdd47a6f8f8d2b87e"
+    },
+    "sndhrdw/nes_apu.c": {
+      "original": "83ad1776d962c921c68e7bf8b9ba16e109a7611db5914143a625747a4e1d6d7e",
+      "patched": "8292ff3e66ba6b263ab5cd1ed477f0c174673592e691393c3aae2331bf5be194"
+    },
+    "sndhrdw/nes_apu.h": {
+      "original": "6a7de8b5390ece55db7a79b8eb77d0f9e4b23ecd8cc476bfb97fe9e9dcbc95dd",
+      "patched": "6a7de8b5390ece55db7a79b8eb77d0f9e4b23ecd8cc476bfb97fe9e9dcbc95dd"
+    },
+    "sndhrdw/vrcvisnd.c": {
+      "original": "4ce43ad5791f9f99f5b7e43f6abfb3cae0bf4b59063e9a5dd50e5f3a7b9a3e33",
+      "patched": "4ce43ad5791f9f99f5b7e43f6abfb3cae0bf4b59063e9a5dd50e5f3a7b9a3e33"
+    },
+    "sndhrdw/vrcvisnd.h": {
+      "original": "a2b85c8433589ed5524f61d49037f577612c936cd95f2d905d1d33c34dac8914",
+      "patched": "a2b85c8433589ed5524f61d49037f577612c936cd95f2d905d1d33c34dac8914"
+    },
+    "unix/osd.c": {
+      "original": "ddf1ce6111fa991df9bc8b59a2adf203b56ad1cb581c617a06c942aa41cd0127",
+      "patched": "ddf1ce6111fa991df9bc8b59a2adf203b56ad1cb581c617a06c942aa41cd0127"
+    },
+    "version.h": {
+      "original": "c44541540cc3a2b77a9e73976bc436dec60899c2bde6c779973ed402b8728c7c",
+      "patched": "c44541540cc3a2b77a9e73976bc436dec60899c2bde6c779973ed402b8728c7c"
+    },
+    "vid_drv.c": {
+      "original": "4d0ba4a71cea19c89cf219859922ae21e81f882b36e75cdd75e3dd15cb345d4c",
+      "patched": "4d0ba4a71cea19c89cf219859922ae21e81f882b36e75cdd75e3dd15cb345d4c"
+    },
+    "vid_drv.h": {
+      "original": "0020e31e6076f6ffa41af4f5901ed2d7808c0286b9328ff2ec10f62c62eab564",
+      "patched": "0020e31e6076f6ffa41af4f5901ed2d7808c0286b9328ff2ec10f62c62eab564"
+    }
+  },
+  "hash_encoding": "SHA-256 after CRLF-to-LF normalization only"
+}

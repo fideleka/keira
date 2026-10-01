@@ -1,3 +1,9 @@
 lib/** linguist-vendored
 lib/Gnuboy/src/** -whitespace
 src/apps/gameboy/vendor/** linguist-vendored -whitespace
+
+# Unified diff blank context/addition prefixes are not source trailing whitespace.
+tools/nofrendo/*.patch whitespace=-blank-at-eol
+
+# Preserve upstream license bytes, including its original CRLF/whitespace.
+tools/nofrendo/COPYING.LGPL -text -whitespace

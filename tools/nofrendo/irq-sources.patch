@@ -1,0 +1,231 @@
+--- a/cpu/nes6502.c
++++ b/cpu/nes6502.c
+@@ -540,7 +540,7 @@
+    {                                               \
+       i_flag = 0;                                  \
+       ADD_CYCLES(2);                               \
+-      if (cpu.int_pending && remaining_cycles > 0) \
++      if ((cpu.int_pending || cpu.irq_sources) && remaining_cycles > 0) \
+       {                                            \
+          cpu.int_pending = 0;                      \
+          IRQ_PROC();                               \
+@@ -882,7 +882,7 @@
+       PC = PULL();                                                \
+       PC |= PULL() << 8;                                          \
+       ADD_CYCLES(6);                                              \
+-      if (0 == i_flag && cpu.int_pending && remaining_cycles > 0) \
++      if (0 == i_flag && (cpu.int_pending || cpu.irq_sources) && remaining_cycles > 0) \
+       {                                                           \
+          cpu.int_pending = 0;                                     \
+          IRQ_PROC();                                              \
+@@ -1322,12 +1322,21 @@
+ 
+ #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+ 
++#define POLL_LEVEL_IRQ() \
++   do { \
++      if (!cpu.jammed && !i_flag && cpu.irq_sources && remaining_cycles > 0) { \
++         IRQ_PROC(); \
++         ADD_CYCLES(INT_CYCLES); \
++      } \
++   } while (0)
++
+ #ifdef NES6502_JUMPTABLE
+ 
+ #define OPCODE_BEGIN(xx) op##xx:
+ #ifdef NES6502_DISASM
+ 
+ #define OPCODE_END                                                       \
++   POLL_LEVEL_IRQ();                                                     \
+    if (remaining_cycles <= 0)                                            \
+       goto end_execute;                                                  \
+    nofrendo_log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S)); \
+@@ -1336,6 +1345,7 @@
+ #else /* !NES6520_DISASM */
+ 
+ #define OPCODE_END            \
++   POLL_LEVEL_IRQ();          \
+    if (remaining_cycles <= 0) \
+       goto end_execute;       \
+    goto *opcode_table[bank_readbyte(PC++)];
+@@ -1344,7 +1354,7 @@
+ 
+ #else /* !NES6502_JUMPTABLE */
+ #define OPCODE_BEGIN(xx) case 0x##xx:
+-#define OPCODE_END break;
++#define OPCODE_END POLL_LEVEL_IRQ(); break;
+ #endif /* !NES6502_JUMPTABLE */
+ 
+ /* Execute instructions until count expires
+@@ -1421,7 +1431,7 @@
+       cpu.burn_cycles -= burn_for;
+    }
+ 
+-   if (0 == i_flag && cpu.int_pending && remaining_cycles > 0)
++   if (0 == i_flag && (cpu.int_pending || cpu.irq_sources) && remaining_cycles > 0)
+    {
+       cpu.int_pending = 0;
+       IRQ_PROC();
+@@ -2393,6 +2403,7 @@
+ {
+    cpu.p_reg = Z_FLAG | R_FLAG | I_FLAG;     /* Reserved bit always 1 */
+    cpu.int_pending = 0;                      /* No pending interrupts */
++   cpu.irq_sources = 0;
+    cpu.int_latency = 0;                      /* No latent interrupts */
+    cpu.pc_reg = bank_readword(RESET_VECTOR); /* Fetch reset vector */
+    cpu.burn_cycles = RESET_CYCLES;
+@@ -2418,6 +2429,16 @@
+       cpu.burn_cycles += INT_CYCLES;
+       STORE_LOCAL_REGS();
+    }
++}
++
++/* Set/acknowledge a level source; only instruction boundaries deliver it.
++** Do not touch the legacy pulse latch or cached execution registers here. */
++void nes6502_setirq(uint8 source, bool asserted)
++{
++   if (asserted)
++      cpu.irq_sources |= source;
++   else
++      cpu.irq_sources &= (uint8)~source;
+ }
+ 
+ /* Interrupt request */
+--- a/cpu/nes6502.h
++++ b/cpu/nes6502.h
+@@ -61,6 +61,10 @@
+ #define NMI_MASK 0x01
+ #define IRQ_MASK 0x02
+ 
++#define NES6502_IRQ_FRAME 0x01
++#define NES6502_IRQ_DMC 0x02
++#define NES6502_IRQ_MAPPER 0x04
++
+ /* Stack is located on 6502 page 1 */
+ #define STACK_OFFSET 0x0100
+ 
+@@ -91,6 +95,7 @@
+    uint8 jammed; /* is processor jammed? */
+ 
+    uint8 int_pending, int_latency;
++   uint8 irq_sources; /* independently acknowledged level IRQ lines */
+ 
+    int32 total_cycles, burn_cycles;
+ } nes6502_context;
+@@ -104,7 +109,8 @@
+    extern void nes6502_reset(void);
+    extern int nes6502_execute(int total_cycles);
+    extern void nes6502_nmi(void);
+-   extern void nes6502_irq(void);
++   extern void nes6502_irq(void); /* legacy mapper pulse */
++   extern void nes6502_setirq(uint8 source, bool asserted);
+    extern uint8 nes6502_getbyte(uint32 address);
+    extern uint32 nes6502_getcycles(bool reset_flag);
+    extern void nes6502_burn(int cycles);
+--- a/mappers/map004.c
++++ b/mappers/map004.c
+@@ -127,6 +127,7 @@
+ 
+    case 0xE000:
+       irq.enabled = false;
++      nes6502_setirq(NES6502_IRQ_MAPPER, false);
+       //      if (irq.reset)
+       //         irq.counter = irq.latch;
+       break;
+@@ -167,7 +168,7 @@
+             if (irq.enabled)
+             {
+                irq.reset = true;
+-               nes_irq();
++               nes6502_setirq(NES6502_IRQ_MAPPER, true);
+             }
+          }
+       }
+@@ -192,6 +193,7 @@
+ 
+ static void map4_init(void)
+ {
++   nes6502_setirq(NES6502_IRQ_MAPPER, false);
+    irq.counter = irq.latch = 0;
+    irq.enabled = irq.reset = false;
+    reg = command = 0;
+--- a/nes/nes.c
++++ b/nes/nes.c
+@@ -253,8 +253,14 @@
+    nes6502_irq();
+ }
+ 
++static void nes_dmcirq(void)
++{
++   nes6502_setirq(NES6502_IRQ_DMC, true);
++}
++
+ static uint8 nes_clearfiq(void)
+ {
++   nes6502_setirq(NES6502_IRQ_FRAME, false);
+    if (nes.fiq_occurred)
+    {
+       nes.fiq_occurred = false;
+@@ -266,6 +272,8 @@
+ 
+ void nes_setfiq(uint8 value)
+ {
++   if (value & 0x40)
++      nes_clearfiq();
+    nes.fiq_state = value;
+    nes.fiq_cycles = (int)NES_FIQ_PERIOD;
+ }
+@@ -279,7 +287,7 @@
+       if (0 == (nes.fiq_state & 0xC0))
+       {
+          nes.fiq_occurred = true;
+-         nes6502_irq();
++         nes6502_setirq(NES6502_IRQ_FRAME, true);
+       }
+    }
+ }
+@@ -414,6 +422,9 @@
+    ppu_reset(reset_type);
+    mmc_reset();
+    nes6502_reset();
++   nes.fiq_occurred = false;
++   nes.fiq_state = 0;
++   nes.fiq_cycles = (int)NES_FIQ_PERIOD;
+ 
+    nes.scanline = 241;
+ 
+@@ -534,7 +545,7 @@
+       goto _fail;
+ 
+    /* set the IRQ routines */
+-   machine->apu->irq_callback = nes_irq;
++   machine->apu->irq_callback = nes_dmcirq;
+    machine->apu->irqclear_callback = nes_clearfiq;
+ 
+    /* ppu */
+--- a/sndhrdw/nes_apu.c
++++ b/sndhrdw/nes_apu.c
+@@ -509,6 +509,7 @@
+    apu.dmc.address = apu.dmc.cached_addr;
+    apu.dmc.dma_length = apu.dmc.cached_dmalength;
+    apu.dmc.irq_occurred = false;
++   nes6502_setirq(NES6502_IRQ_DMC, false);
+ }
+ 
+ /* DELTA MODULATION CHANNEL
+@@ -726,6 +727,7 @@
+       {
+          apu.dmc.irq_gen = false;
+          apu.dmc.irq_occurred = false;
++         nes6502_setirq(NES6502_IRQ_DMC, false);
+       }
+       break;
+ 
+@@ -798,6 +800,7 @@
+       }
+ 
+       apu.dmc.irq_occurred = false;
++      nes6502_setirq(NES6502_IRQ_DMC, false);
+       break;
+ 
+       /* unused, but they get hit in some mem-clear loops */

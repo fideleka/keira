@@ -3,3 +3,8 @@
 *.cache*
 compile_commands.json
 /.idea
+
+# Host regression Python bytecode
+/__pycache__/
+/tools/nofrendo/__pycache__/
+/tests/nofrendo/__pycache__/
