@@ -51,8 +51,8 @@
       "patched": "8665cc159bc474107ce7665bff60b7c25d3ca91a88a079a69ac58a2df337ed7e"
     },
     "gui_elem.h": {
-      "original": "96d5632dc03228674e8c98de4305b04adbb643b8318d21d0e7fedba371314273",
-      "patched": "96d5632dc03228674e8c98de4305b04adbb643b8318d21d0e7fedba371314273"
+      "original": "e8b39fac41829217515e611a05be65bcac4ceb99c550227b14ba8457bb198166",
+      "patched": "e8b39fac41829217515e611a05be65bcac4ceb99c550227b14ba8457bb198166"
     },
     "intro.c": {
       "original": "1133d6d10d39605c15f7d45030413a45926ea5b957e944c375371c8f2bd8e4e2",
@@ -343,8 +343,8 @@
       "patched": "6300cab145117f1ffd5e8275d34c6da4e8c626da2e3f4bd1b7d8b3c53d89aa3f"
     },
     "sdl/sdl.c": {
-      "original": "aaad1cdcae4967d3367a496fd374f03c990be87517265934d66e88d2083f8e10",
-      "patched": "aaad1cdcae4967d3367a496fd374f03c990be87517265934d66e88d2083f8e10"
+      "original": "b39baf919aabffcb35e4d21fddadd413f8a98f9e7d3e93ea357d6f8186578af8",
+      "patched": "b39baf919aabffcb35e4d21fddadd413f8a98f9e7d3e93ea357d6f8186578af8"
     },
     "sndhrdw/fds_snd.c": {
       "original": "3b46c4112901ad156316e2a7cded723e4c07470a5a12d9305b954bb8db6894a8",
@@ -379,8 +379,8 @@
       "patched": "a2b85c8433589ed5524f61d49037f577612c936cd95f2d905d1d33c34dac8914"
     },
     "unix/osd.c": {
-      "original": "a6fe83a617d6dfa54afa8eefff4e695c772101588eebef97e3d3d967fe55c78a",
-      "patched": "a6fe83a617d6dfa54afa8eefff4e695c772101588eebef97e3d3d967fe55c78a"
+      "original": "ddf1ce6111fa991df9bc8b59a2adf203b56ad1cb581c617a06c942aa41cd0127",
+      "patched": "ddf1ce6111fa991df9bc8b59a2adf203b56ad1cb581c617a06c942aa41cd0127"
     },
     "version.h": {
       "original": "c44541540cc3a2b77a9e73976bc436dec60899c2bde6c779973ed402b8728c7c",
@@ -394,5 +394,6 @@
       "original": "0020e31e6076f6ffa41af4f5901ed2d7808c0286b9328ff2ec10f62c62eab564",
       "patched": "0020e31e6076f6ffa41af4f5901ed2d7808c0286b9328ff2ec10f62c62eab564"
     }
-  }
+  },
+  "hash_encoding": "SHA-256 after CRLF-to-LF normalization only"
 }

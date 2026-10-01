@@ -7,7 +7,7 @@ a5a5c1a1fdc603434e09079c817ec99209b1824e (library.properties version 1.2).
 No independent local dependency checkout was present. The installed .pio/libdeps
 copy is generated and **must not be edited**. v1 is unchanged.
 
-nofrendo_build.py is a post PlatformIO extra script, alongside the existing
+nofrendo_build.py is a PRE PlatformIO extra script, alongside the existing
 targets.py and pre:personal_build.py; neither existing script is replaced.
 It constructs a separate $BUILD_DIR/nofrendo-irq-src overlay and redirects the
 library's translation units through AddBuildMiddleware. Both the project and
@@ -17,7 +17,7 @@ checkout, dependency download, SDK edit, or target build is needed for host test
 
 source-manifest.json records SHA-256 for **every** original and corrected source
 file, not just the five patched files. apply.py validates the complete file set,
-all hashes, every patch hunk at its exact offset/context, and all resulting hashes
+all CRLF-to-LF canonical hashes, every patch hunk at its exact offset/context, and all resulting hashes
 before any output is written. Output is staged then renamed. Repeated application
 and already-corrected input are idempotent. Mixed/modified source, missing/extra
 files, changed context, corrupt patch, and stale output fail closed. There is no
@@ -25,11 +25,13 @@ fuzzy patching or permissive version fallback. Future dependency or patch update
 require a reviewed manifest update; an obsolete overlay requires a clean build
 output directory, not mutation of the installed dependency.
 
-Host contract tests verify translation-unit redirection and header precedence
-using a fake build environment; **actual PlatformIO/SCons/ESP acceptance remains
-pending**. A clean v2 build should print the verified-overlay message, compile
+Host contract tests verify translation-unit redirection and header precedence.
+Additional lifecycle fixtures use real SCons 4.11.1 environments, clones, Files
+and Object builders, but stub the PlatformIO registration/dump boundary;
+**native PlatformIO IDE/target acceptance remains pending**. A clean v2 build should print the verified-overlay message, compile
 nofrendo translation units from the overlay, and retain the original libdeps hashes.
-The build script intentionally stops on absent or unverified dependency sources.
+Real builds intentionally stop on absent or unverified dependency sources.
+IDE integration dumps return before dependency access or overlay writes.
 
 The dependency/derived patch is LGPL-2.0; its original COPYING.LGPL is included.
 
@@ -123,3 +125,38 @@ correctness**. The later Wacky scene remains static despite a running CPU.
 - No target compile/package/flash or physical device actions performed. Remaining
   acceptance: clean v2 target build/hook/header verification, resource-size check,
   on-device startup/audio/controller smoke, and longer/reference MMC3 gameplay.
+
+## IDE-loading repair evidence (2026-10-01)
+
+- The old hook reproducibly raises a source-file-set ValueError in a metadata
+  fixture with no downloaded dependency, even when IsIntegrationDump is true.
+  The PRE hook now returns immediately for that mode, with no overlay writes.
+- Real builds still verify all 98 pinned source files before registering any
+  middleware. The Git pin tree has no source files missing from the manifest;
+  there are no optional source exceptions. Dependency-root metadata is outside
+  the src manifest; files added inside src still reject.
+- Real SCons showed PrependUnique does not move an inherited overlay path ahead
+  of a subsequently prepended dependency path. The hook now explicitly places
+  overlay headers first in each project/library build environment and returns
+  Object builder results for every dependency translation unit.
+- Three upstream files already contain CRLF (gui_elem.h, sdl/sdl.c, unix/osd.c).
+  Canonical manifest hashes were derived from the previously fully verified
+  original/patched trees. Only CRLF-to-LF conversion is allowed; semantic changes,
+  partial patches and unlisted/missing files still reject before writes.
+- Five overlay tests, four real-SCons lifecycle tests and the source-only IRQ
+  suite pass; the IRQ suite also passes ASan/UBSan. No ROM runs were requested
+  for this repair. No firmware build, download, package or flash was performed.
+- Existing SCons was found, but no PlatformIO executable/module/venv was found.
+  python3 -m platformio project config --json-output fails with No module named
+  platformio. Native idedata cannot be proved locally without unavailable tools.
+- Required make clang-format and make cppcheck are blocked by missing executables.
+  No C source was changed. git diff --check passes.
+
+Run lifecycle fixtures with existing PlatformIO-bundled SCons (or SCons already
+on PYTHONPATH), without executing any generated Object action:
+
+    python3 tests/nofrendo/test_lifecycle.py /path/to/verified/nofrendo/src
+
+The remote VS Code screenshot alone does not establish its precise exception.
+If loading still fails after this repair, provide the one full error traceback
+from VS Code Output > PlatformIO (the project initialization failure).

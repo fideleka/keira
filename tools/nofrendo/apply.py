@@ -9,6 +9,11 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 
 
+def canonical(data):
+    # Tolerate only Git CRLF conversion, not other source changes.
+    return data.replace(b"\r\n", b"\n")
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -20,7 +25,7 @@ def verify(source, kind):
     if actual != set(expected) or any(p.is_symlink() for p in source.rglob("*")):
         raise ValueError("nofrendo source file set differs from verified dependency")
     for name, hashes in expected.items():
-        if digest((source / name).read_bytes()) != hashes[kind]:
+        if digest(canonical((source / name).read_bytes())) != hashes[kind]:
             raise ValueError(f"nofrendo {kind} source mismatch: {name}")
     return manifest
 
@@ -73,7 +78,7 @@ def prepare(source, destination):
         manifest = verify(source, "patched")
         kind = "patched"
     # Calculate and verify ALL outputs before writing anything.
-    outputs = {name: (source / name).read_bytes() for name in manifest["files"]}
+    outputs = {name: canonical((source / name).read_bytes()) for name in manifest["files"]}
     for name, hunks in patch_files().items():
         if kind == "patched":
             continue

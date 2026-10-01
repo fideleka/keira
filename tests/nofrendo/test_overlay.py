@@ -88,8 +88,11 @@ class OverlayTests(unittest.TestCase):
                 self.includes = []
             def subst(self, value): return self.values[value]
             def Prepend(self, CPPPATH): self.includes[:0] = CPPPATH
-            def PrependUnique(self, CPPPATH): self.Prepend(CPPPATH)
-            def File(self, path): return Node(path)
+            def get(self, key, default): return self.includes if key == "CPPPATH" else default
+            def Replace(self, CPPPATH): self.includes = CPPPATH
+            def IsIntegrationDump(self): return False
+            # Middleware returns an Object result, not a replacement source File.
+            def Object(self, path): return Node(path)
             def AddBuildMiddleware(self, callback): self.callback = callback
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
