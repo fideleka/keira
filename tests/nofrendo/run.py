@@ -68,6 +68,7 @@ def main():
     patch.verify(source, "original")
     fixed = patch.prepare(source, work / "fixed-src")
     subprocess.run(["python3", str(ROOT / "tests/nofrendo/test_overlay.py"), str(source)], check=True)
+    subprocess.run(["python3", str(ROOT / "tests/nofrendo/test_diagnostics.py"), str(source)], check=True)
     unit = work / "irq-test"
     build(fixed, unit, unit=True, sanitize=args.sanitize)
     print(run(unit, work / "unit", sanitize=args.sanitize).strip(), flush=True)

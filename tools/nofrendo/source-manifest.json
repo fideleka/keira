@@ -24,11 +24,11 @@
     },
     "cpu/nes6502.c": {
       "original": "8c7d5574ba0e00b70edda4fe06ca0960cbaed2f07de4dc1dd52c7e12543f11ef",
-      "patched": "a17676bfa8491669f059b1562c112bd8a7b6c358feeef97594ab300e623a56b2"
+      "patched": "fabd380f8e179674ed2cf5807678d50d0a24d7075ae8cf513d44e7a99ecb1f78"
     },
     "cpu/nes6502.h": {
       "original": "756664237efcceb17a40617ba31bb2fbdb637a3dfed055e3cb6c3571f23f6d53",
-      "patched": "a902cd38dead4c81fe58784eec71416592cacc80941cc463829826e8e9d63514"
+      "patched": "30c8e52d6c8060c24e2b397f7754d5582a71f70062c4b176d8423cfb283594d8"
     },
     "event.c": {
       "original": "d7e2ca48046d5ea031b20ed8f10111f956c39e3ea4dddd16a988e1f51cf680d6",
@@ -320,7 +320,7 @@
     },
     "nofrendo.c": {
       "original": "c8011df7256711fb00154245fc5a2cd8a57be5a4667f6678431560830ef2b8a1",
-      "patched": "c8011df7256711fb00154245fc5a2cd8a57be5a4667f6678431560830ef2b8a1"
+      "patched": "9a4da0dd333db2fda068903cfcf2d45d5e66fba2375c09f365f04827df7590cd"
     },
     "nofrendo.h": {
       "original": "4b290148d3b03c2175c16c8a741fb45e9be60d2ec5a924ef698ea62d3dea648a",
@@ -332,7 +332,7 @@
     },
     "osd.h": {
       "original": "2229b9f45b452baef62513a3f6c4082c6d9e68bfad48ce6881da2a2689bdab56",
-      "patched": "2229b9f45b452baef62513a3f6c4082c6d9e68bfad48ce6881da2a2689bdab56"
+      "patched": "3485218e77d8f044d83cd3a5ac1c5157da01e3955a63de374d3b652e9fe38cab"
     },
     "pcx.c": {
       "original": "178aa654279dbd0b632a9f923587ea149936d95b86231c77b701391d09fbfcf9",

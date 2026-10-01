@@ -9,7 +9,7 @@ copy is generated and **must not be edited**. v1 is unchanged.
 
 nofrendo_build.py is a PRE PlatformIO extra script, alongside the existing
 targets.py and pre:personal_build.py; neither existing script is replaced.
-It constructs a separate $BUILD_DIR/nofrendo-irq-src overlay and redirects the
+It constructs a separate $BUILD_DIR/nofrendo-irq-src-<hash> overlay and redirects the
 library's translation units through AddBuildMiddleware. Both the project and
 library use the overlay headers, including the extended CPU context layout.
 The installed library sources stay byte-for-byte unchanged. No patched upstream
@@ -22,8 +22,9 @@ before any output is written. Output is staged then renamed. Repeated applicatio
 and already-corrected input are idempotent. Mixed/modified source, missing/extra
 files, changed context, corrupt patch, and stale output fail closed. There is no
 fuzzy patching or permissive version fallback. Future dependency or patch updates
-require a reviewed manifest update; an obsolete overlay requires a clean build
-output directory, not mutation of the installed dependency.
+require a reviewed manifest update; the manifest plus exact patch bytes deterministically version the overlay directory.
+Obsolete overlays and user directories are retained untouched; a correction uses
+a new directory without requiring deletion or mutation of the dependency.
 
 Host contract tests verify translation-unit redirection and header precedence.
 Additional lifecycle fixtures use real SCons 4.11.1 environments, clones, Files
@@ -160,3 +161,69 @@ on PYTHONPATH), without executing any generated Object action:
 The remote VS Code screenshot alone does not establish its precise exception.
 If loading still fails after this repair, provide the one full error traceback
 from VS Code Output > PlatformIO (the project initialization failure).
+
+
+## Bounded startup diagnosis (2026-10-01)
+
+This instrumentation is not another claim that the pink-screen device failure is
+fixed. It makes the linked CPU and startup boundary observable through standard
+ESP_LOGW, tag NES-startup, at the normal default warning-or-higher logging level.
+LOG_LOCAL_LEVEL is warning for this translation unit; no dependency on disabled
+nofrendo_log_printf and no globally changed log level. A globally silenced serial
+transport or runtime log filter still cannot be repaired by these diagnostics.
+
+The app calls nes6502_irq_fix_identity_v1(), exported only by the corrected CPU
+translation unit. There is no macro fallback or weak implementation: linking
+an old CPU fails with an undefined identity symbol. The first launch line is:
+
+    W (...) NES-startup: launch core=keira-irq-sources-v1/a5a5c1a1/frame-dmc-mmc3
+    W (...) NES-startup: ROM format=iNES mapper=4 prg16k_field=8 chr8k_field=16 bytes=262160 stat=0
+    W (...) NES-startup: nofrendo_main enter
+    W (...) NES-startup: stage=create result=0
+    W (...) NES-startup: stage=load result=0
+    W (...) NES-startup: stage=video result=0
+    W (...) NES-startup: stage=timer result=0
+    W (...) NES-startup: stage=emulate-enter result=0
+    W (...) NES-startup: render=10 pc=.... cycles=... JAM=0 irq_sources=00 pulse=0
+    W (...) NES-startup: render=60 pc=.... cycles=... JAM=0 irq_sources=00 pulse=0
+
+Mapper, sizes, PC, cycles and IRQ state above are illustrative; actual values may
+differ. The size fields are the raw header bank-count fields (NES2 extended size
+encoding is not interpreted); bytes is stat's complete file size. Only 16 header
+bytes are read, no path, ROM contents or framebuffer is logged. Unreadable/invalid
+headers report header_bytes and stat result without replacing core validation.
+Create/load/video/timer statuses come from actual core calls, not assumed success.
+Video's historically ignored return remains ignored; no resource/control/error
+semantics changed. On normal exit expect stage=emulate-return result=0 and
+nofrendo_main return=0; launch failures report their existing result code.
+
+The two render summaries are at customBlit's synchronous execute-return boundary,
+not timer/audio tasks. They are rendered-frame checkpoints (frameskip/pause can
+make them differ from emulated frame counts). The app-owned counter saturates at
+60 and resets per launch. The small fixed-size read-only CPU snapshot reports PC/cycles,
+JAM, independent IRQ source bits (FRAME=01, DMC=02, MMC3=04) and legacy pulse latch.
+It neither copies large CPU contexts nor calls nes_getcontext, which also touches
+APU state used by the audio task. No cached execution registers are mutated, and
+there is no per-frame logging after checkpoint 60, including if JAM persists.
+
+Acceptance remains host-only: six overlay fixtures (including version rollover
+while preserving obsolete/user directories), four real-SCons environment/node/
+clone fixtures, and two diagnostic fixtures. The latter compile the actual CPU:
+corrected identity links/runs; original CPU fails to link that identity. A real
+patched nofrendo.c compile checks startup callback call sites. The shared render
+checkpoint class passes one million calls and relaunch reset under ASan/UBSan.
+The real-core IRQ unit also checks identity and synthetic JAM PC/cycles/source
+snapshot. Sanitized Wacky + chase/thewit smoke runs cover 1860 frames with exact
+control parity, baseline Wacky frame-7 JAM reproduction, corrected no-JAM output.
+No native PlatformIO target/IDE build, resource-size or physical serial/device
+result has been verified. No target/package/flash/install/download/SDK/.pio edits.
+Required make clang-format and make cppcheck were attempted and blocked by missing
+executables; no packages installed. git diff --check passes.
+
+    python3 tests/nofrendo/test_diagnostics.py /path/to/verified/nofrendo/src
+
+Final diagnostic artifacts: /tmp/nofrendo-regression-abglb4m_. Final overlay cache
+key: 1104062e8144a4487fd2a6b9e83bec023e893b87a0d176b3c97b6eed21ee1c3f.
+Frame 1860 corrected Wacky: PC ddab, cycles 55364647, JAM 0, seven colors,
+hash 216a64e3. Scoped .gitattributes permits unified-diff blank-line prefixes;
+ordinary source whitespace checking remains enabled.

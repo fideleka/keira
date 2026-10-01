@@ -64,6 +64,7 @@ static void mapper_write(uint32 address, uint8 value) {
 }
 
 int main(void) {
+    assert(strcmp(nes6502_irq_fix_identity_v1(), "keira-irq-sources-v1/a5a5c1a1/frame-dmc-mmc3") == 0);
     nes_t* machine = nes_create();
     assert(machine);
     nes = *machine;
@@ -189,6 +190,17 @@ int main(void) {
     assert(memory[0x10] > 1);
     nes6502_reset();
     assert(sources() == 0);
+    fixture();
+    memory[0x8000] = 0x02; /* synthetic JAM */
+    nes6502_setirq(NES6502_IRQ_FRAME | NES6502_IRQ_DMC | NES6502_IRQ_MAPPER, true);
+    nes6502_execute(60);
+    nes6502_diagnostics diagnostic;
+    nes6502_read_diagnostics(&diagnostic);
+    nes6502_getcontext(&context);
+    assert(diagnostic.jammed == 1 && diagnostic.pc == context.pc_reg);
+    assert(diagnostic.cycles == (uint32)context.total_cycles);
+    assert(diagnostic.irq_sources == 7 && diagnostic.int_pending == context.int_pending);
+    puts("PASS mandatory CPU identity and execute-return JAM/PC/IRQ snapshot");
     puts("PASS frame inhibit/status, masking/CLI/PLP/RTI, overlapping DMC/MMC3/legacy IRQs, E000, reset");
     /* Process-owned fixture allocation; no cartridge/MMC exists to destroy. */
     apu_destroy(&machine->apu);

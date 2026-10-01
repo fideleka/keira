@@ -18,6 +18,16 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def overlay_key():
+    # Both reviewed output manifest and exact patch bytes version the cache.
+    return digest((HERE / "source-manifest.json").read_bytes() +
+                  (HERE / "irq-sources.patch").read_bytes())
+
+
+def versioned_destination(build_dir):
+    return Path(build_dir) / ("nofrendo-irq-src-" + overlay_key())
+
+
 def verify(source, kind):
     manifest = json.loads((HERE / "source-manifest.json").read_text())
     expected = manifest["files"]

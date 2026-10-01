@@ -16,7 +16,7 @@ def configure(env):
     spec.loader.exec_module(patch)
     source = Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "arduino-nofrendo/src"
     source = source.resolve()
-    overlay = patch.prepare(source, Path(env.subst("$BUILD_DIR")) / "nofrendo-irq-src")
+    overlay = patch.prepare(source, patch.versioned_destination(Path(env.subst("$BUILD_DIR"))))
     # Project includes must use the same context layout as the compiled core.
     env.Prepend(CPPPATH=[str(overlay)])
 
@@ -36,7 +36,7 @@ def configure(env):
 
 
     env.AddBuildMiddleware(use_nofrendo_overlay)
-    print("Nofrendo IRQ overlay verified: a5a5c1a1 (frame / DMC / MMC3)")
+    print("Nofrendo IRQ overlay verified: " + patch.overlay_key() + " (runtime keira-irq-sources-v1)")
 
 
 configure(env)

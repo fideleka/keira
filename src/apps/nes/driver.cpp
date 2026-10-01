@@ -71,6 +71,7 @@ void Driver::clear(uint8 color) {
 bool odd = true;
 
 void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
+    app->reportStartupRender();
 #ifdef NES_FPS_COUNTER
     last_frame_duration = micros() - last_render;
     last_render = micros();

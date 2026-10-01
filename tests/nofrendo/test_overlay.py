@@ -77,6 +77,32 @@ class OverlayTests(unittest.TestCase):
             finally:
                 patch.HERE = previous
 
+    def test_versioned_cache_keeps_obsolete_and_user_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            obsolete = tmp / "nofrendo-irq-src"
+            obsolete.mkdir()
+            (obsolete / "user-file").write_text("do not remove")
+            old_key = patch.overlay_key()
+            first = patch.prepare(SOURCE, patch.versioned_destination(tmp))
+            metadata = tmp / "metadata"
+            metadata.mkdir()
+            for name in ("source-manifest.json", "irq-sources.patch"):
+                shutil.copy2(patch.HERE / name, metadata)
+            with (metadata / "source-manifest.json").open("a") as out:
+                out.write(" ")  # valid reviewed manifest byte change -> new version
+            previous = patch.HERE
+            try:
+                patch.HERE = metadata
+                self.assertNotEqual(old_key, patch.overlay_key())
+                second = patch.prepare(SOURCE, patch.versioned_destination(tmp))
+                self.assertNotEqual(first, second)
+                patch.verify(second, "patched")
+            finally:
+                patch.HERE = previous
+            patch.verify(first, "patched")
+            self.assertEqual((obsolete / "user-file").read_text(), "do not remove")
+
     def test_platformio_source_and_header_contract(self):
         class Node:
             def __init__(self, path): self.path = Path(path)
@@ -103,10 +129,10 @@ class OverlayTests(unittest.TestCase):
             for path in source.rglob("*"):
                 if path.suffix in (".c", ".cpp"):
                     node = env.callback(env, Node(path))
-                    self.assertEqual(node.path, tmp / "build/nofrendo-irq-src" / path.relative_to(source))
+                    self.assertEqual(node.path, patch.versioned_destination(tmp / "build") / path.relative_to(source))
             project_node = Node(ROOT / "src/apps/nes/osd.cpp")
             self.assertIs(env.callback(env, project_node), project_node)
-            self.assertEqual(env.includes[0], str(tmp / "build/nofrendo-irq-src"))
+            self.assertEqual(env.includes[0], str(patch.versioned_destination(tmp / "build")))
             patch.verify(source, "original")
 
 

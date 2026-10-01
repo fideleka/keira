@@ -74,7 +74,7 @@
     cpu.int_latency = 0;                      /* No latent interrupts */
     cpu.pc_reg = bank_readword(RESET_VECTOR); /* Fetch reset vector */
     cpu.burn_cycles = RESET_CYCLES;
-@@ -2418,6 +2429,16 @@
+@@ -2418,6 +2429,31 @@
        cpu.burn_cycles += INT_CYCLES;
        STORE_LOCAL_REGS();
     }
@@ -88,6 +88,21 @@
 +      cpu.irq_sources |= source;
 +   else
 +      cpu.irq_sources &= (uint8)~source;
++}
++
++const char *nes6502_irq_fix_identity_v1(void)
++{
++   return "keira-irq-sources-v1/a5a5c1a1/frame-dmc-mmc3";
++}
++
++/* Read-only snapshot at execute return; no APU/mapper context mutation. */
++void nes6502_read_diagnostics(nes6502_diagnostics *result)
++{
++   result->pc = cpu.pc_reg;
++   result->cycles = cpu.total_cycles;
++   result->jammed = cpu.jammed;
++   result->irq_sources = cpu.irq_sources;
++   result->int_pending = cpu.int_pending;
  }
  
  /* Interrupt request */
@@ -112,13 +127,21 @@
  
     int32 total_cycles, burn_cycles;
  } nes6502_context;
-@@ -104,7 +109,8 @@
+@@ -104,7 +109,16 @@
     extern void nes6502_reset(void);
     extern int nes6502_execute(int total_cycles);
     extern void nes6502_nmi(void);
 -   extern void nes6502_irq(void);
 +   extern void nes6502_irq(void); /* legacy mapper pulse */
 +   extern void nes6502_setirq(uint8 source, bool asserted);
++   /* Mandatory identity from the corrected CPU translation unit; no fallback. */
++   extern const char *nes6502_irq_fix_identity_v1(void);
++   typedef struct {
++      uint32 pc, cycles;
++      uint8 jammed, irq_sources, int_pending;
++   } nes6502_diagnostics;
++   /* Read only at an execute-return boundary, never from an audio task. */
++   extern void nes6502_read_diagnostics(nes6502_diagnostics *result);
     extern uint8 nes6502_getbyte(uint32 address);
     extern uint32 nes6502_getcycles(bool reset_flag);
     extern void nes6502_burn(int cycles);
@@ -203,6 +226,59 @@
     machine->apu->irqclear_callback = nes_clearfiq;
  
     /* ppu */
+--- a/nofrendo.c
++++ b/nofrendo.c
+@@ -163,19 +163,30 @@
+       console.machine.nes = nes_create();
+       if (NULL == console.machine.nes)
+       {
++         osd_nes_startup_status("create", -1);
+          nofrendo_log_printf("Failed to create NES instance.\n");
+          return -1;
+       }
+ 
+-      if (nes_insertcart(console.filename, console.machine.nes))
+-         return -1;
+-
+-      vid_setmode(NES_SCREEN_WIDTH, NES_SCREEN_HEIGHT);
+-
+-      if (install_timer(NES_REFRESH_RATE))
+-         return -1;
+-
++      osd_nes_startup_status("create", 0);
++      {
++         int result = nes_insertcart(console.filename, console.machine.nes);
++         osd_nes_startup_status("load", result);
++         if (result)
++            return -1;
++      }
++
++      osd_nes_startup_status("video", vid_setmode(NES_SCREEN_WIDTH, NES_SCREEN_HEIGHT));
++
++      {
++         int result = install_timer(NES_REFRESH_RATE);
++         osd_nes_startup_status("timer", result);
++         if (result)
++            return -1;
++      }
++      osd_nes_startup_status("emulate-enter", 0);
+       nes_emulate();
++      osd_nes_startup_status("emulate-return", 0);
+       break;
+ 
+    case system_unknown:
+--- a/osd.h
++++ b/osd.h
+@@ -60,6 +60,9 @@
+ 
+ #ifndef NSF_PLAYER
+ #include "noftypes.h"
++
++/* Bounded startup stage report supplied by the host port. */
++extern void osd_nes_startup_status(const char *stage, int result);
+ #include "vid_drv.h"
+ 
+ typedef struct vidinfo_s
 --- a/sndhrdw/nes_apu.c
 +++ b/sndhrdw/nes_apu.c
 @@ -509,6 +509,7 @@

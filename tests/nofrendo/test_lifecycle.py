@@ -68,7 +68,7 @@ class LifecycleTests(unittest.TestCase):
             self.load(env)
             clone = env.Clone()
             clone.Prepend(CPPPATH=[str(source)])
-            overlay = tmp / "build/nofrendo-irq-src"
+            overlay = patch.versioned_destination(tmp / "build")
             for path in source.rglob("*.c"):
                 result = env["IRQ_MIDDLEWARE"](clone, env.File(str(path)))
                 self.assertEqual(Path(result[0].sources[0].get_abspath()), overlay / path.relative_to(source))
