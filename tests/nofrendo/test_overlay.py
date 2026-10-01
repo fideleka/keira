@@ -104,35 +104,27 @@ class OverlayTests(unittest.TestCase):
             self.assertEqual((obsolete / "user-file").read_text(), "do not remove")
 
     def test_platformio_source_and_header_contract(self):
-        class Node:
-            def __init__(self, path): self.path = Path(path)
-            def get_abspath(self): return str(self.path)
-        class Env:
-            def __init__(self, tmp):
-                self.values = {"$PROJECT_DIR": str(ROOT), "$PROJECT_LIBDEPS_DIR": str(tmp / "libdeps"),
-                               "$PIOENV": "v2", "$BUILD_DIR": str(tmp / "build")}
-                self.includes = []
-            def subst(self, value): return self.values[value]
-            def Prepend(self, CPPPATH): self.includes[:0] = CPPPATH
-            def get(self, key, default): return self.includes if key == "CPPPATH" else default
-            def Replace(self, CPPPATH): self.includes = CPPPATH
-            def IsIntegrationDump(self): return False
-            # Middleware returns an Object result, not a replacement source File.
-            def Object(self, path): return Node(path)
-            def AddBuildMiddleware(self, callback): self.callback = callback
+        if importlib.util.find_spec("SCons") is None:
+            candidates = list((Path.home() / ".platformio/packages/tool-scons").glob("scons-local-*"))
+            if candidates:
+                sys.path.insert(0, str(candidates[0]))
+        from SCons.Script import Environment
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             source = tmp / "libdeps/v2/arduino-nofrendo/src"
             shutil.copytree(SOURCE, source)
-            env = Env(tmp)
+            env = Environment(PROJECT_DIR=str(ROOT), PROJECT_LIBDEPS_DIR=str(tmp / "libdeps"),
+                              PIOENV="v2", BUILD_DIR=str(tmp / "build"))
+            env.AddMethod(lambda env: False, "IsIntegrationDump")
+            env.AddMethod(lambda env, callback: env.Replace(IRQ_MIDDLEWARE=callback), "AddBuildMiddleware")
             runpy.run_path(str(ROOT / "nofrendo_build.py"), init_globals={"Import": lambda _: None, "env": env})
             for path in source.rglob("*"):
                 if path.suffix in (".c", ".cpp"):
-                    node = env.callback(env, Node(path))
-                    self.assertEqual(node.path, patch.versioned_destination(tmp / "build") / path.relative_to(source))
-            project_node = Node(ROOT / "src/apps/nes/osd.cpp")
-            self.assertIs(env.callback(env, project_node), project_node)
-            self.assertEqual(env.includes[0], str(patch.versioned_destination(tmp / "build")))
+                    node = env["IRQ_MIDDLEWARE"](env, env.File(str(path)))
+                    self.assertEqual(Path(node[0].sources[0].get_abspath()), patch.versioned_destination(tmp / "build") / path.relative_to(source))
+            project_node = env.File(str(ROOT / "src/apps/nes/osd.cpp"))
+            self.assertIs(env["IRQ_MIDDLEWARE"](env, project_node), project_node)
+            self.assertEqual(env["CPPPATH"][0], str(patch.versioned_destination(tmp / "build")))
             patch.verify(source, "original")
 
 

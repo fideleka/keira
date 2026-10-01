@@ -17,26 +17,12 @@ def configure(env):
     source = Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "arduino-nofrendo/src"
     source = source.resolve()
     overlay = patch.prepare(source, patch.versioned_destination(Path(env.subst("$BUILD_DIR"))))
-    # Project includes must use the same context layout as the compiled core.
-    env.Prepend(CPPPATH=[str(overlay)])
-
-
-    def use_nofrendo_overlay(build_env, node):
-        # Apply to project clones as well: CPU context layout must agree everywhere.
-        build_env.Replace(CPPPATH=[str(overlay)] + [
-            path for path in build_env.get("CPPPATH", []) if str(path) != str(overlay)
-        ])
-        path = Path(node.get_abspath()).resolve()
-        try:
-            relative = path.relative_to(source)
-        except ValueError:
-            return node
-        # Return an object builder result, the supported middleware replacement.
-        return build_env.Object(str(overlay / relative))
-
-
-    env.AddBuildMiddleware(use_nofrendo_overlay)
-    print("Nofrendo IRQ overlay verified: " + patch.overlay_key() + " (runtime keira-irq-sources-v1)")
+    integration_spec = importlib.util.spec_from_file_location(
+        "nofrendo_integration", project / "tools/nofrendo/integration.py")
+    integration = importlib.util.module_from_spec(integration_spec)
+    integration_spec.loader.exec_module(integration)
+    integration.install(env, source, overlay, Path(env.subst("$BUILD_DIR")).resolve(), patch.overlay_key())
+    print("Nofrendo IRQ overlay verified: " + patch.overlay_key() + " (integration v2; namespaced objects/archive; runtime keira-irq-sources-v1)")
 
 
 configure(env)

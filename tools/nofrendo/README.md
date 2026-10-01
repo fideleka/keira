@@ -227,3 +227,65 @@ key: 1104062e8144a4487fd2a6b9e83bec023e893b87a0d176b3c97b6eed21ee1c3f.
 Frame 1860 corrected Wacky: PC ddab, cycles 55364647, JAM 0, seven colors,
 hash 216a64e3. Scoped .gitattributes permits unified-diff blank-line prefixes;
 ordinary source whitespace checking remains enabled.
+
+## Missing snapshot linker investigation (2026-10-01)
+
+The reported Windows undefined nes6502_read_diagnostics is **not yet a verified
+native PlatformIO repair**. Both identity and snapshot definitions are present in
+this reviewed CPU overlay. An identity-only, obsolete CPU can produce exactly
+that missing-snapshot error; the new executed SCons fixture recreates this by
+removing only the snapshot function in an isolated prior-version tree, then
+successfully upgrades without deleting its object/archive. That controlled
+reproduction does not identify which CPU/archive the user's build actually used.
+The pmf-conversions and C string-const warnings do not explain this link failure.
+
+A concrete routing defect was reproduced with actual SCons VariantDir nodes:
+node.get_abspath() names the build alias, while node.srcnode().get_abspath()
+names the original library input. The previous relative-path check silently
+returns an unmodified node for that alias. Native PlatformIO source-node creation
+and PRE middleware propagation to dependent-library environments cannot be
+confirmed here: no installed PlatformIO module/executable/source was found.
+The registration boundary in every fixture remains explicitly simulated.
+Windows Path.relative_to already uses Windows case-insensitive semantics;
+case alone is not an established bug. PureWindowsPath checks cover mixed drive
+case, slash forms, UNC case, and rejecting another drive, not a Windows execution.
+
+The integration now resolves srcnode/realpath aliases, constructs explicit
+nofrendo-objects-<overlay-key>/<relative>.o targets, and namespaces the core
+archive with libnofrendo-<overlay-key>-. Object emitters shared by actual SCons
+clones reject original inputs even if middleware is skipped; archive emitters
+also reject already-created original objects, obsolete overlays, and unversioned
+core objects/archives. Headers are put first during object emission as well as
+middleware dispatch. Value dependencies include the reviewed overlay key and
+integration module hash for project/core objects and archives. No fallback,
+weak snapshot, dropped diagnostic, dependency edit, or cache deletion is used.
+A native builder that does not preserve these contracts must fail closed rather
+than silently link the wrong CPU. Namespaced archive behavior still needs native
+PlatformIO acceptance; this host fixture must not be represented as that API.
+
+Executed host acceptance:
+
+    python3 tests/nofrendo/test_link.py /path/to/verified/nofrendo/src
+
+This invokes existing SCons 4.11.1 with GCC/ar and actual CPU/APU/PPU/mappers,
+then links project host/synthetic IRQ tests (including the actual nes.c) against
+the archive. It checks both required symbols with nm and executes the real
+snapshot/IRQ tests. It checks unchanged repeat builds, a same-build-directory
+manifest-key rollover, integration-policy signature rebuild, retaining prior
+objects, identity-only obsolete CPU link
+failure/upgrade, VariantDir redirection, middleware bypass rejection, and archive
+bypass rejection. Overlay, lifecycle, diagnostics, and real-core ASan/UBSan IRQ
+regressions pass separately. Required make clang-format/cppcheck remain blocked
+by missing executables. No target build/package/flash, install/network, SDK or
+.pio writes were performed.
+
+To establish the remote cause and accept integration, provide one complete
+verbose NES v2 build log (including initialization and link, not just its last
+error lines). It must show the verified-overlay line, nes6502.c compile source
+and explicit target, library/archive command and members, project header include
+paths, and final linker archive list. Also capture the relevant middleware/PRE
+traceback if the fail-closed guard fires. Inspect the linked core archive with
+the existing target nm: both identity and snapshot must be defined by its CPU
+member. Do not delete the old cache before collecting that evidence: an archive
+with identity but without snapshot is direct evidence of an obsolete CPU; both
+symbols present in a different archive points instead to archive selection/order.
