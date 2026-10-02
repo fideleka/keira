@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <algorithm>
+#include <cctype>
 class String {
     std::string value;
 public:
@@ -10,6 +12,14 @@ public:
     int length() const { return value.size(); }
     bool isEmpty() const { return value.empty(); }
     bool startsWith(const char* s) const { return value.rfind(s, 0) == 0; }
+    bool endsWith(const char* s) const {
+        std::string tail(s);
+        return value.size() >= tail.size() && value.compare(value.size() - tail.size(), tail.size(), tail) == 0;
+    }
+    void toLowerCase() {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return std::tolower(c); });
+    }
+    String& operator+=(char c) { value += c; return *this; }
     int indexOf(char c, int from = 0) const {
         auto pos = value.find(c, from);
         return pos == std::string::npos ? -1 : static_cast<int>(pos);
