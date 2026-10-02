@@ -14,7 +14,7 @@ typedef struct item_t {
     std::vector<item_t> submenu;
     std::function<void()> callback;
     std::function<void(void*)> update;
-    LauncherMenuKind kind = LauncherMenuKind::Static;
+    LauncherMenuKind kind; // Factories initialize this explicitly to keep item_t a C++11 aggregate.
 
 public:
     static item_t SUBMENU(
@@ -43,6 +43,7 @@ public:
             {},
             callback,
             update,
+            LauncherMenuKind::Static,
         };
     }
 

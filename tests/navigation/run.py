@@ -3,6 +3,13 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+import sys
+
+sys.dont_write_bytecode = True
+
+from cxx11 import run as check_cxx11
+
+check_cxx11()
 
 ROOT = Path(__file__).resolve().parents[2]
 

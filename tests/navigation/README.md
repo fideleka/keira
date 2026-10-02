@@ -23,3 +23,10 @@ Both ordinary and ASan/UBSan host executions are required.
 
 The unchanged SDK PageUp expression may produce a compiler sequence-point
 warning; tests do not send PageUp and this task does not modify the SDK.
+
+The runner also compiles and executes the exact production item declaration and
+all factories with -std=c++11 -pedantic-errors. A disposable negative control
+reintroduces the default-member aggregate defect and must fail compilation.
+The full behavior fixture remains C++17 because its test scaffolding uses
+std::filesystem and generic lambdas; firmware standard flags are unchanged.
+Run python3 tests/navigation/cxx11.py to run just the target-standard regression.
