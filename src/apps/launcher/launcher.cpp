@@ -204,6 +204,12 @@ void LauncherApp::run() {
         lilka::controller.setAutoRepeat(button, 10, 300);
     }
 
+    // Destroy construction temporaries before entering recursive menus/NVS paths.
+    item_t root_item = buildMainMenu(buildApplicationsMenu());
+    homeScreen(root_item);
+}
+
+ITEM_LIST LauncherApp::buildApplicationsMenu() {
     ITEM_LIST appsItems = {
         ITEM::SUBMENU(
             K_S_LAUNCHER_DEMOS,
@@ -261,7 +267,11 @@ void LauncherApp::run() {
                          }));
     }
 
-    item_t root_item = ITEM::SUBMENU(
+    return appsItems;
+}
+
+item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
+    return ITEM::SUBMENU(
         K_S_LAUNCHER_MAIN_MENU,
         {
             ITEM::SUBMENU(
@@ -669,7 +679,6 @@ void LauncherApp::run() {
             ),
         }
     );
-    homeScreen(root_item);
 }
 
 void LauncherApp::homeScreen(item_t& mainMenu) {

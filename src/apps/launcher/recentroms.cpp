@@ -23,6 +23,14 @@ const char* keyFor(RomSystem system) {
     return "recent_nes";
 }
 
+String readSavedList(Preferences& prefs, const char* key) {
+    // Preferences' String overload uses char buf[len] on the task stack.
+    // Keep the bounded NVS payload on the heap, including its terminating NUL.
+    std::vector<char> buffer(kMaxSavedLength + 1, '\0');
+    if (!prefs.getString(key, buffer.data(), buffer.size())) return "";
+    return String(buffer.data());
+}
+
 bool validPath(const String& path, RomSystem system) {
     String lower = path;
     lower.toLowerCase();
@@ -73,7 +81,7 @@ std::vector<String> readRecentRoms(RomSystem system) {
     NVS_LOCK;
     Preferences prefs;
     if (prefs.begin("keira", true)) {
-        saved = prefs.getString(keyFor(system), "");
+        saved = readSavedList(prefs, keyFor(system));
         prefs.end();
     }
     NVS_UNLOCK;
@@ -88,7 +96,7 @@ void rememberRecentRom(const String& path) {
     Preferences prefs;
     if (prefs.begin("keira", false)) {
         const char* key = keyFor(system);
-        std::vector<String> previous = parseList(prefs.getString(key, ""), system);
+        std::vector<String> previous = parseList(readSavedList(prefs, key), system);
         String saved = path;
         size_t count = 1;
         for (const String& entry : previous) {

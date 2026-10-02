@@ -64,6 +64,9 @@ public:
 
 private:
     void run() override;
+    // Keep initializer-list construction frames off the retained launcher task frame.
+    ITEM_LIST buildApplicationsMenu() __attribute__((noinline));
+    item_t buildMainMenu(const ITEM_LIST& appsItems) __attribute__((noinline));
     ITEM_LIST loadCatalogItems();
     std::vector<String> catalogItemNames_;
     std::vector<String> guestShortcutNames_;
