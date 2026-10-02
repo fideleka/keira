@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <ff.h>
 #include <FS.h>
 #include <qrcode.h>
@@ -263,7 +264,9 @@ void LauncherApp::run() {
     item_t root_item = ITEM::SUBMENU(
         K_S_LAUNCHER_MAIN_MENU,
         {
-            ITEM::SUBMENU(K_S_LAUNCHER_APPS, appsItems, &demos_img, lilka::colors::Pink),
+            ITEM::SUBMENU(
+                K_S_LAUNCHER_APPS, appsItems, &demos_img, lilka::colors::Pink, LauncherMenuKind::Applications
+            ),
             ITEM::APP(
                 K_S_LAUNCHER_FMANAGER,
                 [this]() { this->runApp<FileManagerApp>("/"); },
@@ -709,17 +712,20 @@ void LauncherApp::homeScreen(item_t& mainMenu) {
         showMenu(mainMenu.name, mainMenu.submenu);
     }
 }
-void LauncherApp::showMenu(const char* title, ITEM_LIST& list, bool back) {
-    if (strcmp(title, K_S_LAUNCHER_APPS) == 0) refreshRecentRomFolders(list);
-    int itemCount = list.size();
+void LauncherApp::showMenu(const String& title, ITEM_LIST& list, bool back, LauncherMenuKind kind) {
     lilka::Menu menu(title);
-    for (int i = 0; i < list.size(); i++) {
-        menu.addItem(list[i].name, list[i].icon, list[i].color);
-    }
-    if (back) {
-        menu.addActivationButton(K_BTN_BACK);
-        menu.addItem(K_S_MENU_BACK);
-    }
+    if (back) menu.addActivationButton(K_BTN_BACK);
+    auto rebuild = [&]() {
+        menu.clearItems();
+        for (const item_t& item : list) menu.addItem(item.name, item.icon, item.color);
+        if (back) menu.addItem(K_S_MENU_BACK);
+    };
+    auto refresh = [&]() {
+        if (kind == LauncherMenuKind::Applications) refreshRecentRomFolders(list);
+        else if (kind != LauncherMenuKind::Static) refreshRecentRomItems(list, kind);
+        rebuild();
+    };
+    refresh();
     while (1) {
         while (!menu.isFinished()) {
             for (int i = 0; i < list.size(); i++) {
@@ -734,56 +740,84 @@ void LauncherApp::showMenu(const char* title, ITEM_LIST& list, bool back) {
             menu.draw(canvas);
             queueDraw();
         }
-        if (menu.getButton() == K_BTN_BACK) {
-            break;
-        }
+        if (menu.getButton() == K_BTN_BACK) break;
         int16_t index = menu.getCursor();
-        if (back && index == itemCount) {
-            break;
-        }
+        if (back && index == list.size()) break;
+        if (index < 0 || index >= list.size()) continue;
 
+        // Own the selected item across callbacks/recursion. Never rebuild an ancestor
+        // while its child is open; titles and captured action paths are owned Strings.
         item_t item = list[index];
-        if (item.callback != nullptr) {
-            item.callback();
+        if (item.callback != nullptr) item.callback();
+        if (!item.submenu.empty()) showMenu(item.name, item.submenu, true, item.kind);
+
+        // AppManager::spawn defaults to autoSuspend: the callback returns only
+        // after the launched app exits and the launcher resumes, not at enqueue time.
+        if (kind != LauncherMenuKind::Static) {
+            refresh();
+            if (kind == LauncherMenuKind::Applications) {
+                // Folder insertion/removal can shift indices. Keep the same logical item.
+                int cursor = 0;
+                for (int i = 0; i < list.size(); ++i) {
+                    if (list[i].kind == item.kind && list[i].name == item.name) {
+                        cursor = i;
+                        break;
+                    }
+                }
+                menu.setCursor(cursor);
+            } else menu.setCursor(0);
         }
-        if (!item.submenu.empty()) {
-            showMenu(item.name, item.submenu);
+    }
+}
+
+void LauncherApp::refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind) {
+    RomSystem system = kind == LauncherMenuKind::NES       ? RomSystem::NES
+                       : kind == LauncherMenuKind::GameBoy ? RomSystem::GameBoy
+                                                          : RomSystem::GameBoyColor;
+    items.clear();
+    for (const String& path : readRecentRoms(system)) {
+        String name = path.substring(path.lastIndexOf('/') + 1);
+        if (system == RomSystem::NES) {
+            items.push_back(
+                ITEM::APP(name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+            );
+        } else {
+            items.push_back(
+                ITEM::APP(name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+            );
         }
     }
 }
 
 void LauncherApp::refreshRecentRomFolders(ITEM_LIST& apps) {
-    recentRomNames_.clear();
-    recentRomNames_.reserve(60);
-    size_t folderCount = 0;
-
+    apps.erase(
+        std::remove_if(
+            apps.begin(),
+            apps.end(),
+            [](const item_t& item) {
+                return item.kind == LauncherMenuKind::NES || item.kind == LauncherMenuKind::GameBoy ||
+                       item.kind == LauncherMenuKind::GameBoyColor;
+            }
+        ),
+        apps.end()
+    );
     struct Folder {
-        RomSystem system;
+        LauncherMenuKind kind;
         const char* title;
     };
     const Folder folders[] = {
-        {RomSystem::NES, K_S_LAUNCHER_NES_FOLDER},
-        {RomSystem::GameBoy, K_S_LAUNCHER_GB_FOLDER},
-        {RomSystem::GameBoyColor, K_S_LAUNCHER_GBC_FOLDER},
+        {LauncherMenuKind::NES, K_S_LAUNCHER_NES_FOLDER},
+        {LauncherMenuKind::GameBoy, K_S_LAUNCHER_GB_FOLDER},
+        {LauncherMenuKind::GameBoyColor, K_S_LAUNCHER_GBC_FOLDER},
     };
+    size_t folderCount = 0;
     for (const Folder& folder : folders) {
         ITEM_LIST romItems;
-        for (const String& path : readRecentRoms(folder.system)) {
-            recentRomNames_.push_back(path.substring(path.lastIndexOf('/') + 1));
-            const char* name = recentRomNames_.back().c_str();
-            if (folder.system == RomSystem::NES) {
-                romItems.push_back(
-                    ITEM::APP(name, [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
-                );
-            } else {
-                romItems.push_back(
-                    ITEM::APP(name, [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
-                );
-            }
-        }
+        refreshRecentRomItems(romItems, folder.kind);
         if (!romItems.empty()) {
             apps.insert(
-                apps.begin() + folderCount, ITEM::SUBMENU(folder.title, romItems, &app_group_img, lilka::colors::White)
+                apps.begin() + folderCount,
+                ITEM::SUBMENU(folder.title, romItems, &app_group_img, lilka::colors::White, folder.kind)
             );
             ++folderCount;
         }

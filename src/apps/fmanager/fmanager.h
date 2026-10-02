@@ -240,6 +240,9 @@ private:
     // Main loop:
     void run() override;
 
+    bool navigateToParent();
+    int parentReturnCursor() const;
+    String parentReturnPath; // One-shot selection target, not per-directory history.
     String currentPath;
     String initalPath; // used to track when to quit
 

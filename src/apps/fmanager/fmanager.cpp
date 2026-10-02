@@ -1,4 +1,5 @@
 #include "fmanager.h"
+#include "keira/utils/navigationpath.h"
 #include "lilka/fileutils.h"
 #include "keira/utils/string.h"
 
@@ -201,7 +202,7 @@ FileManagerApp::FileManagerApp(const String& path) :
     fileListMenu.addActivationButton(FM_RELOAD_BUTTON);
     fileListMenu.addActivationButton(FM_SELECT_BUTTON);
 
-    currentPath = path;
+    currentPath = canonicalNavigationPath(path);
     initalPath = currentPath;
 }
 
@@ -363,7 +364,7 @@ void FileManagerApp::openCurrentEntry() {
     if (currentEntry.type == FT_DIR) {
         if (isCurrentDirSelected()) {
             if (currentPath != initalPath) {
-                currentPath = lilka::fileutils.getParentDirectory(currentPath);
+                if (!navigateToParent()) return;
                 changeMode(FM_MODE_RELOAD);
                 return;
             }
@@ -932,6 +933,29 @@ void FileManagerApp::fileSelectionOptionsMenuShow() {
     }
 }
 
+bool FileManagerApp::navigateToParent() {
+    String departing = canonicalNavigationPath(currentPath);
+    if (departing.isEmpty() || departing == canonicalNavigationPath(initalPath) || departing == "/") return false;
+    String parent = canonicalNavigationPath(lilka::fileutils.getParentDirectory(departing));
+    if (parent.isEmpty() || parent == departing) return false;
+    parentReturnPath = departing;
+    currentPath = parent;
+    return true;
+}
+
+int FileManagerApp::parentReturnCursor() const {
+    if (!parentReturnPath.isEmpty()) {
+        for (size_t i = 0; i < currentDirEntries.size(); ++i) {
+            const FMEntry& entry = currentDirEntries[i];
+            if (entry.type == FT_DIR &&
+                canonicalNavigationPath(lilka::fileutils.joinPath(entry.path, entry.name)) == parentReturnPath) {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
+
 bool FileManagerApp::fileListMenuLoadDir() {
     auto dir = opendir(currentPath.c_str());
     if (dir == NULL) { // Can't open dir
@@ -1052,7 +1076,8 @@ bool FileManagerApp::fileListMenuLoadDir() {
         LILKA_MENU_CLBK_CAST(&FileManagerApp::onFileListMenuItem),
         LILKA_MENU_CLBK_DATA_CAST(this)
     );
-    fileListMenu.setCursor(0);
+    fileListMenu.setCursor(parentReturnCursor());
+    parentReturnPath = "";
 
     return true;
 }
@@ -1075,14 +1100,10 @@ void FileManagerApp::fileListMenuShow() {
         fileListMenu.draw(canvas);
         queueDraw();
     }
-
-    // TODO: restore old menu cursor.
-    // Maybe just store entry, seems logical
 }
 
 void FileManagerApp::onFileListMenuItem() {
     auto button = fileListMenu.getButton();
-    auto index = fileListMenu.getCursor();
     FM_DBG lilka::serial.log("Enter onFileListMenuItem");
 
     // TODO: what did I smoke?
@@ -1091,7 +1112,6 @@ void FileManagerApp::onFileListMenuItem() {
     } else currentEntry = currentDirEntries[fileListMenu.getCursor()];
 
     FM_DBG lilka::serial.log("currentEntry path = %s, name = %s", currentEntry.path, currentEntry.name);
-    currentPath = currentEntry.path;
     FM_DBG lilka::serial.log("Current path = %s", currentPath.c_str());
     FM_DBG lilka::serial.log("Button = %d", button);
     if (button == FM_RELOAD_BUTTON) {
@@ -1101,8 +1121,7 @@ void FileManagerApp::onFileListMenuItem() {
     }
     if (button == FM_EXIT_BUTTON) {
         if (currentPath != initalPath) {
-            currentPath = lilka::fileutils.getParentDirectory(currentPath);
-            if (currentPath == "") return; // wtf, but should work
+            if (!navigateToParent()) return;
             fileListMenu.isFinished();
             changeMode(FM_MODE_RELOAD);
             return;
@@ -1134,7 +1153,7 @@ void FileManagerApp::onFileListMenuItem() {
     if (button == FM_OKAY_BUTTON) {
         if (isCurrentDirSelected()) {
             if (currentPath != initalPath) {
-                currentPath = lilka::fileutils.getParentDirectory(currentPath);
+                if (!navigateToParent()) return;
                 changeMode(FM_MODE_RELOAD);
                 fileListMenu.isFinished();
             } else if (mode == FM_MODE_SELECT) {
