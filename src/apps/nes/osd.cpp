@@ -388,6 +388,10 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
         1
     );
 #endif
+    // Nofrendo calls this only on entry to nes_emulate(), after cartridge,
+    // mapper, video and timer setup succeeded. Persist before gameplay, not
+    // on exit. The app guard also covers later resets/restarts in this session.
+    Driver::app->rememberSuccessfulLaunch();
 }
 
 void osd_getsoundinfo(sndinfo_t* info) {

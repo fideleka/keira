@@ -4,6 +4,7 @@
 
 class NesApp : public App {
 public:
+    void rememberSuccessfulLaunch();
     explicit NesApp(String path);
     ~NesApp();
     nesmenu::Preferences preferences;
@@ -23,4 +24,5 @@ private:
     void run() override;
 
     char* argv[1];
+    bool launchRemembered = false;
 };
