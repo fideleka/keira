@@ -69,6 +69,27 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
 
+        // Only this presentation task touches SPI. Feedback uses an immutable
+        // snapshot and never writes into app/back/screenshot canvases.
+        const uint32_t overlayNow = millis();
+        const auto volumeOverlay = lilka::audio.getVolumeOverlay();
+        const bool overlayVisible = volumeOverlay.visible(overlayNow);
+        const bool restoreOverlay = overlayVisible || volumeOverlayWasVisible;
+        // Repaint all layers even when a paused app has not queued a new frame.
+        // This also restores letterbox margins and the expiry frame.
+        KMTX_LOCK(topApp->canvasMutex);
+        const bool repaintLayers = restoreOverlay || topApp->backgroundDirty;
+        if (topApp->backgroundDirty) {
+            lilka::display.fillScreen(lilka::colors::Black);
+            topApp->backgroundDirty = false;
+        } else if (restoreOverlay) {
+            // Clear only the feedback footprint; uncovered letterbox pixels are
+            // black. Re-presenting the layers below restores all covered pixels.
+            const auto g = lilka::volumeOverlayGeometry(lilka::display.width(), lilka::display.height());
+            if (g.width) lilka::display.fillRect(g.x, g.y, g.width, g.height, lilka::colors::Black);
+        }
+        KMTX_UNLOCK(topApp->canvasMutex);
+
         // Draw panel and top app
         for (App* app : {panel, topApp}) {
             if (app == panel) {
@@ -84,28 +105,27 @@ void AppManager::run() {
             /// LOCK APP CANVAS
             KMTX_LOCK(app->canvasMutex);
 
-            if (app == topApp && app->backgroundDirty) {
-                lilka::display.fillScreen(lilka::colors::Black);
-                app->backgroundDirty = false;
-            }
-
             // Draw toast message on app's canvas to prevent flickering
             if (millis() < toast.endTime) {
                 renderToast(topApp->backCanvas);
             }
 
             // Redraw app
-            if (app->getRedraw()) {
-                if (app->flags & AppFlags::APP_FLAG_INTERLACED) {
+            if (app->getRedraw() || repaintLayers) {
+                if ((app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers) {
                     lilka::display.drawCanvasInterlaced(app->backCanvas, app->frame % 2);
                 } else {
-                    lilka::display.drawCanvas(app->backCanvas);
+                    lilka::display.presentCanvas(app->backCanvas);
                 }
                 app->setRedraw(false);
             }
             /// UNLOCK APP CANVAS
             KMTX_UNLOCK(app->canvasMutex);
         }
+        lilka::drawVolumeOverlay(
+            lilka::display, volumeOverlay, lilka::display.width(), lilka::display.height(), overlayNow
+        );
+        volumeOverlayWasVisible = overlayVisible;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);

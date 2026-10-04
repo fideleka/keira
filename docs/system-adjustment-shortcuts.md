@@ -5,13 +5,14 @@ Select-first arbitration is owned solely by the SDK controller; Keira installs n
 parallel shortcut handler. Ordinary Select, Select+Start pause/exit, per-axis NES/GB
 precision delays and turbo mapping are unchanged.
 
-- Volume changes by 5 points, clamps to 0..100 with mute, repeats at 400/100 ms,
+- Volume rises by 1 below 5, then by 5 (0→1→2→3→4→5→10→15); down remains -5,
+  clamped to 0..100 with mute. Taps and holds share this rule, repeat at 400/100 ms,
   and is saved after 600 ms without a change by the SDK settings task.
 - Shortcut directions never reach Keira polling or callback consumers and remain
   suppressed until physical release, including Select-first-release cases.
 - **Brightness is hardware-blocked:** Select+Left/Right remains ordinary application input;
   it does not dim Lilka v2. Its only exposed backlight/sleep line also controls the
-  I2S/MAX98357 module. No shared-pin PWM, fake brightness setting or display overlay
+  I2S/MAX98357 module. No shared-pin PWM or fake brightness setting
   has been added. See SDK docs/system-adjustment-shortcuts.md.
 
 ## Live master volume in actual output paths
@@ -30,13 +31,45 @@ Sound settings observes live master changes and refreshes its local volume row; 
 explicit Save/exit reconciles newer global values instead of overwriting them with
 a stale initial snapshot, while preserving unsaved local edits when master is unchanged.
 
+## Centered volume feedback
+
+AppManager's existing display/render owner presents a 75%-width, centered 76px-high
+black panel with a double white border, 22px-thick progressbar (cyan fill), and
+12x20px percent/MUTE glyphs. Every shortcut tap/repeat renews the 1200ms timeout,
+including limit hits; opposite directions do not trigger feedback. Rotation uses
+current display dimensions. No font/cursor state is modified.
+
+The render task reads one coherent SDK RAM snapshot per 60Hz presentation tick,
+re-presents panel and foreground backCanvas under the existing canvas mutexes,
+then draws feedback directly on the physical display. While visible and on its
+expiry tick, this works even without a new queueDraw (paused/static screens).
+Interlaced apps use full presentation during that interval, then return to their
+normal field presentation. Only the feedback footprint is cleared, followed by
+source layers; uncovered fullscreen/letterbox margins restore to black. A dirty
+background is cleared before, not after, the panel and forces both layers to redraw.
+No app/front/back/screenshot canvas contains the overlay, and screenshots remain
+clean. NES customBlit and GB/GBC scanline framebuffers already submit via queueDraw;
+they need no emulator-side SPI drawing or overlay mutation.
+
+Coverage: all built-in Keira apps/menus using AppManager, fullscreen/bounded
+framebuffers, NES normal/interlaced paths, GB/GBC and paused system menus. No new
+background display task or shared SPI writer exists. Apps that bypass AppManager
+and write SPI directly cannot be made safe by this hook and are not covered.
+Device flicker, frame rate and stack headroom under full-frame presentation remain
+unmeasured; the extra work lasts only while feedback is active plus one expiry tick.
+
 ## Host verification (no firmware build)
 
 Run python3 tests/system_shortcuts.py --sdk /path/to/matching/sdk-worktree. It
 compiles actual GB/NES/tracker output functions, SDK PCM scaling, AudioPlayer's
 actual loop gain expression and existing per-axis DirectionFilter against host
 boundaries, in C++11 normal and ASan/UBSan modes. Binaries use temporary directories.
-Existing tests/nesmenu_input.py, gameboy_input.py, emulator_menu.py, menu_access.py,
+Run python3 tests/volume_overlay.py --sdk /path/to/matching/sdk-worktree for actual
+SDK presentation methods and AppManager run/renderToCanvas under pixel/lock stubs,
+normal and ASan/UBSan: centered 280x240/240x280 geometry, bar fractions/clamps,
+paused menu/fullscreen/bounded/interlaced presentation, clean expiry, immutable
+canvases and overlay-free screenshots. Custom emulator queueDraw coverage is also
+source-checked. Existing tests/nesmenu_input.py, gameboy_input.py, emulator_menu.py, menu_access.py,
 menu_render.py and navigation/run.py remain applicable. For navigation, set
 LILKA_SDK_MENU_SOURCE to the matching SDK lib/lilka/src/lilka/menu.cpp.
 
