@@ -58,7 +58,7 @@ gb = method(ROOT / 'src/apps/gameboy/gameboyapp.cpp', 'void GameBoyApp::run()')
 gb = gb[:gb.index('    loadPreferences();')] + '    throw PowerLoss();\n}\n'
 fixture = (ROOT / 'tests/emulator_history/host.cpp').read_text()
 # Preferences initialization is exercised separately by the menu tests.
-nes = 'void EmulatorMenuApp::loadPreferences() {}' + nes
+nes = 'void EmulatorMenuApp::loadPreferences() {}\n' + nes
 fixture = fixture.replace('// NES_METHODS', nes).replace('// OSD_METHOD', osd)
 fixture = fixture.replace('// CORE_METHODS', core).replace('// GB_STARTUP', gb)
 with tempfile.TemporaryDirectory(prefix='keira-emulator-history-') as directory:
