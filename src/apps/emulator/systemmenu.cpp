@@ -78,9 +78,9 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
     // SDK Menu has five visible rows. Keep every escape/capture action on page one.
     menu.addItem(K_S_EMU_RESUME);
     menu.addItem(K_S_EMU_SCREENSHOT);
-    menu.addItem(K_S_EMU_EXIT);
     menu.addItem(K_S_EMU_CONTROLS);
     menu.addItem(K_S_EMU_MORE);
+    menu.addItem(K_S_EMU_EXIT);
     menu.addActivationButton(lilka::Button::B);
     while (true) {
         menu.update();
@@ -92,7 +92,7 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
         switch (menu.getCursor()) {
             case 0:
                 return SystemAction::Resume;
-            case 3: {
+            case 2: {
                 lilka::Menu controls(K_S_EMU_CONTROLS);
                 controls.addItem(K_S_EMU_PRECISION);
                 controls.addItem(K_S_EMU_DELAY_MINUS);
@@ -134,11 +134,11 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                 }
                 break;
             }
-            case 2:
+            case 4:
                 return SystemAction::Exit;
             case 1:
                 return SystemAction::Screenshot;
-            case 4: {
+            case 3: {
                 lilka::Menu actions(K_S_EMU_MORE);
                 actions.addItem(K_S_EMU_SAVE);
                 actions.addItem(K_S_EMU_LOAD);

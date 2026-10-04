@@ -7,7 +7,7 @@ menu=s[s.index('EmulatorMenuApp::SystemAction'):s.index('// A Select-first')]
 gesture=s[s.index('bool EmulatorMenuApp::holdExitRequested'):]
 # Validate actual root layout fits the SDK viewport, and all UI text is localized.
 root=menu[:menu.index('menu.addActivationButton')]
-assert re.findall(r'menu.addItem\((\w+)\)',root)==['K_S_EMU_RESUME','K_S_EMU_SCREENSHOT','K_S_EMU_EXIT','K_S_EMU_CONTROLS','K_S_EMU_MORE']
+assert re.findall(r'menu.addItem\((\w+)\)',root)==['K_S_EMU_RESUME','K_S_EMU_SCREENSHOT','K_S_EMU_CONTROLS','K_S_EMU_MORE','K_S_EMU_EXIT']
 assert not re.search(r'(addItem|setTitle|Menu |configWarning =)\([^\n]*"',s)
 pre=r'''
 #include "apps/nes/preferences.h"
@@ -43,9 +43,9 @@ SystemAction showSystemMenu();bool holdExitRequested();
 checks=r'''
 int main(){EmulatorMenuApp app;
 for(bool gb:{false,true}){app.hasFrameskipSetting=gb;
- for(int entry=0;entry<3;++entry){lilka::choices={entry};lilka::step=0;
+ for(int entry:{0,1,4}){lilka::choices={entry};lilka::step=0;
  auto action=app.showSystemMenu();assert(action==(entry==0?EmulatorMenuApp::SystemAction::Resume:entry==1?EmulatorMenuApp::SystemAction::Screenshot:EmulatorMenuApp::SystemAction::Exit));}
- lilka::choices={4,4,0,gb?6:5,2};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // cancel reset/back/exit
+ lilka::choices={3,4,0,gb?6:5,4};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // cancel reset/back/exit
 }
 for(unsigned duration:{0u,1u,199u,200u,201u}){now=0;lilka::controller.calls=0;lilka::controller.releaseAt=duration;
  assert(app.holdExitRequested()==(duration>200));}
