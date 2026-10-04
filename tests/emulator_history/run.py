@@ -47,7 +47,7 @@ history = history.replace('\nconstexpr size_t kMaxRoms', '\nnamespace {\nconstex
 history += '\n#undef fopen\n'
 nvs = nvs.replace('// REAL_HISTORY', history)
 nes = (ROOT / 'src/apps/nes/nesapp.cpp').read_text()
-nes = '#include "keira/localizations/lang_en.h"\n' + nes[nes.index('NesApp::NesApp'):]
+nes = '#define K_S_EMU_NES_PAUSED "NES paused"\n' + nes[nes.index('NesApp::NesApp'):]
 osd = method(ROOT / 'src/apps/nes/osd.cpp', 'void osd_setsound(')
 core = ''.join(method(args.source / 'nofrendo.c', signature) for signature in [
     'static int internal_insert(', 'int main_loop(', 'int nofrendo_main('])

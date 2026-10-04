@@ -1,5 +1,6 @@
 #include "systemmenu.h"
 #include "keira/keira.h"
+#include "keira/utils/string.h"
 #include "keira/keira_lang.h"
 
 namespace {
