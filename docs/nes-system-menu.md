@@ -10,9 +10,9 @@ Select+Start screenshot gesture is replaced; two-second exit is restored.
 Select+C save and Select+D load remain; ambiguous Select+C+D is consumed until a
 fresh Select press. Menu A activates, B returns/resumes; directions navigate.
 
-Menu first page: Resume, Screenshot, Controls, More actions, Exit to Keira.
-All five fit the SDK viewport. More actions contains Save/Load state, Turbo A/B,
-Reset (Cancel-first confirmation), and GB/GBC Frameskip; Down/Up scroll it.
+Top-level menu: Resume, Reset (Cancel-first confirmation), Screenshot, Controls,
+More actions, Exit to Keira. The SDK shows five rows; Down scrolls to Exit, which
+remains last. More actions contains Save/Load state, Turbo A/B and GB/GBC Frameskip.
 State/reset/screenshot actions close the menu and resume. Reset is a soft reset.
 Existing state handlers and state file format/names are unchanged.
 
