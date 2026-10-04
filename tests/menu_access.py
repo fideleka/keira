@@ -7,7 +7,7 @@ menu=s[s.index('EmulatorMenuApp::SystemAction'):s.index('// A Select-first')]
 gesture=s[s.index('bool EmulatorMenuApp::holdExitRequested'):]
 # Validate actual root layout fits the SDK viewport, and all UI text is localized.
 root=menu[:menu.index('menu.addActivationButton')]
-assert re.findall(r'menu.addItem\((\w+)\)',root)==['K_S_EMU_RESUME','K_S_EMU_RESET','K_S_EMU_SCREENSHOT','K_S_EMU_CONTROLS','K_S_EMU_MORE','K_S_EMU_EXIT']
+assert re.findall(r'menu.addItem\((\w+)\)',root)==['K_S_EMU_SCREENSHOT','K_S_EMU_RESET','K_S_EMU_CONTROLS','K_S_EMU_MORE','K_S_EMU_EXIT']
 assert not re.search(r'(addItem|setTitle|Menu |configWarning =)\([^\n]*"',s)
 pre=r'''
 #include "apps/nes/preferences.h"
@@ -25,12 +25,12 @@ enum class Button{A,B};namespace colors{constexpr int White=0;}
 struct Key{bool pressed=false;};struct State{Key select,start;};
 struct Controller {unsigned calls=0,releaseAt=0;State getState(){State s;s.select.pressed=s.start.pressed=calls++<releaseAt;return s;}} controller;
 struct Canvas{};
-std::vector<int> choices;unsigned step=0;
+std::vector<int> choices;unsigned step=0;bool pressB=false;
 struct Menu{std::vector<String> items;int selected=0;Menu(const String&){}
 void addItem(const String& x){items.push_back(x);}void addActivationButton(Button){}
 void setItem(int,const String&,void*,int,const String&){}void setTitle(const String&){}
 void update(){assert(step<choices.size());selected=choices[step++];assert(selected<int(items.size()));}
-void draw(Canvas*){}bool isFinished(){return true;}Button getButton(){return Button::A;}int getCursor(){return selected;}};
+void draw(Canvas*){}bool isFinished(){return true;}Button getButton(){return pressB?Button::B:Button::A;}int getCursor(){return selected;}};
 }
 struct EmulatorMenuApp {
 enum class SystemAction{Resume,Exit,Reset,Save,Load,Screenshot};
@@ -43,10 +43,11 @@ SystemAction showSystemMenu();bool holdExitRequested();
 checks=r'''
 int main(){EmulatorMenuApp app;
 for(bool gb:{false,true}){app.hasFrameskipSetting=gb;
- for(int entry:{0,2,5}){lilka::choices={entry};lilka::step=0;
- auto action=app.showSystemMenu();assert(action==(entry==0?EmulatorMenuApp::SystemAction::Resume:entry==2?EmulatorMenuApp::SystemAction::Screenshot:EmulatorMenuApp::SystemAction::Exit));}
- lilka::choices={1,0,4,gb?5:4,5};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // cancel reset/back/exit
+ for(int entry:{0,4}){lilka::choices={entry};lilka::step=0;
+ auto action=app.showSystemMenu();assert(action==(entry==0?EmulatorMenuApp::SystemAction::Screenshot:EmulatorMenuApp::SystemAction::Exit));}
+ lilka::choices={1,0,3,gb?5:4,4};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // cancel reset/back/exit
  lilka::choices={1,1};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Reset);
+ lilka::pressB=true;lilka::choices={0};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Resume);lilka::pressB=false;
 }
 for(unsigned duration:{0u,1u,199u,200u,201u}){now=0;lilka::controller.calls=0;lilka::controller.releaseAt=duration;
  assert(app.holdExitRequested()==(duration>200));}

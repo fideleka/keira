@@ -29,7 +29,7 @@ struct Menu {
  void addItem(const String& x){items.push_back(x);}
  void addActivationButton(Button){}
  void update(){cursor=choices.at(step++);}
- void draw(Canvas*){if(items.size()==6 && items[0]==K_S_EMU_RESUME) {assert(items[1]==K_S_EMU_RESET);assert(items[2]==K_S_EMU_SCREENSHOT);assert(items[5]==K_S_EMU_EXIT);}}
+ void draw(Canvas*){if(items.size()==5 && items[0]==K_S_EMU_SCREENSHOT) {assert(items[1]==K_S_EMU_RESET);assert(items[4]==K_S_EMU_EXIT);}}
  bool isFinished(){return true;} int getCursor(){return cursor;} Button getButton(){return Button::A;}
  void setItem(int,const String&,void*,int,const String&){} void setTitle(const String&){}
 };
@@ -79,10 +79,10 @@ int main(){
  now=UINT32_MAX-1000;releaseAt=3000;state.select.pressed=state.start.pressed=true;
  assert(app.holdExitRequested());assert(uint32_t(now-(UINT32_MAX-1000))==2000);
  state=lilka::State();
- for(int choice:{0,2,5}){lilka::choices={choice};lilka::step=0;
- auto action=app.showSystemMenu();assert(action==(choice==0?NesApp::SystemAction::Resume:choice==2?NesApp::SystemAction::Screenshot:NesApp::SystemAction::Exit));}
+ for(int choice:{0,4}){lilka::choices={choice};lilka::step=0;
+ auto action=app.showSystemMenu();assert(action==(choice==0?NesApp::SystemAction::Screenshot:NesApp::SystemAction::Exit));}
  now=0;releaseAt=1990;state=lilka::State();
- lilka::choices={5};lilka::step=0;openSystemMenu();assert(quits==1&&inputState.exitRequested&&stops&&releases);assert(!app.screenshotOnNextFrame&&!resets);
+ lilka::choices={4};lilka::step=0;openSystemMenu();assert(quits==1&&inputState.exitRequested&&stops&&releases);assert(!app.screenshotOnNextFrame&&!resets);
  inputState.exitRequested=false;now=0;releaseAt=2010;state.select.pressed=state.start.pressed=true;
  lilka::step=0;openSystemMenu();assert(quits==2&&inputState.exitRequested);assert(lilka::step==0);assert(!app.screenshotOnNextFrame&&!resets);
  puts("Shared actual short/long/wrap chord, initial Ukrainian visible actions, NES exit cleanup/callback PASS");

@@ -75,10 +75,9 @@ void EmulatorMenuApp::savePreferences() {
 EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
     waitForRelease();
     lilka::Menu menu(menuTitle);
-    // Reset is second; Exit remains last (Down scrolls to the sixth entry).
-    menu.addItem(K_S_EMU_RESUME);
-    menu.addItem(K_S_EMU_RESET);
+    // B resumes; Reset is second and Exit is last. All five rows are visible.
     menu.addItem(K_S_EMU_SCREENSHOT);
+    menu.addItem(K_S_EMU_RESET);
     menu.addItem(K_S_EMU_CONTROLS);
     menu.addItem(K_S_EMU_MORE);
     menu.addItem(K_S_EMU_EXIT);
@@ -91,8 +90,6 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
         waitForRelease();
         if (menu.getButton() == lilka::Button::B) return SystemAction::Resume;
         switch (menu.getCursor()) {
-            case 0:
-                return SystemAction::Resume;
             case 1: {
                 lilka::Menu confirm(K_S_EMU_RESET_CONFIRM);
                 confirm.addItem(K_S_EMU_CANCEL);
@@ -107,7 +104,7 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                 if (confirm.getButton() != lilka::Button::B && confirm.getCursor() == 1) return SystemAction::Reset;
                 break;
             }
-            case 3: {
+            case 2: {
                 lilka::Menu controls(K_S_EMU_CONTROLS);
                 controls.addItem(K_S_EMU_PRECISION);
                 controls.addItem(K_S_EMU_DELAY_MINUS);
@@ -149,11 +146,11 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                 }
                 break;
             }
-            case 5:
+            case 4:
                 return SystemAction::Exit;
-            case 2:
+            case 0:
                 return SystemAction::Screenshot;
-            case 4: {
+            case 3: {
                 lilka::Menu actions(K_S_EMU_MORE);
                 actions.addItem(K_S_EMU_SAVE);
                 actions.addItem(K_S_EMU_LOAD);
