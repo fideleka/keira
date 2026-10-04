@@ -374,8 +374,6 @@ void GameBoyApp::run() {
         gbcore_run_frame(core, drawFrame);
         if (drawFrame) {
             clearMissingLines();
-        }
-        if (drawFrame) {
             if (screenshotOnNextFrame) {
                 screenshotOnNextFrame = false;
                 if (!screenshot::request(canvas)) ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
