@@ -182,10 +182,19 @@ void osd_getinput(void) {
         turboPulse(Driver::app->preferences.turboB && state.d.pressed && !state.select.pressed, inputState.turboBFrame);
 
     int direction = Driver::app->directionFilter.update(
-        state.left.pressed, state.right.pressed, millis(), Driver::app->preferences
+        state.left.pressed,
+        state.right.pressed,
+        millis(),
+        Driver::app->preferences.precisionMode,
+        Driver::app->preferences.directionDelayXMs
     );
-    int vertical =
-        Driver::app->verticalFilter.update(state.up.pressed, state.down.pressed, millis(), Driver::app->preferences);
+    int vertical = Driver::app->verticalFilter.update(
+        state.up.pressed,
+        state.down.pressed,
+        millis(),
+        Driver::app->preferences.precisionMode,
+        Driver::app->preferences.directionDelayYMs
+    );
     const bool desiredStates[JOYPAD_EVENT_COUNT] = {
         Driver::app->preferences.precisionMode ? vertical < 0 : state.up.pressed,
         Driver::app->preferences.precisionMode ? vertical > 0 : state.down.pressed,

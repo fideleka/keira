@@ -88,17 +88,29 @@ int main() {
     osd_getinput(); assert(inputState.forwarded[6]);
     osd_getinput(); assert(!inputState.forwarded[6]); // unchanged C pulse period
     s = lilka::State(); osd_getinput();
-    app.preferences.precisionMode = true; s.left.pressed = true; s.down.pressed = true; now = 0;
+    app.preferences.precisionMode = true;
+    app.preferences.directionDelayXMs = 200; app.preferences.directionDelayYMs = 500; s.left.pressed = true; s.down.pressed = true; now = 0;
     osd_getinput(); assert(inputState.forwarded[2] && inputState.forwarded[1]);
     now = 20; osd_getinput(); assert(!inputState.forwarded[2] && !inputState.forwarded[1]); // both axes suppressed
-    now = 250; osd_getinput(); assert(inputState.forwarded[2] && inputState.forwarded[1]);
+    now = 199; osd_getinput(); assert(!inputState.forwarded[2] && !inputState.forwarded[1]);
+    now = 200; osd_getinput(); assert(inputState.forwarded[2] && !inputState.forwarded[1]);
+    now = 499; osd_getinput(); assert(inputState.forwarded[2] && !inputState.forwarded[1]);
+    now = 500; osd_getinput(); assert(inputState.forwarded[2] && inputState.forwarded[1]);
+    s.left.pressed = false; s.right.pressed = true;
+    osd_getinput(); assert(inputState.forwarded[3] && inputState.forwarded[1]);
+    now = 501; osd_getinput(); assert(!inputState.forwarded[3] && inputState.forwarded[1]);
+    s.left.pressed = true; osd_getinput(); assert(!inputState.forwarded[2] && !inputState.forwarded[3]);
+    app.preferences.precisionMode = false; s.up.pressed = true;
+    osd_getinput();
+    assert(inputState.forwarded[0] && inputState.forwarded[1] && inputState.forwarded[2] && inputState.forwarded[3]);
+    app.preferences.precisionMode = true;
     for (int d = 0; d < 4; ++d) {
         s = lilka::State(); app.directionFilter.reset(); app.verticalFilter.reset();
         lilka::ButtonState* dirs[] = {&s.up, &s.down, &s.left, &s.right};
         dirs[d]->pressed = true; now = UINT32_MAX - 100;
         osd_getinput(); assert(inputState.forwarded[d]);
-        now = 148; osd_getinput(); assert(!inputState.forwarded[d]);
-        now = 149; osd_getinput(); assert(inputState.forwarded[d]);
+        now = d < 2 ? 398 : 98; osd_getinput(); assert(!inputState.forwarded[d]);
+        now = d < 2 ? 399 : 99; osd_getinput(); assert(inputState.forwarded[d]);
     }
     puts("Actual OSD input: solitary/chord consumption/turbo/four-direction precision tests PASS");
 }

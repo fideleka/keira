@@ -27,8 +27,13 @@ The input sampling interval depends on rendered frames/frame skipping, so the
 initial short press can span more than one emulated frame. The game still owns
 its repeat/DAS logic: **its inherent additional repeat delay starts after the
 continuous hold reaches it**. This feature does not bypass game-specific delay.
-Horizontal and vertical axes have independent timing, so diagonals work. Controls provides -50/+50ms adjustments bounded to
+Horizontal X (Left/Right) and vertical Y (Up/Down) have independent timing and
+configurable delays, each defaulting to 250ms, so diagonals work. Controls has
+Precision ON/OFF, X: Left/Right, Y: Up/Down, Back (four visible rows). Each axis
+opens a marked submenu with -50ms, +50ms, Back; the title identifies the axis and
+current delay. B returns one level (root B resumes). Adjustments clamp to
 50–1000ms; hand-edited valid values between these limits are also accepted.
+These shared controls apply to NES, GB and GBC.
 
 Turbo A/B default ON to preserve existing C/D functionality. They enable or
 suppress C-to-A and D-to-B turbo, respectively (the original two-on/two-off input
@@ -56,7 +61,7 @@ The chord, every submenu boundary, confirmation, and resume are separated by a
 sleeping **all physical buttons released** gate; button edge state, turbo phases,
 and direction timing are cleared. Holding menu A, a direction, or only one
 chord button cannot leak into gameplay or activate the next modal page.
-Screenshot is the second entry, visible without scrolling. SDK Menu displays only
+Screenshot is the first entry, visible without scrolling. SDK Menu displays only
 five entries (itemsY=80, 32px rows), scrolling with Down/Up or Right/Left pages;
 Screenshot previously sat below the initial viewport. No competing shortcut added.
 The next complete game frame is copied before queueDraw swaps buffers. Encoding
@@ -78,7 +83,8 @@ Example (defaults):
 
     version=1
     precision_mode=0
-    direction_delay_ms=250
+    direction_delay_x_ms=250
+    direction_delay_y_ms=250
     turbo_a=1
     turbo_b=1
 
@@ -87,6 +93,16 @@ booleans 0/1, delay 50–1000ms. Blank lines, # comment lines, LF/CRLF allowed.
 Version is mandatory; omitted setting keys use defaults. Duplicate/unknown keys,
 embedded NUL, invalid numbers, missing version and oversized files are rejected
 as a whole. No partially-applied malformed preferences.
+
+Version 1 remains additive: legacy direction_delay_ms initializes BOTH axes;
+explicit direction_delay_x_ms / direction_delay_y_ms override that fallback
+independently, regardless of key order. Without a legacy value, a missing axis
+uses 250ms. Writers emit only the canonical new X/Y keys (never the legacy key).
+**Downgrade risk:** older firmware rejects these unknown new keys even with
+version=1, uses defaults, warns and refuses writes. Back up the sidecar and
+manually convert to a single legacy delay before downgrading (unequal X/Y values
+cannot be represented by old firmware). Unknown/duplicate/rejected-key and
+bounded-reader protections and backup-assisted writes remain unchanged.
 
 Missing file quietly uses defaults. Invalid/unreadable/unsupported config shows
 an on-screen notice and serial warning, uses defaults, and **refuses writes** to
@@ -113,8 +129,12 @@ Conf files and .tmp/.bak never share state/save filename extensions.
     /tmp/keira-nesmenu-tests
     python3 tests/nesmenu_input.py
 
-Portable tests cover defaults, parser bounds/version/path, timing/reversal/
+Portable tests cover defaults, legacy migration/roundtrip and axis-key precedence
+in all orders, parser bounds/version/path, separate 200/500ms timing/reversal/
 release/wrap/reset, release gate and write/open/flush/rename failure preservation.
+Shared menu routing and explicit X/Y adjustments/clamps/B are executed in both
+Ukrainian and English, normal and ASan/UBSan host binaries. GB/GBC and NES
+production input mappings are checked with the unequal axis delays.
 The input harness compiles the actual OSD input code with event/controller shims:
 solitary Start/Select, Start-first safety, consumed/ambiguous save/load chords,
 no modal input leak, C turbo toggles, ordinary A and both precision axes.

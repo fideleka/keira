@@ -349,8 +349,12 @@ void GameBoyApp::run() {
         skippedInRow = drawFrame ? 0 : skippedInRow + 1;
 
         // The adapter accepts an active-low mask and maps it to Gnuboy's pad.
-        const int horizontal = directionFilter.update(state.left.pressed, state.right.pressed, millis(), preferences);
-        const int vertical = verticalFilter.update(state.up.pressed, state.down.pressed, millis(), preferences);
+        const int horizontal = directionFilter.update(
+            state.left.pressed, state.right.pressed, millis(), preferences.precisionMode, preferences.directionDelayXMs
+        );
+        const int vertical = verticalFilter.update(
+            state.up.pressed, state.down.pressed, millis(), preferences.precisionMode, preferences.directionDelayYMs
+        );
         const bool turboA =
             nesmenu::turboPulse(preferences.turboA && state.c.pressed && !state.select.pressed, turboAFrame);
         const bool turboB =

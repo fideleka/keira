@@ -107,8 +107,8 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
             case 2: {
                 lilka::Menu controls(K_S_EMU_CONTROLS);
                 controls.addItem(K_S_EMU_PRECISION);
-                controls.addItem(K_S_EMU_DELAY_MINUS);
-                controls.addItem(K_S_EMU_DELAY_PLUS);
+                controls.addItem(K_S_EMU_AXIS_X);
+                controls.addItem(K_S_EMU_AXIS_Y);
                 controls.addItem(K_S_EMU_BACK);
                 controls.addActivationButton(lilka::Button::B);
                 bool done = false;
@@ -120,13 +120,25 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                         lilka::colors::White,
                         preferences.precisionMode ? K_S_EMU_ON : K_S_EMU_OFF
                     );
-                    controls.setTitle(StringFormat(K_S_EMU_DELAY_FMT, unsigned(preferences.directionDelayMs)));
+                    controls.setItem(
+                        1,
+                        K_S_EMU_AXIS_X,
+                        nullptr,
+                        lilka::colors::White,
+                        StringFormat(K_S_EMU_DELAY_FMT, unsigned(preferences.directionDelayXMs))
+                    );
+                    controls.setItem(
+                        2,
+                        K_S_EMU_AXIS_Y,
+                        nullptr,
+                        lilka::colors::White,
+                        StringFormat(K_S_EMU_DELAY_FMT, unsigned(preferences.directionDelayYMs))
+                    );
                     controls.update();
                     controls.draw(canvas);
                     queueDraw();
                     if (!controls.isFinished()) continue;
                     waitForRelease();
-                    uint32_t oldDelay = preferences.directionDelayMs;
                     if (controls.getButton() == lilka::Button::B || controls.getCursor() == 3) {
                         done = true;
                         continue;
@@ -135,13 +147,30 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                         preferences.precisionMode = !preferences.precisionMode;
                         savePreferences();
                     } else {
-                        if (controls.getCursor() == 1)
-                            preferences.directionDelayMs =
-                                oldDelay >= nesmenu::MIN_DELAY_MS + 50 ? oldDelay - 50 : nesmenu::MIN_DELAY_MS;
-                        else
-                            preferences.directionDelayMs =
-                                oldDelay <= nesmenu::MAX_DELAY_MS - 50 ? oldDelay + 50 : nesmenu::MAX_DELAY_MS;
-                        if (oldDelay != preferences.directionDelayMs) savePreferences();
+                        const bool horizontal = controls.getCursor() == 1;
+                        uint32_t& delay = horizontal ? preferences.directionDelayXMs : preferences.directionDelayYMs;
+                        lilka::Menu axis(horizontal ? K_S_EMU_AXIS_X : K_S_EMU_AXIS_Y);
+                        axis.addItem(K_S_EMU_DELAY_MINUS);
+                        axis.addItem(K_S_EMU_DELAY_PLUS);
+                        axis.addItem(K_S_EMU_BACK);
+                        axis.addActivationButton(lilka::Button::B);
+                        while (true) {
+                            axis.setTitle(
+                                StringFormat(horizontal ? K_S_EMU_DELAY_X_FMT : K_S_EMU_DELAY_Y_FMT, unsigned(delay))
+                            );
+                            axis.update();
+                            axis.draw(canvas);
+                            queueDraw();
+                            if (!axis.isFinished()) continue;
+                            waitForRelease();
+                            if (axis.getButton() == lilka::Button::B || axis.getCursor() == 2) break;
+                            uint32_t oldDelay = delay;
+                            if (axis.getCursor() == 0)
+                                delay = oldDelay >= nesmenu::MIN_DELAY_MS + 50 ? oldDelay - 50 : nesmenu::MIN_DELAY_MS;
+                            else
+                                delay = oldDelay <= nesmenu::MAX_DELAY_MS - 50 ? oldDelay + 50 : nesmenu::MAX_DELAY_MS;
+                            if (oldDelay != delay) savePreferences();
+                        }
                     }
                 }
                 break;

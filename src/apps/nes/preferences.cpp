@@ -22,6 +22,7 @@ ConfigResult parseConfig(const char* data, size_t size, Preferences& preferences
     buffer[size] = 0;
     Preferences parsed;
     unsigned seen = 0;
+    uint32_t legacyDelay = 250;
     bool malformed = false, unsupported = false;
     char* save = nullptr;
     for (char* line = strtok_r(buffer, "\n", &save); line; line = strtok_r(nullptr, "\n", &save)) {
@@ -34,12 +35,14 @@ ConfigResult parseConfig(const char* data, size_t size, Preferences& preferences
             continue;
         }
         *equals++ = 0;
-        unsigned key = !strcmp(line, "version")              ? 1
-                       : !strcmp(line, "precision_mode")     ? 2
-                       : !strcmp(line, "direction_delay_ms") ? 4
-                       : !strcmp(line, "turbo_a")            ? 8
-                       : !strcmp(line, "turbo_b")            ? 16
-                                                             : 0;
+        unsigned key = !strcmp(line, "version")                ? 1
+                       : !strcmp(line, "precision_mode")       ? 2
+                       : !strcmp(line, "direction_delay_ms")   ? 4
+                       : !strcmp(line, "turbo_a")              ? 8
+                       : !strcmp(line, "turbo_b")              ? 16
+                       : !strcmp(line, "direction_delay_x_ms") ? 32
+                       : !strcmp(line, "direction_delay_y_ms") ? 64
+                                                               : 0;
         if (!key || (seen & key)) {
             malformed = true;
             continue;
@@ -55,8 +58,9 @@ ConfigResult parseConfig(const char* data, size_t size, Preferences& preferences
             value = value * 10 + (*digit - '0');
         }
         if (key == 1 && (!valid || value != 1)) unsupported = true;
-        if (!valid || (key != 1 && key != 4 && value > 1) ||
-            (key == 4 && (value < MIN_DELAY_MS || value > MAX_DELAY_MS))) {
+        bool delayKey = key == 4 || key == 32 || key == 64;
+        if (!valid || (key != 1 && !delayKey && value > 1) ||
+            (delayKey && (value < MIN_DELAY_MS || value > MAX_DELAY_MS))) {
             malformed = true;
             continue;
         }
@@ -65,7 +69,13 @@ ConfigResult parseConfig(const char* data, size_t size, Preferences& preferences
                 parsed.precisionMode = value;
                 break;
             case 4:
-                parsed.directionDelayMs = value;
+                legacyDelay = value;
+                break;
+            case 32:
+                parsed.directionDelayXMs = value;
+                break;
+            case 64:
+                parsed.directionDelayYMs = value;
                 break;
             case 8:
                 parsed.turboA = value;
@@ -77,6 +87,9 @@ ConfigResult parseConfig(const char* data, size_t size, Preferences& preferences
     }
     if (unsupported) return ConfigResult::Unsupported;
     if (malformed || !(seen & 1)) return ConfigResult::Malformed;
+    // Explicit axes override the legacy fallback regardless of line order.
+    if (!(seen & 32)) parsed.directionDelayXMs = legacyDelay;
+    if (!(seen & 64)) parsed.directionDelayYMs = legacyDelay;
     preferences = parsed;
     return ConfigResult::Ok;
 }
@@ -97,7 +110,8 @@ ConfigResult saveConfig(const char* path, const Preferences& preferences, const 
     // Protect even oversized/malformed files: an unknown version may lie beyond
     // our bounded reader. Session settings remain usable, but writing is refused.
     if (existing != ConfigResult::Ok && existing != ConfigResult::Missing) return existing;
-    if (preferences.directionDelayMs < MIN_DELAY_MS || preferences.directionDelayMs > MAX_DELAY_MS)
+    if (preferences.directionDelayXMs < MIN_DELAY_MS || preferences.directionDelayXMs > MAX_DELAY_MS ||
+        preferences.directionDelayYMs < MIN_DELAY_MS || preferences.directionDelayYMs > MAX_DELAY_MS)
         return ConfigResult::Malformed;
     char temp[MAX_PATH_BYTES], backup[MAX_PATH_BYTES];
     if (strlen(path) + sizeof(".tmp") > sizeof(temp)) return ConfigResult::IoError;
@@ -113,9 +127,11 @@ ConfigResult saveConfig(const char* path, const Preferences& preferences, const 
     if (!file) return ConfigResult::IoError;
     bool failed = fprintf(
                       file,
-                      "version=1\nprecision_mode=%d\ndirection_delay_ms=%lu\nturbo_a=%d\nturbo_b=%d\n",
+                      "version=1\nprecision_mode=%d\ndirection_delay_x_ms=%lu\ndirection_delay_y_ms=%lu\n"
+                      "turbo_a=%d\nturbo_b=%d\n",
                       preferences.precisionMode,
-                      static_cast<unsigned long>(preferences.directionDelayMs),
+                      static_cast<unsigned long>(preferences.directionDelayXMs),
+                      static_cast<unsigned long>(preferences.directionDelayYMs),
                       preferences.turboA,
                       preferences.turboB
                   ) < 0;

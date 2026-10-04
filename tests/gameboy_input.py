@@ -29,19 +29,25 @@ int main() {
  for(int i=0;i<12;++i) assert((input.sample(s)&3)==(i%4<2?0:3));
  s.select.pressed=true; assert((input.sample(s)&3)==3);
  s=State(); input.preferences.precisionMode=true;
+ input.preferences.directionDelayXMs=200; input.preferences.directionDelayYMs=500;
  for(int d=0;d<4;++d) {
   input.directionFilter.reset(); input.verticalFilter.reset(); s=State();
   Button* dirs[]={&s.up,&s.down,&s.left,&s.right};
   const int masks[]={0x40,0x80,0x20,0x10}; dirs[d]->pressed=true;
   input.now=UINT32_MAX-100; assert(!(input.sample(s)&masks[d]));
-  input.now=148; assert(input.sample(s)&masks[d]);
-  input.now=149; assert(!(input.sample(s)&masks[d]));
+  input.now=d<2?398:98; assert(input.sample(s)&masks[d]);
+  input.now=d<2?399:99; assert(!(input.sample(s)&masks[d]));
   dirs[d]->pressed=false; input.sample(s); dirs[d]->pressed=true;
   assert(!(input.sample(s)&masks[d]));
  }
  input.directionFilter.reset();input.verticalFilter.reset();s=State();
  s.left.pressed=s.up.pressed=true;input.now=0;assert((input.sample(s)&0x60)==0);
  input.now=1;assert((input.sample(s)&0x60)==0x60);
+ input.now=199;assert((input.sample(s)&0x60)==0x60);
+ input.now=200;assert((input.sample(s)&0x60)==0x40);
+ input.now=499;assert((input.sample(s)&0x60)==0x40);
+ input.now=500;assert((input.sample(s)&0x60)==0);
+ input.directionFilter.reset();input.verticalFilter.reset();input.now=0;input.sample(s);input.now=1;
  s.left.pressed=false;s.right.pressed=true;assert(!(input.sample(s)&0x10));
  assert(input.sample(s)&0x40); // horizontal reversal independent of vertical
  s.left.pressed=true;assert((input.sample(s)&0x30)==0x30);

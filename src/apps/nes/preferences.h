@@ -9,7 +9,8 @@ constexpr uint32_t MIN_DELAY_MS = 50;
 constexpr uint32_t MAX_DELAY_MS = 1000;
 struct Preferences {
     bool precisionMode = false;
-    uint32_t directionDelayMs = 250;
+    uint32_t directionDelayXMs = 250;
+    uint32_t directionDelayYMs = 250;
     bool turboA = true;
     bool turboB = true;
 };
@@ -24,9 +25,10 @@ struct FileOperations {
 ConfigResult saveConfig(const char* path, const Preferences& preferences, const FileOperations* operations = nullptr);
 class DirectionFilter {
 public:
-    int update(bool left, bool right, uint32_t now, const Preferences& preferences) {
-        int next = left == right ? 0 : left ? -1 : 1;
-        if (!preferences.precisionMode) {
+    // Caller supplies its axis delay; filter owns only that axis timing state.
+    int update(bool negative, bool positive, uint32_t now, bool precisionMode, uint32_t delayMs) {
+        int next = negative == positive ? 0 : negative ? -1 : 1;
+        if (!precisionMode) {
             reset();
             return next;
         }
@@ -35,7 +37,7 @@ public:
             startedAt = now;
             return next; // immediate single emulated-frame press
         }
-        return next && uint32_t(now - startedAt) >= preferences.directionDelayMs ? next : 0;
+        return next && uint32_t(now - startedAt) >= delayMs ? next : 0;
     }
     void reset() {
         direction = 0;
