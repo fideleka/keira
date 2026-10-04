@@ -75,6 +75,10 @@ int main() {
     s.select.pressed = true; s.c.pressed = true; s.d.pressed = true; osd_getinput();
     s.d.pressed = false; osd_getinput(); assert(saves == 1 && loads == 1);
     s = lilka::State(); osd_getinput(); assert(!inputState.forwarded[4]);
+    s.select.pressed = true; s.start.pressed = true; s.c.pressed = true; osd_getinput();
+    assert(menus == 1 && saves == 1);
+    s.start.pressed = false; osd_getinput(); assert(saves == 1); // mixed chord stays consumed
+    s = lilka::State(); osd_getinput(); assert(!inputState.forwarded[4]);
     app.preferences.turboA = false; s.c.pressed = true; osd_getinput();
     assert(!inputState.forwarded[6]);
     s.a.pressed = true; osd_getinput(); assert(inputState.forwarded[6]); // ordinary A always works

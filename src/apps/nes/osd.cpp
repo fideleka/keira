@@ -142,7 +142,8 @@ void osd_getinput(void) {
 
     // Both state buttons together are ambiguous. Suppress turbo and wait for
     // a fresh Select press rather than firing save/load as one is released.
-    if (state.select.pressed && state.c.pressed && state.d.pressed) {
+    if (state.select.pressed &&
+        ((state.c.pressed && state.d.pressed) || (state.start.pressed && (state.c.pressed || state.d.pressed)))) {
         inputState.selectConsumed = true;
     }
 
@@ -423,7 +424,10 @@ namespace {
 void openSystemMenu() {
     releaseJoypad();
     SemaphoreHandle_t stopped = xSemaphoreCreateBinary();
-    if (!stopped) return; // keep emulator running safely on allocation failure
+    if (!stopped) {
+        lilka::serial.err("NES menu unavailable: timer barrier allocation failed");
+        return; // chord already consumed; keep emulator running safely
+    }
     if (timer) {
         xTimerStop(timer, portMAX_DELAY);
         xTimerPendFunctionCall(
