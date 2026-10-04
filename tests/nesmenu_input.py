@@ -107,6 +107,7 @@ with tempfile.TemporaryDirectory(prefix="keira-nesmenu-input-") as tmp:
     tmp = Path(tmp)
     source = tmp / "input.cpp"
     source.write_text(prelude + helpers + input_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
-                    "-fsanitize=address,undefined", "-I" + str(ROOT / "src"), str(source), "-o", str(tmp / "input")], check=True)
-    subprocess.run([str(tmp / "input")], check=True)
+    for flags in [[], ["-fsanitize=address,undefined", "-fno-pie", "-no-pie"]]:
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    *flags, "-I" + str(ROOT / "src"), str(source), "-o", str(tmp / "input")], check=True)
+        subprocess.run([str(tmp / "input")], check=True)
