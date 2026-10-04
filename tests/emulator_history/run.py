@@ -55,16 +55,23 @@ core += method(args.source / 'nes/nes.c', 'void nes_emulate(')
 gb = method(ROOT / 'src/apps/gameboy/gameboyapp.cpp', 'void GameBoyApp::run()')
 # Exercise every startup statement up to gameplay; audio failure is deliberately
 # nonfatal in production. No simulated clean exit is needed to persist GB/GBC.
-gb = gb[:gb.index('    uint32_t exitStartedAt')] + '    throw PowerLoss();\n}\n'
+gb = gb[:gb.index('    loadPreferences();')] + '    throw PowerLoss();\n}\n'
 fixture = (ROOT / 'tests/emulator_history/host.cpp').read_text()
 # Preferences initialization is exercised separately by the menu tests.
-if 'void loadPreferences();' in (ROOT / 'src/apps/nes/nesapp.h').read_text():
-    nes = 'void NesApp::loadPreferences() {}' + nes
+nes = 'void EmulatorMenuApp::loadPreferences() {}' + nes
 fixture = fixture.replace('// NES_METHODS', nes).replace('// OSD_METHOD', osd)
 fixture = fixture.replace('// CORE_METHODS', core).replace('// GB_STARTUP', gb)
 with tempfile.TemporaryDirectory(prefix='keira-emulator-history-') as directory:
     tmp = Path(directory)
     (tmp / 'Arduino.h').write_text((ROOT / 'tests/navigation/string.h').read_text())
+    (tmp / 'apps/emulator').mkdir(parents=True)
+    (tmp / 'apps/emulator/systemmenu.h').write_text('''#pragma once
+class EmulatorMenuApp : public App {
+public:
+    EmulatorMenuApp(const char* name, const String&, const String&) : App(name) {}
+    void loadPreferences();
+};
+''')
     (tmp / 'keira').mkdir()
     (tmp / 'keira/app.h').write_text('#pragma once\n')
     (tmp / 'host.cpp').write_text(common + nvs + fixture)

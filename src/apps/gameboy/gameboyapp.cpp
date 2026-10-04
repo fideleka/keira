@@ -18,7 +18,7 @@ namespace {
 constexpr size_t kMinimumRomSize = 0x150;
 constexpr size_t kRomBankSize = 0x4000;
 constexpr int64_t kFrameUs = 16743;
-constexpr uint32_t kExitHoldMs = 1500;
+
 constexpr uint16_t kDmgPalette[4] = {0xFFFF, 0xBDF7, 0x738E, 0x0000};
 
 uint16_t blend565(uint16_t a, uint16_t b) {
@@ -27,7 +27,11 @@ uint16_t blend565(uint16_t a, uint16_t b) {
 } // namespace
 
 GameBoyApp::GameBoyApp(const String& path) :
-    App("Game Boy"), romPath(path), savePath(path + ".sav"), statePath(path + ".ss0") {
+    EmulatorMenuApp("Game Boy", path, "GB/GBC paused"),
+    romPath(path),
+    savePath(path + ".sav"),
+    statePath(path + ".ss0") {
+    hasFrameskipSetting = true;
     setktStackSize(8192);
     setCanvasBounds((lilka::display.width() - 240) / 2, (lilka::display.height() - 216) / 2, 240, 216);
     setFlags(AppFlags::APP_FLAG_FULLSCREEN);
@@ -264,8 +268,11 @@ void GameBoyApp::run() {
         backCanvas->fillScreen(lilka::colors::Black);
     }
 
-    uint32_t exitStartedAt = 0;
-    bool screenChordActive = false;
+    loadPreferences();
+    clearGameCanvases();
+    bool startWasPressed = false;
+    bool startGameActive = false;
+    uint8_t turboAFrame = 0, turboBFrame = 0;
     bool saveChordActive = false;
     bool loadChordActive = false;
     bool selectWasPressed = false;
@@ -275,23 +282,43 @@ void GameBoyApp::run() {
     while (true) {
         const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
-        const bool exitChord = state.select.pressed && state.start.pressed;
-        if (exitChord) {
-            selectConsumed = true;
-            if (!screenChordActive) {
-                screenChordActive = true;
-                exitStartedAt = millis();
+        if (state.start.pressed && !startWasPressed) {
+            startGameActive = !state.select.pressed;
+            if (!startGameActive && !selectConsumed && !state.c.pressed && !state.d.pressed) {
+                gbcore_set_buttons(core, 0xFF);
+#if LILKA_VERSION == 2
+                if (audioReady) esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
+#endif
+                const auto action = showSystemMenu();
+                waitForRelease();
+                clearGameCanvases();
+                startWasPressed = startGameActive = selectWasPressed = selectConsumed = false;
+                saveChordActive = loadChordActive = false;
+                turboAFrame = turboBFrame = 0;
+                if (action == SystemAction::Exit) break;
+                if (action == SystemAction::Reset) gbcore_reset(core);
+                if (action == SystemAction::Save) {
+                    if (!saveState()) showNotice("State save failed");
+                }
+                if (action == SystemAction::Load) {
+                    if (!loadState()) showNotice("State load failed");
+                }
+                clearGameCanvases();
+                screenshotOnNextFrame = action == SystemAction::Screenshot;
+                nextFrameAt = esp_timer_get_time();
+                skippedInRow = 0;
+                continue; // no paused-time CPU/audio catch-up
             }
-            if (millis() - exitStartedAt >= kExitHoldMs) break;
-        } else if (screenChordActive) {
-            screenChordActive = false;
-            screenshot::request();
         }
+        startWasPressed = state.start.pressed;
+        if (!state.start.pressed) startGameActive = false;
 
-        // As in NES, Select is a modifier for save/load and screenshot/exit.
+        // As in NES, Select is a modifier for save/load and the system menu.
         // Suppress a game Select tap if it formed any chord, regardless of
         // which button was pressed first. Ambiguous C+D never fires a state.
-        if (state.select.pressed && state.c.pressed && state.d.pressed) selectConsumed = true;
+        if (state.select.pressed &&
+            ((state.c.pressed && state.d.pressed) || (state.start.pressed && (state.c.pressed || state.d.pressed))))
+            selectConsumed = true;
         const bool saveChord =
             state.select.pressed && state.c.pressed && !state.d.pressed && !state.start.pressed && !selectConsumed;
         const bool loadChord =
@@ -317,22 +344,30 @@ void GameBoyApp::run() {
         // Keep CPU, input and audio at the Game Boy frame rate. If a rendered
         // frame missed its deadline, let Gnuboy skip LCD work on the next one.
         // Force a visible frame after at most two skips.
-        const bool drawFrame = skippedInRow >= 2 || frameStart <= nextFrameAt + 1500;
+        const bool drawFrame =
+            !automaticFrameskip || screenshotOnNextFrame || skippedInRow >= 2 || frameStart <= nextFrameAt + 1500;
         skippedInRow = drawFrame ? 0 : skippedInRow + 1;
 
         // The adapter accepts an active-low mask and maps it to Gnuboy's pad.
+        const int horizontal = directionFilter.update(state.left.pressed, state.right.pressed, millis(), preferences);
+        const int vertical = verticalFilter.update(state.up.pressed, state.down.pressed, millis(), preferences);
+        const bool turboA =
+            nesmenu::turboPulse(preferences.turboA && state.c.pressed && !state.select.pressed, turboAFrame);
+        const bool turboB =
+            nesmenu::turboPulse(preferences.turboB && state.d.pressed && !state.select.pressed, turboBFrame);
         uint8_t buttons = 0xFF;
-        if (state.a.pressed) buttons &= ~0x01;
-        if (state.b.pressed) buttons &= ~0x02;
+        if (state.a.pressed || turboA) buttons &= ~0x01;
+        if (state.b.pressed || turboB) buttons &= ~0x02;
         if (selectTap) buttons &= ~0x04;
-        if (state.start.pressed && !exitChord) buttons &= ~0x08;
-        if (state.right.pressed) buttons &= ~0x10;
-        if (state.left.pressed) buttons &= ~0x20;
-        if (state.up.pressed) buttons &= ~0x40;
-        if (state.down.pressed) buttons &= ~0x80;
+        if (state.start.pressed && startGameActive) buttons &= ~0x08;
+        if (preferences.precisionMode ? horizontal > 0 : state.right.pressed) buttons &= ~0x10;
+        if (preferences.precisionMode ? horizontal < 0 : state.left.pressed) buttons &= ~0x20;
+        if (preferences.precisionMode ? vertical < 0 : state.up.pressed) buttons &= ~0x40;
+        if (preferences.precisionMode ? vertical > 0 : state.down.pressed) buttons &= ~0x80;
         gbcore_set_buttons(core, buttons);
 
         if (drawFrame) {
+            canvas->fillScreen(lilka::colors::Black);
             memset(drawnLines, 0, sizeof(drawnLines));
             drawnLineCount = 0;
         }
@@ -341,6 +376,10 @@ void GameBoyApp::run() {
             clearMissingLines();
         }
         if (drawFrame) {
+            if (screenshotOnNextFrame) {
+                screenshotOnNextFrame = false;
+                if (!screenshot::request(canvas)) ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
+            }
             queueDraw();
         }
         writeAudio();

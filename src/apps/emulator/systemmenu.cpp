@@ -1,4 +1,4 @@
-#include "nesapp.h"
+#include "systemmenu.h"
 #include "keira/keira.h"
 
 namespace {
@@ -9,14 +9,14 @@ bool anyPressed(const lilka::State& state) {
 }
 } // namespace
 
-void NesApp::waitForRelease() {
+void EmulatorMenuApp::waitForRelease() {
     nesmenu::ReleaseGate gate;
     while (gate.blocked(anyPressed(lilka::controller.getState())))
         vTaskDelay(pdMS_TO_TICKS(10));
     lilka::controller.resetState();
 }
 
-void NesApp::showNotice(const String& title) {
+void EmulatorMenuApp::showNotice(const String& title) {
     waitForRelease();
     lilka::Menu notice(title);
     notice.addItem("Continue (A)");
@@ -28,9 +28,9 @@ void NesApp::showNotice(const String& title) {
     waitForRelease();
 }
 
-void NesApp::loadPreferences() {
+void EmulatorMenuApp::loadPreferences() {
     char path[nesmenu::MAX_PATH_BYTES];
-    if (!nesmenu::configPath(argv[0], path, sizeof(path))) {
+    if (!nesmenu::configPath(romConfigPath.c_str(), path, sizeof(path))) {
         configWarning = "Config path too long";
     } else {
         configFile = path;
@@ -47,44 +47,48 @@ void NesApp::loadPreferences() {
             configWarning = result == nesmenu::ConfigResult::Unsupported ? "Config version unsupported; defaults"
                             : result == nesmenu::ConfigResult::Malformed ? "Config malformed/oversized; defaults"
                                                                          : "Config unreadable; defaults";
-            lilka::serial.err("NES config load failed (%d): %s", int(result), configFile.c_str());
+            lilka::serial.err("Emulator config load failed (%d): %s", int(result), configFile.c_str());
         }
     }
     if (configWarning.length()) {
-        lilka::serial.err("NES: %s", configWarning.c_str());
+        lilka::serial.err("Emulator: %s", configWarning.c_str());
         showNotice(configWarning);
     }
 }
 
-void NesApp::savePreferences() {
+void EmulatorMenuApp::savePreferences() {
     directionFilter.reset();
+    verticalFilter.reset();
     auto result =
         configFile.length() ? nesmenu::saveConfig(configFile.c_str(), preferences) : nesmenu::ConfigResult::IoError;
     if (result != nesmenu::ConfigResult::Ok) {
         configWarning = "Config NOT saved; session only";
-        lilka::serial.err("NES config write refused/failed (%d): %s", int(result), configFile.c_str());
+        lilka::serial.err("Emulator config write refused/failed (%d): %s", int(result), configFile.c_str());
         showNotice(configWarning);
     } else {
         configWarning = "";
     }
 }
 
-NesApp::SystemAction NesApp::showSystemMenu() {
+EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
     waitForRelease();
-    lilka::Menu menu("NES paused");
+    lilka::Menu menu(menuTitle);
     menu.addItem("Resume");
+    menu.addItem("Screenshot");
     menu.addItem("Controls");
     menu.addItem("Turbo A (C)");
     menu.addItem("Turbo B (D)");
     menu.addItem("Save state");
     menu.addItem("Load state");
-    menu.addItem("Screenshot");
     menu.addItem("Reset...");
     menu.addItem("Exit to launcher");
+    if (hasFrameskipSetting) menu.addItem("Frameskip");
     menu.addActivationButton(lilka::Button::B);
     while (true) {
-        menu.setItem(2, "Turbo A (C)", nullptr, lilka::colors::White, preferences.turboA ? "ON" : "OFF");
-        menu.setItem(3, "Turbo B (D)", nullptr, lilka::colors::White, preferences.turboB ? "ON" : "OFF");
+        menu.setItem(3, "Turbo A (C)", nullptr, lilka::colors::White, preferences.turboA ? "ON" : "OFF");
+        menu.setItem(4, "Turbo B (D)", nullptr, lilka::colors::White, preferences.turboB ? "ON" : "OFF");
+        if (hasFrameskipSetting)
+            menu.setItem(9, "Frameskip", nullptr, lilka::colors::White, automaticFrameskip ? "AUTO" : "OFF");
         menu.update();
         menu.draw(canvas);
         queueDraw();
@@ -94,9 +98,9 @@ NesApp::SystemAction NesApp::showSystemMenu() {
         switch (menu.getCursor()) {
             case 0:
                 return SystemAction::Resume;
-            case 1: {
+            case 2: {
                 lilka::Menu controls("Controls");
-                controls.addItem("Precision L/R");
+                controls.addItem("Precision D-pad");
                 controls.addItem("Delay -50ms");
                 controls.addItem("Delay +50ms");
                 controls.addItem("Back");
@@ -104,9 +108,9 @@ NesApp::SystemAction NesApp::showSystemMenu() {
                 bool done = false;
                 while (!done) {
                     controls.setItem(
-                        0, "Precision L/R", nullptr, lilka::colors::White, preferences.precisionMode ? "ON" : "OFF"
+                        0, "Precision D-pad", nullptr, lilka::colors::White, preferences.precisionMode ? "ON" : "OFF"
                     );
-                    controls.setTitle(String("L/R delay: ") + String(preferences.directionDelayMs) + "ms");
+                    controls.setTitle(String("D-pad delay: ") + String(preferences.directionDelayMs) + "ms");
                     controls.update();
                     controls.draw(canvas);
                     queueDraw();
@@ -132,19 +136,19 @@ NesApp::SystemAction NesApp::showSystemMenu() {
                 }
                 break;
             }
-            case 2:
+            case 3:
                 preferences.turboA = !preferences.turboA;
                 savePreferences();
                 break;
-            case 3:
+            case 4:
                 preferences.turboB = !preferences.turboB;
                 savePreferences();
                 break;
-            case 4:
-                return SystemAction::Save;
             case 5:
-                return SystemAction::Load;
+                return SystemAction::Save;
             case 6:
+                return SystemAction::Load;
+            case 1:
                 return SystemAction::Screenshot;
             case 7: {
                 lilka::Menu confirm("Reset game?");
@@ -162,6 +166,9 @@ NesApp::SystemAction NesApp::showSystemMenu() {
             }
             case 8:
                 return SystemAction::Exit;
+            case 9:
+                automaticFrameskip = !automaticFrameskip;
+                break;
         }
     }
 }

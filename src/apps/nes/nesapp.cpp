@@ -10,7 +10,7 @@ extern "C" {
 #include <vid_drv.h>
 }
 
-NesApp::NesApp(String path) : App("NES") {
+NesApp::NesApp(String path) : EmulatorMenuApp("NES", path, "NES paused") {
     setktStackSize(8192); // This task requires 4KB, but let's be careful here
     argv[0] = new char[path.length() + 1];
     strcpy(argv[0], path.c_str());

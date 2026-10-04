@@ -27,7 +27,7 @@ struct ButtonState {bool pressed = false;};
 struct State {ButtonState up, down, left, right, select, start, a, b, c, d;};
 struct Controller {State state; State getState() {return state;}} controller;
 }
-struct App {nesmenu::Preferences preferences; nesmenu::DirectionFilter directionFilter;};
+struct App {nesmenu::Preferences preferences; nesmenu::DirectionFilter directionFilter, verticalFilter;};
 struct Driver {static App* app;};
 App app; App* Driver::app = &::app;
 struct Acquire {explicit Acquire(void*) {}};
@@ -47,7 +47,7 @@ void openSystemMenu() {
     for (bool button : inputState.forwarded) assert(!button);
     // Model the real modal all-buttons-release barrier.
     lilka::controller.state = lilka::State();
-    app.directionFilter.reset();
+    app.directionFilter.reset(); app.verticalFilter.reset();
     resetInputState();
 }
 }
@@ -90,9 +90,17 @@ int main() {
     s = lilka::State(); osd_getinput();
     app.preferences.precisionMode = true; s.left.pressed = true; s.down.pressed = true; now = 0;
     osd_getinput(); assert(inputState.forwarded[2] && inputState.forwarded[1]);
-    now = 20; osd_getinput(); assert(!inputState.forwarded[2] && inputState.forwarded[1]); // Down untouched
+    now = 20; osd_getinput(); assert(!inputState.forwarded[2] && !inputState.forwarded[1]); // both axes suppressed
     now = 250; osd_getinput(); assert(inputState.forwarded[2] && inputState.forwarded[1]);
-    puts("Actual OSD input: solitary/chord consumption/turbo/precision/Down tests PASS");
+    for (int d = 0; d < 4; ++d) {
+        s = lilka::State(); app.directionFilter.reset(); app.verticalFilter.reset();
+        lilka::ButtonState* dirs[] = {&s.up, &s.down, &s.left, &s.right};
+        dirs[d]->pressed = true; now = UINT32_MAX - 100;
+        osd_getinput(); assert(inputState.forwarded[d]);
+        now = 148; osd_getinput(); assert(!inputState.forwarded[d]);
+        now = 149; osd_getinput(); assert(inputState.forwarded[d]);
+    }
+    puts("Actual OSD input: solitary/chord consumption/turbo/four-direction precision tests PASS");
 }
 '''
 with tempfile.TemporaryDirectory(prefix="keira-nesmenu-input-") as tmp:

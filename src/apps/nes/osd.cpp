@@ -183,9 +183,11 @@ void osd_getinput(void) {
     int direction = Driver::app->directionFilter.update(
         state.left.pressed, state.right.pressed, millis(), Driver::app->preferences
     );
+    int vertical =
+        Driver::app->verticalFilter.update(state.up.pressed, state.down.pressed, millis(), Driver::app->preferences);
     const bool desiredStates[JOYPAD_EVENT_COUNT] = {
-        state.up.pressed,
-        state.down.pressed,
+        Driver::app->preferences.precisionMode ? vertical < 0 : state.up.pressed,
+        Driver::app->preferences.precisionMode ? vertical > 0 : state.down.pressed,
         Driver::app->preferences.precisionMode ? direction < 0 : state.left.pressed,
         Driver::app->preferences.precisionMode ? direction > 0 : state.right.pressed,
         selectTap,
@@ -452,6 +454,7 @@ void openSystemMenu() {
     NesApp::SystemAction action = Driver::app->showSystemMenu();
     Driver::app->waitForRelease();
     resetInputState();
+    Driver::app->clearGameCanvases();
     if (action == NesApp::SystemAction::Exit) {
         inputState.exitRequested = true;
         prepareRuntimeShutdown();

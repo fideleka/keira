@@ -46,6 +46,15 @@ private:
     int direction = 0;
     uint32_t startedAt = 0;
 };
+inline bool turboPulse(bool pressed, uint8_t& frame) {
+    if (!pressed) {
+        frame = 0;
+        return false;
+    }
+    bool pulse = ((frame / 2) % 2) == 0;
+    ++frame;
+    return pulse;
+}
 class ReleaseGate {
 public:
     bool blocked(bool anyPressed) {

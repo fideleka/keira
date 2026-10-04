@@ -9,12 +9,12 @@ Select+Start screenshot/2-second exit gesture is replaced, not duplicated.
 Select+C save and Select+D load remain; ambiguous Select+C+D is consumed until a
 fresh Select press. Menu A activates, B returns/resumes; directions navigate.
 
-Menu: Resume, Controls, Turbo A (C), Turbo B (D), Save state, Load state,
-Screenshot, Reset (Cancel-first confirmation), Exit to launcher.
+Menu: Resume, Screenshot, Controls, Turbo A (C), Turbo B (D), Save state, Load state,
+Reset (Cancel-first confirmation), Exit to launcher.
 State/reset/screenshot actions close the menu and resume. Reset is a soft reset.
 Existing state handlers and state file format/names are unchanged.
 
-Precision mode defaults OFF. When ON it changes **only Left/Right**:
+Precision mode defaults OFF. When ON it changes **all four D-pad directions**:
 
 1. New direction immediately forwards a short press (one OSD input sample).
 2. Continued physical hold is suppressed until the initial delay (default 250ms).
@@ -25,7 +25,7 @@ The input sampling interval depends on rendered frames/frame skipping, so the
 initial short press can span more than one emulated frame. The game still owns
 its repeat/DAS logic: **its inherent additional repeat delay starts after the
 continuous hold reaches it**. This feature does not bypass game-specific delay.
-Down and Up are unchanged. Controls provides -50/+50ms adjustments bounded to
+Horizontal and vertical axes have independent timing, so diagonals work. Controls provides -50/+50ms adjustments bounded to
 50–1000ms; hand-edited valid values between these limits are also accepted.
 
 Turbo A/B default ON to preserve existing C/D functionality. They enable or
@@ -54,8 +54,16 @@ The chord, every submenu boundary, confirmation, and resume are separated by a
 sleeping **all physical buttons released** gate; button edge state, turbo phases,
 and direction timing are cleared. Holding menu A, a direction, or only one
 chord button cannot leak into gameplay or activate the next modal page.
-Screenshot requests are deferred until the next game blit, rather than capturing
-the menu; the existing screenshot service performs capture asynchronously.
+Screenshot is the second entry, visible without scrolling. SDK Menu displays only
+five entries (itemsY=80, 32px rows), scrolling with Down/Up or Right/Left pages;
+Screenshot previously sat below the initial viewport. No competing shortcut added.
+The next complete game frame is copied before queueDraw swaps buffers. Encoding
+and file writing remain asynchronous, but cannot race a later menu/reset/exit.
+Busy/allocation failure produces an error toast. Both canvases are cleared at
+modal completion, and each game blit clears its entire canvas before drawing.
+This fixes untouched side borders and stale alternate double-buffer contents.
+Interlaced builds render complete game rows; physical display interlacing remains
+unchanged, so both fields settle over the next two presentations.
 
 ## Per-ROM preferences
 
@@ -107,7 +115,7 @@ Portable tests cover defaults, parser bounds/version/path, timing/reversal/
 release/wrap/reset, release gate and write/open/flush/rename failure preservation.
 The input harness compiles the actual OSD input code with event/controller shims:
 solitary Start/Select, Start-first safety, consumed/ambiguous save/load chords,
-no modal input leak, C turbo toggles, ordinary A and unchanged Down.
+no modal input leak, C turbo toggles, ordinary A and both precision axes.
 These shims do not prove real audio/timer scheduling or physical gameplay.
 
 ## Physical device acceptance checklist (NOT performed)
@@ -120,7 +128,7 @@ These shims do not prove real audio/timer scheduling or physical gameplay.
 - Leave menu open for at least 60s: game is frozen, audio silent, then resume
   without sped-up CPU frames/audio burst, watchdog reset, or heap loss. Repeat
   50 menu cycles and inspect task stack/heap watermarks.
-- Precision OFF unchanged. ON: initial short left/right moves once, pre-delay
+- Precision OFF unchanged. ON: initial short Up/Down/Left/Right moves once, pre-delay
   hold suppressed, after delay continuous game hold. Test reversal/release,
   both held, Down+Left, min/max delay. Allow game's own additional repeat delay.
 - C/D turbo each ON/OFF; ordinary A/B always work. Save/load quick chords still
@@ -134,3 +142,29 @@ These shims do not prove real audio/timer scheduling or physical gameplay.
   Inspect SD FAT promotion/rollback/backup recovery behavior separately.
 
 No ROMs/saves were altered during host testing. No flashing is authorized here.
+
+## GB/GBC parity
+
+Both extensions dispatch to common GameBoyApp and use EmulatorMenuApp shared
+paused UI/preferences. Same Select-first Start safety, solitary Select-on-release,
+C/D state chords and ambiguous-chord consumption as NES. The old short screenshot /
+long exit gesture is replaced. Menu CPU/audio work is synchronous in the game task:
+no core frames or audio chunks execute while paused, DMA is zeroed, deadlines and
+input/turbo/filter state are reset on resume. Ordinary A/B remain normal held keys.
+C->A and D->B turbo default ON, two emulated frames on / two off, including skipped
+LCD frames. The active-low adapter and core/save formats remain unchanged.
+Reset calls the existing Gnuboy soft-reset API without recreating a cartridge or
+writing launch history. Battery saves stay ROM.sav, snapshots ROM.ss0;
+preferences replace only the final extension with .conf, same version 1 keys and
+protected FAT backup recovery. Precision defaults OFF, delay 250ms, both turbo ON.
+Frameskip is explicit menu AUTO/OFF (session-only, not an extra version-1 key).
+AUTO remains the device-accepted default: 16743us deadlines, 1500us tolerance,
+at most two consecutive LCD skips, CPU/audio always run. This checkout had no C
+frameskip toggle to retain; C is now turbo and never changes speed implicitly.
+GameBoy keeps its 240x216 bounded presentation, with all canvas pixels regenerated.
+
+Additional physical checks: repeat checklist for .gb and .gbc; verify RGB palettes,
+active-low controls, C/D cadence during automatic skips, AUTO default speed/audio,
+manual OFF, .sav battery persistence and .ss0 state roundtrip, reset without history
+writes, 60-second silent pause/no catchup, and screenshot then immediate reopen /
+exit still saves the copied game frame. No physical checks or flashing performed.

@@ -14,6 +14,7 @@ typedef void (*GbDrawLine)(void* context, const uint8_t* pixels, uint8_t line, b
 
 // The ROM buffer must remain valid until gbcore_destroy().
 GbCore* gbcore_create(const uint8_t* rom, size_t rom_size, GbDrawLine draw, void* context);
+void gbcore_reset(GbCore* core);
 void gbcore_destroy(GbCore* core);
 size_t gbcore_save_size(GbCore* core);
 void gbcore_set_save(GbCore* core, uint8_t* data, size_t size);

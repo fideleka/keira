@@ -8,8 +8,8 @@
 #include <gnuboy.h>
 #include <hw.h>
 
-#define GB_FRAME_WIDTH 160
-#define GB_FRAME_HEIGHT 144
+#define GB_FRAME_WIDTH           160
+#define GB_FRAME_HEIGHT          144
 #define GB_AUDIO_CAPACITY_FRAMES 640
 
 struct GbCore {
@@ -119,12 +119,12 @@ static bool valid_state_file(const char* path) {
     const bool read_ok = fread(header, 1, sizeof(header), file) == sizeof(header);
     fclose(file);
     if (!read_ok || memcmp(header, "GbSs", 4) != 0) return false;
-    const uint32_t version = (uint32_t)header[4] | ((uint32_t)header[5] << 8) |
-                             ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
+    const uint32_t version =
+        (uint32_t)header[4] | ((uint32_t)header[5] << 8) | ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
     if (version != 0x107) return false; // Gnuboy SAVE_VERSION.
     for (size_t offset = 8; offset < sizeof(header); offset += 8) {
-        if (header[offset] == 0 && header[offset + 1] == 0 && header[offset + 2] == 0 &&
-            header[offset + 3] == 0) return true;
+        if (header[offset] == 0 && header[offset + 1] == 0 && header[offset + 2] == 0 && header[offset + 3] == 0)
+            return true;
     }
     return false;
 }
@@ -139,6 +139,12 @@ bool gbcore_load_state(GbCore* core, const char* path) {
     core->last_pad = -1; // Saved pad bits must not suppress the next physical update.
     memset(core->indexed_frame, 0, GB_FRAME_WIDTH * GB_FRAME_HEIGHT);
     return true;
+}
+
+void gbcore_reset(GbCore* core) {
+    gnuboy_reset(false);
+    core->last_pad = -1;
+    memset(core->indexed_frame, 0, GB_FRAME_WIDTH * GB_FRAME_HEIGHT);
 }
 
 void gbcore_set_buttons(GbCore* core, uint8_t buttons) {
