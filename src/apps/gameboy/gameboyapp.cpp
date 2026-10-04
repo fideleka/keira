@@ -27,7 +27,7 @@ uint16_t blend565(uint16_t a, uint16_t b) {
 } // namespace
 
 GameBoyApp::GameBoyApp(const String& path) :
-    EmulatorMenuApp("Game Boy", path, "GB/GBC paused"),
+    EmulatorMenuApp("Game Boy", path, K_S_EMU_GB_PAUSED),
     romPath(path),
     savePath(path + ".sav"),
     statePath(path + ".ss0") {
@@ -289,7 +289,7 @@ void GameBoyApp::run() {
 #if LILKA_VERSION == 2
                 if (audioReady) esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
 #endif
-                const auto action = showSystemMenu();
+                const auto action = holdExitRequested() ? SystemAction::Exit : showSystemMenu();
                 waitForRelease();
                 clearGameCanvases();
                 startWasPressed = startGameActive = selectWasPressed = selectConsumed = false;
@@ -298,10 +298,10 @@ void GameBoyApp::run() {
                 if (action == SystemAction::Exit) break;
                 if (action == SystemAction::Reset) gbcore_reset(core);
                 if (action == SystemAction::Save) {
-                    if (!saveState()) showNotice("State save failed");
+                    if (!saveState()) showNotice(K_S_GB_STATE_SAVE_ERROR);
                 }
                 if (action == SystemAction::Load) {
-                    if (!loadState()) showNotice("State load failed");
+                    if (!loadState()) showNotice(K_S_GB_STATE_LOAD_ERROR);
                 }
                 clearGameCanvases();
                 screenshotOnNextFrame = action == SystemAction::Screenshot;

@@ -2,15 +2,17 @@
 
 ## Controls and defaults
 
-Press **Select, then Start** (or both in the same controller sample) to pause and
-open the existing Lilka Menu widget. Start-first stays a game Start press, just
+Press **Select, then Start** (or both in the same controller sample) to pause.
+Release either before two seconds to open the menu; hold both for two seconds
+to exit directly to Keira. The game remains paused during chord arbitration. Start-first stays a game Start press, just
 like the previous OSD; a solitary Select is still a short tap on release. The old
-Select+Start screenshot/2-second exit gesture is replaced, not duplicated.
+Select+Start screenshot gesture is replaced; two-second exit is restored.
 Select+C save and Select+D load remain; ambiguous Select+C+D is consumed until a
 fresh Select press. Menu A activates, B returns/resumes; directions navigate.
 
-Menu: Resume, Screenshot, Controls, Turbo A (C), Turbo B (D), Save state, Load state,
-Reset (Cancel-first confirmation), Exit to launcher.
+Menu first page: Resume, Screenshot, Exit to Keira, Controls, More actions.
+All five fit the SDK viewport. More actions contains Save/Load state, Turbo A/B,
+Reset (Cancel-first confirmation), and GB/GBC Frameskip; Down/Up scroll it.
 State/reset/screenshot actions close the menu and resume. Reset is a soft reset.
 Existing state handlers and state file format/names are unchanged.
 
@@ -122,8 +124,8 @@ These shims do not prove real audio/timer scheduling or physical gameplay.
 
 - Launch Magic Jewelry and an action game; verify config-free defaults and
   ordinary A/B/Up/Down/Select/Start are unchanged.
-- Select-first Start opens menu immediately; hold both for >2s: no old exit or
-  screenshot. Start-first remains game Start. Hold extra A/direction at entry
+- Select-first Start pauses immediately; short release opens menu, hold both
+  for >=2s exits cleanly without screenshot. Start-first remains game Start. Hold extra A/direction at entry
   and exit: no game leak, accidental submenu activation, or stuck joypad.
 - Leave menu open for at least 60s: game is frozen, audio silent, then resume
   without sped-up CPU frames/audio burst, watchdog reset, or heap loss. Repeat
@@ -147,8 +149,7 @@ No ROMs/saves were altered during host testing. No flashing is authorized here.
 
 Both extensions dispatch to common GameBoyApp and use EmulatorMenuApp shared
 paused UI/preferences. Same Select-first Start safety, solitary Select-on-release,
-C/D state chords and ambiguous-chord consumption as NES. The old short screenshot /
-long exit gesture is replaced. Menu CPU/audio work is synchronous in the game task:
+C/D state chords and ambiguous-chord consumption as NES. The old short screenshot gesture is replaced by menu-on-release; long hold exits. Menu CPU/audio work is synchronous in the game task:
 no core frames or audio chunks execute while paused, DMA is zeroed, deadlines and
 input/turbo/filter state are reset on resume. Ordinary A/B remain normal held keys.
 C->A and D->B turbo default ON, two emulated frames on / two off, including skipped
@@ -168,3 +169,24 @@ active-low controls, C/D cadence during automatic skips, AUTO default speed/audi
 manual OFF, .sav battery persistence and .ss0 state roundtrip, reset without history
 writes, 60-second silent pause/no catchup, and screenshot then immediate reopen /
 exit still saves the copied game frame. No physical checks or flashing performed.
+
+## Exit/discoverability/localization follow-up
+
+The initial menu had nine rows but Lilka Menu exposes only five at once. Both
+Screenshot and Exit were below the initial viewport; scrolling existed, but there
+was no obvious exit on page one. Root menu now has exactly five rows, with Exit
+third and Screenshot second. Hold-to-exit and explicit menu Exit use identical
+existing orderly NES shutdown / GB battery-save cleanup paths. Start-first remains
+ordinary gameplay Start; consumed/ambiguous state chords cannot become menu/exit.
+No screenshot is requested on long exit or Reset. A short chord does not forward
+Start/Select to gameplay; release gates consume remaining physical buttons.
+
+Every shared menu/options/confirmation/config notice, status postfix and paused
+title uses K_S_EMU_* localization keys. Ukrainian (default) and English headers
+contain the complete same key set; no other locales exist in this checkout.
+Run python3 tests/menu_access.py for actual shared UI action routing, five-entry
+accessibility, cancel-first reset, short/long/rollover hold tests in both locales
+(normal and ASan/UBSan), plus the repository localization consistency gate.
+Physical follow-up: in Ukrainian and English, confirm first-page Screenshot and
+Exit visible, short release opens menu and >=2s chord exits NES/.gb/.gbc, with
+no stray screenshots or game Start/Select, and long exit preserves GB battery RAM.

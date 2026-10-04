@@ -1,5 +1,6 @@
 #include "systemmenu.h"
 #include "keira/keira.h"
+#include "keira/keira_lang.h"
 
 namespace {
 bool anyPressed(const lilka::State& state) {
@@ -19,7 +20,7 @@ void EmulatorMenuApp::waitForRelease() {
 void EmulatorMenuApp::showNotice(const String& title) {
     waitForRelease();
     lilka::Menu notice(title);
-    notice.addItem("Continue (A)");
+    notice.addItem(K_S_EMU_CONTINUE);
     do {
         notice.update();
         notice.draw(canvas);
@@ -31,7 +32,7 @@ void EmulatorMenuApp::showNotice(const String& title) {
 void EmulatorMenuApp::loadPreferences() {
     char path[nesmenu::MAX_PATH_BYTES];
     if (!nesmenu::configPath(romConfigPath.c_str(), path, sizeof(path))) {
-        configWarning = "Config path too long";
+        configWarning = K_S_EMU_CONFIG_PATH;
     } else {
         configFile = path;
         auto result = nesmenu::loadConfig(path, preferences);
@@ -42,16 +43,16 @@ void EmulatorMenuApp::loadPreferences() {
         if (backupResult != nesmenu::ConfigResult::Missing) {
             if (result == nesmenu::ConfigResult::Missing && backupResult == nesmenu::ConfigResult::Ok)
                 preferences = recovered;
-            configWarning = "Config backup exists; writes blocked";
+            configWarning = K_S_EMU_CONFIG_BACKUP;
         } else if (result != nesmenu::ConfigResult::Ok && result != nesmenu::ConfigResult::Missing) {
-            configWarning = result == nesmenu::ConfigResult::Unsupported ? "Config version unsupported; defaults"
-                            : result == nesmenu::ConfigResult::Malformed ? "Config malformed/oversized; defaults"
-                                                                         : "Config unreadable; defaults";
-            lilka::serial.err("Emulator config load failed (%d): %s", int(result), configFile.c_str());
+            configWarning = result == nesmenu::ConfigResult::Unsupported ? K_S_EMU_CONFIG_VERSION
+                            : result == nesmenu::ConfigResult::Malformed ? K_S_EMU_CONFIG_INVALID
+                                                                         : K_S_EMU_CONFIG_IO;
+            lilka::serial.err(K_S_EMU_CONFIG_LOAD_LOG, int(result), configFile.c_str());
         }
     }
     if (configWarning.length()) {
-        lilka::serial.err("Emulator: %s", configWarning.c_str());
+        lilka::serial.err(K_S_EMU_CONFIG_LOG, configWarning.c_str());
         showNotice(configWarning);
     }
 }
@@ -62,8 +63,8 @@ void EmulatorMenuApp::savePreferences() {
     auto result =
         configFile.length() ? nesmenu::saveConfig(configFile.c_str(), preferences) : nesmenu::ConfigResult::IoError;
     if (result != nesmenu::ConfigResult::Ok) {
-        configWarning = "Config NOT saved; session only";
-        lilka::serial.err("Emulator config write refused/failed (%d): %s", int(result), configFile.c_str());
+        configWarning = K_S_EMU_CONFIG_UNSAVED;
+        lilka::serial.err(K_S_EMU_CONFIG_WRITE_LOG, int(result), configFile.c_str());
         showNotice(configWarning);
     } else {
         configWarning = "";
@@ -73,22 +74,14 @@ void EmulatorMenuApp::savePreferences() {
 EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
     waitForRelease();
     lilka::Menu menu(menuTitle);
-    menu.addItem("Resume");
-    menu.addItem("Screenshot");
-    menu.addItem("Controls");
-    menu.addItem("Turbo A (C)");
-    menu.addItem("Turbo B (D)");
-    menu.addItem("Save state");
-    menu.addItem("Load state");
-    menu.addItem("Reset...");
-    menu.addItem("Exit to launcher");
-    if (hasFrameskipSetting) menu.addItem("Frameskip");
+    // SDK Menu has five visible rows. Keep every escape/capture action on page one.
+    menu.addItem(K_S_EMU_RESUME);
+    menu.addItem(K_S_EMU_SCREENSHOT);
+    menu.addItem(K_S_EMU_EXIT);
+    menu.addItem(K_S_EMU_CONTROLS);
+    menu.addItem(K_S_EMU_MORE);
     menu.addActivationButton(lilka::Button::B);
     while (true) {
-        menu.setItem(3, "Turbo A (C)", nullptr, lilka::colors::White, preferences.turboA ? "ON" : "OFF");
-        menu.setItem(4, "Turbo B (D)", nullptr, lilka::colors::White, preferences.turboB ? "ON" : "OFF");
-        if (hasFrameskipSetting)
-            menu.setItem(9, "Frameskip", nullptr, lilka::colors::White, automaticFrameskip ? "AUTO" : "OFF");
         menu.update();
         menu.draw(canvas);
         queueDraw();
@@ -98,19 +91,23 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
         switch (menu.getCursor()) {
             case 0:
                 return SystemAction::Resume;
-            case 2: {
-                lilka::Menu controls("Controls");
-                controls.addItem("Precision D-pad");
-                controls.addItem("Delay -50ms");
-                controls.addItem("Delay +50ms");
-                controls.addItem("Back");
+            case 3: {
+                lilka::Menu controls(K_S_EMU_CONTROLS);
+                controls.addItem(K_S_EMU_PRECISION);
+                controls.addItem(K_S_EMU_DELAY_MINUS);
+                controls.addItem(K_S_EMU_DELAY_PLUS);
+                controls.addItem(K_S_EMU_BACK);
                 controls.addActivationButton(lilka::Button::B);
                 bool done = false;
                 while (!done) {
                     controls.setItem(
-                        0, "Precision D-pad", nullptr, lilka::colors::White, preferences.precisionMode ? "ON" : "OFF"
+                        0,
+                        K_S_EMU_PRECISION,
+                        nullptr,
+                        lilka::colors::White,
+                        preferences.precisionMode ? K_S_EMU_ON : K_S_EMU_OFF
                     );
-                    controls.setTitle(String("D-pad delay: ") + String(preferences.directionDelayMs) + "ms");
+                    controls.setTitle(StringFormat(K_S_EMU_DELAY_FMT, unsigned(preferences.directionDelayMs)));
                     controls.update();
                     controls.draw(canvas);
                     queueDraw();
@@ -136,39 +133,86 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
                 }
                 break;
             }
-            case 3:
-                preferences.turboA = !preferences.turboA;
-                savePreferences();
-                break;
-            case 4:
-                preferences.turboB = !preferences.turboB;
-                savePreferences();
-                break;
-            case 5:
-                return SystemAction::Save;
-            case 6:
-                return SystemAction::Load;
+            case 2:
+                return SystemAction::Exit;
             case 1:
                 return SystemAction::Screenshot;
-            case 7: {
-                lilka::Menu confirm("Reset game?");
-                confirm.addItem("Cancel");
-                confirm.addItem("Reset");
-                confirm.addActivationButton(lilka::Button::B);
-                do {
-                    confirm.update();
-                    confirm.draw(canvas);
+            case 4: {
+                lilka::Menu actions(K_S_EMU_MORE);
+                actions.addItem(K_S_EMU_SAVE);
+                actions.addItem(K_S_EMU_LOAD);
+                actions.addItem(K_S_EMU_TURBO_A);
+                actions.addItem(K_S_EMU_TURBO_B);
+                actions.addItem(K_S_EMU_RESET);
+                if (hasFrameskipSetting) actions.addItem(K_S_EMU_FRAMESKIP);
+                actions.addItem(K_S_EMU_BACK);
+                actions.addActivationButton(lilka::Button::B);
+                bool done = false;
+                while (!done) {
+                    actions.setItem(
+                        2, K_S_EMU_TURBO_A, nullptr, lilka::colors::White, preferences.turboA ? K_S_EMU_ON : K_S_EMU_OFF
+                    );
+                    actions.setItem(
+                        3, K_S_EMU_TURBO_B, nullptr, lilka::colors::White, preferences.turboB ? K_S_EMU_ON : K_S_EMU_OFF
+                    );
+                    if (hasFrameskipSetting)
+                        actions.setItem(
+                            5,
+                            K_S_EMU_FRAMESKIP,
+                            nullptr,
+                            lilka::colors::White,
+                            automaticFrameskip ? K_S_EMU_AUTO : K_S_EMU_OFF
+                        );
+                    actions.update();
+                    actions.draw(canvas);
                     queueDraw();
-                } while (!confirm.isFinished());
-                waitForRelease();
-                if (confirm.getButton() != lilka::Button::B && confirm.getCursor() == 1) return SystemAction::Reset;
+                    if (!actions.isFinished()) continue;
+                    waitForRelease();
+                    int choice = actions.getCursor();
+                    if (actions.getButton() == lilka::Button::B || choice == (hasFrameskipSetting ? 6 : 5)) {
+                        done = true;
+                        continue;
+                    }
+                    if (choice == 0) return SystemAction::Save;
+                    if (choice == 1) return SystemAction::Load;
+                    if (choice == 2) {
+                        preferences.turboA = !preferences.turboA;
+                        savePreferences();
+                    }
+                    if (choice == 3) {
+                        preferences.turboB = !preferences.turboB;
+                        savePreferences();
+                    }
+                    if (choice == 5) automaticFrameskip = !automaticFrameskip;
+                    if (choice == 4) {
+                        lilka::Menu confirm(K_S_EMU_RESET_CONFIRM);
+                        confirm.addItem(K_S_EMU_CANCEL);
+                        confirm.addItem(K_S_EMU_RESET);
+                        confirm.addActivationButton(lilka::Button::B);
+                        do {
+                            confirm.update();
+                            confirm.draw(canvas);
+                            queueDraw();
+                        } while (!confirm.isFinished());
+                        waitForRelease();
+                        if (confirm.getButton() != lilka::Button::B && confirm.getCursor() == 1)
+                            return SystemAction::Reset;
+                    }
+                }
                 break;
             }
-            case 8:
-                return SystemAction::Exit;
-            case 9:
-                automaticFrameskip = !automaticFrameskip;
-                break;
         }
+    }
+}
+
+// A Select-first Start press freezes gameplay immediately. Release either before
+// two seconds opens menu; holding both exits. Wait gate consumes remaining keys.
+bool EmulatorMenuApp::holdExitRequested() {
+    const uint32_t began = millis();
+    while (true) {
+        const auto state = lilka::controller.getState();
+        if (!state.select.pressed || !state.start.pressed) return false;
+        if (uint32_t(millis() - began) >= 2000) return true;
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

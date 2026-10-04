@@ -7,6 +7,7 @@
 #include "keira/utils/acquire.h"
 #include "services/screenshot/request.h"
 #include "driver.h"
+#include "keira/keira_lang.h"
 
 #define OSD_OK          0
 #define OSD_INIT_FAILED -1
@@ -431,7 +432,7 @@ void openSystemMenu() {
     releaseJoypad();
     SemaphoreHandle_t stopped = xSemaphoreCreateBinary();
     if (!stopped) {
-        lilka::serial.err("NES menu unavailable: timer barrier allocation failed");
+        lilka::serial.err(K_S_EMU_MENU_UNAVAILABLE);
         return; // chord already consumed; keep emulator running safely
     }
     if (timer) {
@@ -451,7 +452,8 @@ void openSystemMenu() {
         if (soundInitialized) i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
     }
     Driver::app->directionFilter.reset();
-    NesApp::SystemAction action = Driver::app->showSystemMenu();
+    NesApp::SystemAction action =
+        Driver::app->holdExitRequested() ? NesApp::SystemAction::Exit : Driver::app->showSystemMenu();
     Driver::app->waitForRelease();
     resetInputState();
     Driver::app->clearGameCanvases();

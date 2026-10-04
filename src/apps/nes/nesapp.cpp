@@ -1,6 +1,8 @@
 #include "nesapp.h"
+#include "keira/keira_lang.h"
 #include "apps/launcher/recentroms.h"
 #include "driver.h"
+#include "keira/keira_lang.h"
 
 extern "C" {
 #include <gui.h>
@@ -10,7 +12,7 @@ extern "C" {
 #include <vid_drv.h>
 }
 
-NesApp::NesApp(String path) : EmulatorMenuApp("NES", path, "NES paused") {
+NesApp::NesApp(String path) : EmulatorMenuApp("NES", path, K_S_EMU_NES_PAUSED) {
     setktStackSize(8192); // This task requires 4KB, but let's be careful here
     argv[0] = new char[path.length() + 1];
     strcpy(argv[0], path.c_str());

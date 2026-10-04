@@ -17,6 +17,7 @@ public:
     enum class SystemAction { Resume, Exit, Reset, Save, Load, Screenshot };
     SystemAction showSystemMenu();
     void waitForRelease();
+    bool holdExitRequested();
     void showNotice(const String& title);
     void clearGameCanvases() {
         canvas->fillScreen(lilka::colors::Black);
