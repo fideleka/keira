@@ -630,10 +630,3 @@
 #define K_S_EMU_GB_PAUSED "GB/GBC на паузі"
 #define K_S_EMU_MENU_UNAVAILABLE "Меню NES недоступне: помилка виділення бар’єра таймера"
 // clang-format on
-
-// Shared emulator menu
-#define K_S_EMU_CONFIG_MALFORMED "Хибна/завелика конфігурація; типові налаштування"
-#define K_S_EMU_CONFIG_READ "Конфігурацію не прочитано; типові налаштування"
-#define K_S_EMU_CONFIG_WRITE "Не збережено; лише на цей сеанс"
-#define K_S_EMU_DELAY_LESS "Затримка -50 мс"
-#define K_S_EMU_DELAY_MORE "Затримка +50 мс"

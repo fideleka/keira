@@ -638,10 +638,3 @@
 #define K_S_EMU_GB_PAUSED "GB/GBC paused"
 #define K_S_EMU_MENU_UNAVAILABLE "NES menu unavailable: timer barrier allocation failed"
 // clang-format on
-
-// Shared emulator menu
-#define K_S_EMU_CONFIG_MALFORMED "Config malformed/oversized; defaults"
-#define K_S_EMU_CONFIG_READ "Config unreadable; defaults"
-#define K_S_EMU_CONFIG_WRITE "Config NOT saved; session only"
-#define K_S_EMU_DELAY_LESS "Delay -50ms"
-#define K_S_EMU_DELAY_MORE "Delay +50ms"
