@@ -57,6 +57,9 @@ gb = method(ROOT / 'src/apps/gameboy/gameboyapp.cpp', 'void GameBoyApp::run()')
 # nonfatal in production. No simulated clean exit is needed to persist GB/GBC.
 gb = gb[:gb.index('    uint32_t exitStartedAt')] + '    throw PowerLoss();\n}\n'
 fixture = (ROOT / 'tests/emulator_history/host.cpp').read_text()
+# Preferences initialization is exercised separately by the menu tests.
+if 'void loadPreferences();' in (ROOT / 'src/apps/nes/nesapp.h').read_text():
+    nes = 'void NesApp::loadPreferences() {}' + nes
 fixture = fixture.replace('// NES_METHODS', nes).replace('// OSD_METHOD', osd)
 fixture = fixture.replace('// CORE_METHODS', core).replace('// GB_STARTUP', gb)
 with tempfile.TemporaryDirectory(prefix='keira-emulator-history-') as directory:
