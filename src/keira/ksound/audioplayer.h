@@ -28,6 +28,7 @@ public:
     void stop();
     void pause();
     void resume();
+    /// Application gain (0..4); output also follows live system master volume.
     void setGain(float gain);
     float getGain();
     bool isPaused();
@@ -53,7 +54,7 @@ private:
     volatile bool playing = false;
     volatile bool paused = false;
     volatile bool finished = false;
-    float gain = -1.0f;
+    float gain = 1.0f;
 
     void stopInternal();
 };

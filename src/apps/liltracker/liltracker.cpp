@@ -118,7 +118,8 @@ void LilTrackerApp::run() {
     char str[64];
 
     // Set initial volume
-    sequencer.setMasterVolume(0.25f * lilka::audio.getVolume() / 100);
+    // Track-local volume; the I2S sink applies the live system master.
+    sequencer.setMasterVolume(0.25f);
 
     while (1) {
         seq_state_t seqState = sequencer.getSeqState();

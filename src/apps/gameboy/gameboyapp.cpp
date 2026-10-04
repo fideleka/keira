@@ -141,7 +141,6 @@ bool GameBoyApp::initAudio() {
     };
     if (esp_i2s::i2s_driver_install(esp_i2s::I2S_NUM_0, &config, 0, nullptr) != ESP_OK) return false;
     audioReady = true;
-    volumeLevel = lilka::audio.getVolume();
     esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
     return true;
 #else
@@ -155,7 +154,7 @@ void GameBoyApp::writeAudio() {
     if (!audioReady || !frames) return;
 
     const size_t bytes = frames * 2 * sizeof(int16_t);
-    lilka::audio.adjustVolume(audioFrame, bytes, 16, volumeLevel);
+    lilka::audio.adjustVolume(audioFrame, bytes, 16, lilka::audio.getVolume());
     size_t written = 0;
     while (written < bytes) {
         size_t chunk = 0;

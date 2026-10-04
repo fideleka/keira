@@ -33,7 +33,6 @@ private:
     GbCore* core = nullptr;
     int16_t* audioFrame = nullptr;
     bool audioReady = false;
-    uint32_t volumeLevel = 100;
     bool drawnLines[144] = {};
     uint16_t drawnLineCount = 0;
 };

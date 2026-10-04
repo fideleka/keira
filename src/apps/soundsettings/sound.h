@@ -11,7 +11,9 @@ public:
 
 private:
     void saveSettings();
+    bool syncSystemVolume();
     int volumeLevel = lilka::audio.getVolume();
+    int observedSystemVolume = volumeLevel;
     bool startupSound = lilka::audio.getStartupSoundEnabled();
     bool startupBuzzer = lilka::buzzer.getStartupBuzzerEnabled();
     void run() override;

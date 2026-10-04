@@ -48,9 +48,21 @@ void I2SSink::start() {
 }
 
 size_t I2SSink::write(const int16_t* data, size_t size) {
-    size_t bytesWritten = 0;
-    esp_i2s::i2s_write(esp_i2s::I2S_NUM_0, data, size * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
-    return bytesWritten / sizeof(int16_t);
+    // Bounded scratch storage; do not modify the synth's const source buffer.
+    int16_t samples[128];
+    size_t total = 0;
+    while (total < size) {
+        const size_t count = size - total > 128 ? 128 : size - total;
+        memcpy(samples, data + total, count * sizeof(int16_t));
+        lilka::audio.adjustVolume(samples, count * sizeof(int16_t), 16, lilka::audio.getVolume());
+        size_t bytesWritten = 0;
+        const esp_err_t result = esp_i2s::i2s_write(
+            esp_i2s::I2S_NUM_0, samples, count * sizeof(int16_t), &bytesWritten, portMAX_DELAY
+        );
+        total += bytesWritten / sizeof(int16_t);
+        if (result != ESP_OK || bytesWritten != count * sizeof(int16_t)) break;
+    }
+    return total;
 }
 
 void I2SSink::stop() {
