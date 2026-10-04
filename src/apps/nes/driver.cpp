@@ -1,4 +1,5 @@
 #include "driver.h"
+#include "services/screenshot/request.h"
 
 NesApp* Driver::app;
 int16_t Driver::w, Driver::h, Driver::frame_x, Driver::frame_y, Driver::frame_x_offset, Driver::frame_width,
@@ -166,6 +167,10 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
     // Serial.println("Draw 2 took " + String(micros() - last_render) + "us");
 
     app->queueDraw();
+    if (app->screenshotOnNextFrame) {
+        app->screenshotOnNextFrame = false;
+        screenshot::request();
+    }
 }
 
 uint16 Driver::nesPalette[256];

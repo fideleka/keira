@@ -26,6 +26,7 @@ NesApp::~NesApp() {
 }
 
 void NesApp::run() {
+    loadPreferences();
     // Load the ROM
     Driver::setNesApp(this);
     const int result = nofrendo_main(1, argv);
