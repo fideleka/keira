@@ -46,7 +46,7 @@ private:
     // TopPanel (StatusBarApp)
     App* panel = NULL;
     SemaphoreHandle_t panelMtx = xSemaphoreCreateMutex();
-    bool volumeOverlayWasVisible = false; // render-task owned
+    App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
     // Used for capping framerate to A
     TickType_t lastFrameTick = xTaskGetTickCount();
 };

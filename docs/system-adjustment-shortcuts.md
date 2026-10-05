@@ -39,14 +39,14 @@ black panel with a double white border, 22px-thick progressbar (cyan fill), and
 including limit hits; opposite directions do not trigger feedback. Rotation uses
 current display dimensions. No font/cursor state is modified.
 
-The render task reads one coherent SDK RAM snapshot per 60Hz presentation tick,
-re-presents panel and foreground backCanvas under the existing canvas mutexes,
-then draws feedback directly on the physical display. While visible and on its
-expiry tick, this works even without a new queueDraw (paused/static screens).
-Interlaced apps use full presentation during that interval, then return to their
-normal field presentation. Only the feedback footprint is cleared, followed by
-source layers; uncovered fullscreen/letterbox margins restore to black. A dirty
-background is cleared before, not after, the panel and forces both layers to redraw.
+The render task reads one coherent SDK RAM snapshot per 60Hz presentation tick.
+The shared SDK transaction excludes the opaque feedback footprint from background
+clears and canvas transfers, preserving interlaced fields outside it. Changed
+feedback is rasterized into bounded RAM scanlines and sent through one LCD window;
+unchanged feedback is not resent. Static scenes send no LCD pixels. On expiry the
+retained statusbar/foreground layers and black letterbox margins are composed
+before restoring each affected pixel once, including paused/static screens. App
+switches, rotation and dirty backgrounds force appropriate outside-panel redraws.
 No app/front/back/screenshot canvas contains the overlay, and screenshots remain
 clean. NES customBlit and GB/GBC scanline framebuffers already submit via queueDraw;
 they need no emulator-side SPI drawing or overlay mutation.

@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Execute real SDK presentation and Keira render loop against pixel/lock stubs."""
+"""Execute production SDK/Keira presentation against pixel/lock stubs.
+
+Every LCD pixel write (bitmap, primitive, window/writePixels) is checked during
+active feedback and expiry: protected pixels must be final, written at most
+once, and never produced by LCD primitives. This is not merely a final-image
+comparison. Static unchanged feedback writes nothing; game refreshes retain
+field parity outside it. Production Display state is extracted from its header.
+Hardware timing/SPI library implementation are intentionally not simulated.
+"""
 from pathlib import Path
 import argparse
 import subprocess
@@ -27,12 +35,30 @@ prelude = r'''
 #include <vector>
 #include <cstdio>
 #include <algorithm>
+using std::min;using std::max;
 #include "volume_overlay.h"
 uint32_t now = 100;
 uint32_t millis() {return now;}
 int lockDepth=0;
-#define KMTX_LOCK(x) (++lockDepth)
-#define KMTX_UNLOCK(x) (--lockDepth)
+std::vector<uint16_t> expected;
+std::vector<int> touched;
+std::vector<int> allTouched;
+lilka::VolumeOverlayGeometry protectedRegion = {};
+int pixelWrites=0, primitiveWrites=0;
+void record(int x,int y,int width,uint16_t value,bool primitive){
+ ++pixelWrites;
+ if(!allTouched.empty())++allTouched.at(y*width+x);
+ const auto& g=protectedRegion;
+ if(x>=g.x && x<g.x+g.width && y>=g.y && y<g.y+g.height){
+  assert(!primitive);assert(value==expected.at(y*width+x));
+  assert(++touched.at(y*width+x)==1);
+ }
+}
+std::vector<int> held;
+void lock(int id){assert(held.empty() || held.back()<id);held.push_back(id);++lockDepth;}
+void unlock(int id){assert(!held.empty()&&held.back()==id);held.pop_back();--lockDepth;}
+#define KMTX_LOCK(x) ::lock(x)
+#define KMTX_UNLOCK(x) unlock(x)
 #define K_AMG_DBG
 #define MAX_FPS 60
 #define pdMS_TO_TICKS(x) (x)
@@ -66,11 +92,39 @@ struct Canvas:Surface,GFX<Canvas> {
 };
 struct Display:Surface,GFX<Display> {
  Display():Surface(280,240){}
- int normal=0,interlaced=0;
+ int normal=0,interlaced=0,rotation=0,wx=0,wy=0,ww=0,wh=0,cursor=0,writeDepth=0;
+ int getRotation(){return rotation;}
+ // PRODUCTION_DISPLAY_STATE
  void drawCanvas(Canvas*);void presentCanvas(Canvas*);void drawSystemOverlay();
- void drawCanvasInterlaced(Canvas* c,bool){assert(lockDepth>0);++interlaced;presentCanvas(c);}
- void draw16bitRGBBitmap(int x,int y,const uint16_t* p,int w,int h){
-  ++normal;Surface::draw16bitRGBBitmap(x,y,p,w,h);
+ bool prepareSystemOverlay(const VolumeOverlaySnapshot&,uint32_t);
+ void presentCanvasOutsideOverlay(Canvas*,int parity=-1);
+ void clearOutsideOverlay(uint16_t);void finishSystemOverlay(Canvas* const*,int);
+ bool systemOverlayNeedsTransfer() const;
+ void drawCanvasInterlaced(Canvas*,bool);
+ void startWrite(){assert(writeDepth++==0);}
+ void endWrite(){assert(--writeDepth==0);}
+ void writeAddrWindow(int x,int y,int w,int h){
+  assert(writeDepth==1);assert(x>=0&&y>=0&&x+w<=width()&&y+h<=height());
+  wx=x;wy=y;ww=w;wh=h;cursor=0;
+ }
+ void writePixels(uint16_t* p,int count){
+  assert(writeDepth==1);assert(cursor+count<=ww*wh);
+  for(int i=0;i<count;++i,++cursor){
+   int x=wx+cursor%ww,y=wy+cursor/ww;
+   record(x,y,w,p[i],false);pixels.at(y*w+x)=p[i];
+  }
+ }
+ void fillRect(int x,int y,int rw,int rh,uint16_t c){
+  ++primitiveWrites;
+  for(int j=y;j<y+rh;++j)for(int i=x;i<x+rw;++i){record(i,j,w,c,true);pixels.at(j*w+i)=c;}
+ }
+ void fillScreen(uint16_t c){fillRect(0,0,w,h,c);}
+ void drawRect(int x,int y,int rw,int rh,uint16_t c){
+  fillRect(x,y,rw,1,c);fillRect(x,y+rh-1,rw,1,c);fillRect(x,y,1,rh,c);fillRect(x+rw-1,y,1,rh,c);
+ }
+ void draw16bitRGBBitmap(int x,int y,const uint16_t* p,int rw,int rh){
+  ++normal;
+  for(int j=0;j<rh;++j)for(int i=0;i<rw;++i){record(x+i,y+j,w,p[j*rw+i],false);pixels.at((y+j)*w+x+i)=p[j*rw+i];}
  }
 } display;
 struct Audio {static VolumeOverlaySnapshot getVolumeOverlay();} audio;
@@ -81,7 +135,7 @@ struct {void log(const char*){}} serial;
 namespace AppFlags {constexpr int APP_FLAG_FULLSCREEN=1,APP_FLAG_INTERLACED=2;}
 struct App {
  lilka::Canvas* backCanvas;
- explicit App(lilka::Canvas* c):backCanvas(c){}
+ explicit App(lilka::Canvas* c):backCanvas(c){static int next=10;canvasMutex=next++;}
  int flags=0,frame=0,canvasMutex=0,state=0;
  bool backgroundDirty=false,redraw=true;
  int getState(){return state;}void resume(){state=0;}
@@ -92,7 +146,7 @@ struct Stop {};
 void vTaskDelayUntil(uint32_t*,int){assert(lockDepth==0);throw Stop();}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
- App* panel;int panelMtx=0;bool volumeOverlayWasVisible=false;uint32_t lastFrameTick=0;
+ App* panel;App* lastPresentedApp=nullptr;int panelMtx=1;uint32_t lastFrameTick=0;
  struct {uint32_t endTime=0;} toast;
  void threadsRun(){}void renderToast(lilka::Canvas*){assert(false);}
  void run();void renderToCanvas(lilka::Canvas*);
@@ -102,6 +156,7 @@ struct AppManager:ThreadManager {
 checks = r'''
 int main(){
  using namespace lilka;
+ static_assert(sizeof(OverlayStorage)==624, "Bounded presentation storage changed");
  for(auto dimensions : {std::pair<int,int>{280,240},{240,280}}){
   const int w=dimensions.first,h=dimensions.second;
   display=Display();display.w=w;display.h=h;display.pixels.assign(w*h,0);
@@ -119,13 +174,29 @@ int main(){
    app.flags=mode==0?0:AppFlags::APP_FLAG_FULLSCREEN;
    if(mode==3)app.flags|=AppFlags::APP_FLAG_INTERLACED;
    const auto source=app.backCanvas->pixels,panelSource=panelCanvas.pixels;
-   feedback.valid=false;manager.volumeOverlayWasVisible=false;app.redraw=true;panel.redraw=true;
+   feedback.valid=false;protectedRegion={};app.redraw=true;panel.redraw=true;
    app.backgroundDirty=true;manager.tick();const auto clean=display.pixels;
    // Paused: no queueDraw, yet overlay appears, changes, renews, and expires.
    for(int level : {0,1,5,50,100,135,-1}){
     now+=100;feedback.level=level;feedback.valid=true;feedback.adjustedAt=now;
-    const int interlaced=display.interlaced;manager.tick();
-    assert(display.interlaced==interlaced);
+    Surface finalFrame(w,h);finalFrame.pixels=clean;
+    drawVolumeOverlay(finalFrame,feedback,w,h,now);
+    expected=finalFrame.pixels;protectedRegion=g;touched.assign(w*h,0);pixelWrites=0;primitiveWrites=0;
+    const bool changed=!display.overlayActive || display.overlayLevel!=max(0,min(100,level));
+    manager.tick();
+    for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==(changed?1:0));
+    assert(primitiveWrites==0); // No LCD primitives used for overlay.
+    touched.assign(w*h,0);pixelWrites=0;manager.tick();assert(pixelWrites==0); // Static, unchanged.
+    // Both menu/statusbar and game refreshes may update outside, never the panel.
+    app.frame=level&1;app.redraw=true;panel.redraw=true;touched.assign(w*h,0);allTouched.assign(w*h,0);manager.tick();
+    for(auto n:touched)assert(n==0);
+    if(mode==3){
+     for(int y=0;y<h;++y)for(int x=0;x<w;++x){
+      const bool inside=x>=g.x&&x<g.x+g.width&&y>=g.y&&y<g.y+g.height;
+      assert(allTouched[y*w+x]==(!inside && y%2==app.frame%2 ? 1 : 0));
+     }
+    }
+    allTouched.clear();
     const int bounded=std::max(0,std::min(100,level));
     const int filled=(g.barWidth-4)*bounded/100;
     for(int x=0;x<g.barWidth-4;++x)
@@ -141,27 +212,91 @@ int main(){
     Canvas screenshot(0,0,w,h);manager.renderToCanvas(&screenshot);
     assert(screenshot.pixels==clean); // Screenshots never capture feedback.
    }
-   now=feedback.adjustedAt+1199;manager.tick();assert(manager.volumeOverlayWasVisible);
-   now++;manager.tick();assert(!manager.volumeOverlayWasVisible && display.pixels==clean);
+   now=feedback.adjustedAt+1199;touched.assign(w*h,0);pixelWrites=0;
+   manager.tick();assert(display.overlayActive && pixelWrites==0);
+   now++;expected=clean;touched.assign(w*h,0);manager.tick();
+   assert(!display.overlayActive && display.pixels==clean);
+   for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==1);
+   protectedRegion={};pixelWrites=0;manager.tick();assert(pixelWrites==0);
    assert(app.backCanvas->pixels==source);
   }
+  // Shared presentation: switch from a live menu to paused letterboxed game
+  // with no queued redraw/backgroundDirty. Identity invalidation redraws outside
+  // while leaving the cached opaque panel completely untouched.
+  app.flags=0;app.backCanvas=&full;app.backgroundDirty=true;feedback.valid=false;
+  protectedRegion={};manager.tick();
+  feedback.level=50;feedback.adjustedAt=now;feedback.valid=true;Surface overlayFrame(w,h);drawVolumeOverlay(overlayFrame,feedback,w,h,now);
+  expected=overlayFrame.pixels;protectedRegion=g;touched.assign(w*h,0);manager.tick();
+  App next(&gb);next.flags=AppFlags::APP_FLAG_FULLSCREEN;next.redraw=false;
+  manager.threads.back()=&next;touched.assign(w*h,0);manager.tick();for(auto n:touched)assert(n==0);
+  Canvas nextClean(0,0,w,h);manager.renderToCanvas(&nextClean);
+  next.backgroundDirty=true;touched.assign(w*h,0);manager.tick();for(auto n:touched)assert(n==0);
+  // Changed app and panel sources remain hidden beneath the unchanged overlay.
+  gb.fillScreen(0x6666);next.redraw=true;touched.assign(w*h,0);manager.tick();for(auto n:touched)assert(n==0);
+  manager.renderToCanvas(&nextClean);
+  now+=1200;expected=nextClean.pixels;touched.assign(w*h,0);manager.tick();assert(display.pixels==expected);
+  for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==1);
+  protectedRegion={};
+  // Overlapping layers: status panel visible in the uncovered portions of a
+  // bounded non-fullscreen app. Expiry must transmit the final composition only.
+  panelCanvas.h=h;panelCanvas.pixels.assign(w*h,0x1111);next.flags=0;next.backgroundDirty=true;
+  feedback.level=50;feedback.adjustedAt=now;feedback.valid=true;
+  expected=overlayFrame.pixels;protectedRegion=g;touched.assign(w*h,0);manager.tick();
+  manager.renderToCanvas(&nextClean);
+  now+=1200;expected=nextClean.pixels;touched.assign(w*h,0);manager.tick();assert(display.pixels==expected);
+  for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==1);
+  protectedRegion={};panelCanvas.h=24;panelCanvas.pixels.assign(w*24,0x1111);next.flags=AppFlags::APP_FLAG_FULLSCREEN;
+  // Same-size 180-degree rotation invalidates cached LCD coordinates/panel.
+  feedback.level=5;feedback.adjustedAt=now;feedback.valid=true;drawVolumeOverlay(overlayFrame,feedback,w,h,now);
+  expected=overlayFrame.pixels;protectedRegion=g;touched.assign(w*h,0);manager.tick();
+  display.rotation=2;touched.assign(w*h,0);manager.tick();
+  for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==1);
+  // Portrait/landscape rotation with resized/repositioned retained sources.
+  const int rw=h,rh=w;display.rotation=3;display.w=rw;display.h=rh;display.pixels.assign(rw*rh,0);
+  panelCanvas.w=rw;panelCanvas.pixels.assign(rw*24,0x1111);
+  gb.cx=(rw-160)/2;gb.cy=(rh-144)/2;
+  const auto rotatedG=volumeOverlayGeometry(rw,rh);Surface rotatedFrame(rw,rh);
+  drawVolumeOverlay(rotatedFrame,feedback,rw,rh,now);
+  expected=rotatedFrame.pixels;protectedRegion=rotatedG;touched.assign(rw*rh,0);manager.tick();
+  Canvas rotatedClean(0,0,rw,rh);manager.renderToCanvas(&rotatedClean);
+  now+=1200;expected=rotatedClean.pixels;touched.assign(rw*rh,0);manager.tick();assert(display.pixels==expected);
+  for(int y=rotatedG.y;y<rotatedG.y+rotatedG.height;++y)for(int x=rotatedG.x;x<rotatedG.x+rotatedG.width;++x)
+   assert(touched[y*rw+x]==1);
+  protectedRegion={};display=Display();display.w=w;display.h=h;display.pixels.assign(w*h,0);
   // Actual SDK full-frame presentation integrates automatically, without source writes.
   Canvas sdkCanvas(0,0,w,h);sdkCanvas.fillScreen(0x4444);const auto source=sdkCanvas.pixels;
   feedback.level=50;feedback.adjustedAt=now;feedback.valid=true;
-  display.drawCanvas(&sdkCanvas);assert(display.pixels!=source && sdkCanvas.pixels==source);
-  now+=1200;display.drawCanvas(&sdkCanvas);assert(display.pixels==source);
+  Surface sdkFinal(w,h);sdkFinal.pixels=source;drawVolumeOverlay(sdkFinal,feedback,w,h,now);
+  expected=sdkFinal.pixels;protectedRegion=g;touched.assign(w*h,0);
+  display.drawCanvas(&sdkCanvas);assert(display.pixels==expected && sdkCanvas.pixels==source);
+  touched.assign(w*h,0);display.drawCanvas(&sdkCanvas);for(auto n:touched)assert(n==0);
+  sdkCanvas.fillScreen(0x7777);touched.assign(w*h,0);display.drawCanvas(&sdkCanvas);
+  for(auto n:touched)assert(n==0);
+  assert(sdkCanvas.pixels==std::vector<uint16_t>(w*h,0x7777));
+  now+=1200;expected=sdkCanvas.pixels;touched.assign(w*h,0);display.drawCanvas(&sdkCanvas);assert(display.pixels==expected);
+  for(int y=g.y;y<g.y+g.height;++y)for(int x=g.x;x<g.x+g.width;++x)assert(touched[y*w+x]==1);
+  protectedRegion={};
   Canvas partial(0,0,100,100);partial.fillScreen(0x5555);
   feedback.adjustedAt=now;display.presentCanvas(&sdkCanvas);display.drawCanvas(&partial);
   assert(display.pixels[g.y*w+g.x]!=0xffff); // Partial presentation never opts in.
  }
  Surface tiny(95,79);feedback.adjustedAt=now;
  drawVolumeOverlay(tiny,feedback,95,79,now);for(auto p:tiny.pixels)assert(p==0);
- puts("Actual SDK presentation + Keira paused/menu/NES/GB/GBC/interlaced restoration, snapshots, geometry/bars PASS");
+ puts("Every LCD write: SDK + Keira static/menu/statusbar/NES/GB/GBC/interlace, expiry/switch/rotation/immutable sources PASS");
 }
 '''
+display_header = (sdk / "display.h").read_text()
+state = display_header[display_header.index("    static constexpr int overlayRowWidth"):
+                       display_header.index("    const void* splash;")]
+prelude = prelude.replace("// PRODUCTION_DISPLAY_STATE", state)
+prelude += "namespace lilka { struct OverlayStorage {\n" + state + "}; }\n"
+prelude = "#define LILKA_DISPLAY_WIDTH 240\n#define LILKA_DISPLAY_HEIGHT 280\n" + prelude
 code = function(sdk / "display.cpp", "void GFX<T>::drawCanvas(")
 code = "template <typename T>\n" + code
-for signature in ("void Display::presentCanvas(", "void Display::drawCanvas(", "void Display::drawSystemOverlay("):
+for signature in ("void Display::presentCanvas(", "void Display::drawCanvas(", "void Display::drawSystemOverlay(", "bool Display::prepareSystemOverlay(",
+                  "void Display::presentCanvasOutsideOverlay(", "void Display::clearOutsideOverlay(",
+                  "void Display::finishSystemOverlay(", "void Display::drawCanvasInterlaced(",
+                  "bool Display::systemOverlayNeedsTransfer("):
     code += "\n" + function(sdk / "display.cpp", signature)
 code = "namespace lilka {\n" + code + "\n}\n"
 for signature in ("void AppManager::run()", "void AppManager::renderToCanvas("):
@@ -177,3 +312,14 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
         subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk),
                         str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
+    # Prove guard sensitivity: a background transfer through the footprint must
+    # fail, even if finishSystemOverlay would leave a correct final framebuffer.
+    bad_code = code.replace("void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) {",
+                            "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
+    assert bad_code != code
+    (tmp / "test.cpp").write_text(prelude + bad_code + checks)
+    subprocess.run(["g++", "-std=c++11", "-I" + str(sdk), str(tmp / "test.cpp"),
+                    "-o", str(tmp / "test")], check=True)
+    rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
+    assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
+    print("Intermediate-write mutation rejected PASS; presentation state 624 bytes, zero heap")
