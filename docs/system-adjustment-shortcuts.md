@@ -35,7 +35,7 @@ a stale initial snapshot, while preserving unsaved local edits when master is un
 
 AppManager's existing display/render owner presents a 75%-width, centered 76px-high
 black panel with a double white border, 22px-thick progressbar (cyan fill), and
-unscaled regular SDK FONT_10x20 percent/MUTE text (10px character advance). Every shortcut tap/repeat renews the 1200ms timeout,
+unscaled regular SDK FONT_10x20 percent/localized mute text (10px character advance). Every shortcut tap/repeat renews the 1200ms timeout,
 including limit hits; opposite directions do not trigger feedback. Rotation uses
 current display dimensions. No font/cursor state is modified.
 
@@ -93,15 +93,31 @@ existing read-only ../lilka-sdk/lib/lilka/.pio/libdeps/v2/U8g2/src/clib dependen
 Use --u8g2 /existing/path/to/clib or U8G2_CLIB elsewhere; the test never
 creates .pio or fetches dependencies. Normal, ASan and UBSan runs compare
 regular text pixels with independent U8g2 rendering and a pinned M bitmap,
-including every digit, percent and MUTE, both orientations, guarded rows,
+including every digit, percent and Mute/Без звуку, both orientations, guarded rows,
 source/screenshot immutability and final-only LCD transfers. The intentional
 intermediate-write mutation must still fail.
 
-The persistent presentation state stays 624 bytes on the host (560-byte row).
+The persistent presentation state is 656 bytes on the host (560-byte row).
 The font context is 248 bytes on this 64-bit host, temporarily on the stack;
 there is no per-frame heap allocation or additional framebuffer. The existing
 font asset is 6979 bytes, referenced rather than copied into production source.
-A changed panel decodes at most four glyphs on each of its 20 text-band rows;
+A changed panel makes two bounded passes over at most 32 BMP glyphs
+(9 for Ukrainian mute) on each of its 20 text-band rows;
 unchanged feedback does no rasterization/transfer. The test prints a 1000-panel
 host timing, not an ESP32/SPI benchmark or embedded stack/flash size claim.
 Firmware builds, device timing and stack watermark checks remain unperformed.
+
+### Localized mute label
+
+VolumeOverlaySnapshot owns a 32-byte muteLabel array, defaulting to normal-case
+"Mute" for standalone SDK apps. Supply at most 31 UTF-8 bytes plus NUL in a copied
+snapshot before prepareSystemOverlay; no pointer lifetime dependency, heap, NVS,
+or application font/cursor changes. Keira uses K_S_VOLUME_MUTE through its existing
+compile-time keira_lang.h selector: default/LANG_UK "Без звуку", LANG_EN "Mute".
+The existing regular Cyrillic FONT_10x20 asset decodes BMP UTF-8 and centers using
+actual glyph advances. Invalid/truncated/non-BMP sequences stop safely, unsupported
+font glyphs retain U8g2's behavior, and over-wide labels clip inside the panel.
+Label-only changes at mute repaint even with unchanged volume; they never renew
+the 1200ms timeout. Non-mute percentage rendering is unaffected. The owned label
+adds 32 bytes per snapshot; persistent host Display state is 656 bytes (was 624).
+No firmware size, device stack watermark or SPI timing is claimed.
