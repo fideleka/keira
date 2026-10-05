@@ -24,7 +24,7 @@ enum {event_joypad1_up, event_joypad1_down, event_joypad1_left, event_joypad1_ri
 enum {INP_STATE_BREAK, INP_STATE_MAKE};
 namespace lilka {
 struct ButtonState {bool pressed = false;};
-struct State {ButtonState up, down, left, right, select, start, a, b, c, d;};
+struct State {ButtonState up, down, left, right, select, start, a, b, c, d; bool selectHeld=false, selectConsumed=false;};
 struct Controller {State state; State getState() {return state;}} controller;
 }
 struct App {nesmenu::Preferences preferences; nesmenu::DirectionFilter directionFilter, verticalFilter;};

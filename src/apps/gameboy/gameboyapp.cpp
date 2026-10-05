@@ -281,9 +281,11 @@ void GameBoyApp::run() {
     while (true) {
         const int64_t frameStart = esp_timer_get_time();
         const lilka::State state = lilka::controller.getState();
+        if (state.selectConsumed) selectConsumed = true;
         if (state.start.pressed && !startWasPressed) {
-            startGameActive = !state.select.pressed;
-            if (!startGameActive && !selectConsumed && !state.c.pressed && !state.d.pressed) {
+            startGameActive = !(state.select.pressed || state.selectHeld);
+            if (!startGameActive && (!selectConsumed || state.selectConsumed) &&
+                !state.c.pressed && !state.d.pressed) {
                 gbcore_set_buttons(core, 0xFF);
 #if LILKA_VERSION == 2
                 if (audioReady) esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
