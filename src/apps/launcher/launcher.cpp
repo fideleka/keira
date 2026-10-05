@@ -18,6 +18,7 @@
 #include "services/web/web.h"
 #include "services/mdns/mdns.h"
 #include "services/clock/clock.h"
+#include "services/script/script.h"
 // Demos:
 #include "apps/demos/lines/lines.h"
 #include "apps/demos/disk/disk.h"
@@ -39,7 +40,7 @@
 #include "apps/gpiomanager/gpiomanager.h"
 #include "apps/tamagotchi/tamagotchi.h"
 #include "apps/lua/luarunner.h"
-#include "apps/mjs/mjsrunner.h"
+#include "apps/lua/luawallpaper.h"
 #include "apps/nes/nesapp.h"
 #include "apps/gameboy/gameboyapp.h"
 #include "apps/weather/weather.h"
@@ -50,6 +51,8 @@
 #include "apps/pastebin/pastebinApp.h"
 #include "apps/usbdrive/usbdrive.h"
 #include "apps/soundsettings/sound.h"
+#include "apps/partmanager/partmanager.h"
+#include "apps/keiraupdate/keiraupdate.h"
 
 // Icons
 #include "apps/icons/demos.h"
@@ -184,12 +187,13 @@ bool utcOffsetFromTimezone(const String& timezone, int16_t& offsetMinutes) {
     return true;
 }
 } // namespace
-// Home screen wallpaper, first existing one is used
+// Home screen wallpaper, Lua script takes priority over images, first existing image is used
+static const char* const WALLPAPER_LUA_PATH = "/sd/wallpaper.lua";
 static const char* const WALLPAPER_PATHS[] =
     {"/sd/wallpaper.gif", "/sd/wallpaper.png", "/sd/wallpaper.jpg", "/sd/wallpaper.jpeg", "/sd/wallpaper.bmp"};
 
-LauncherApp::LauncherApp() : App("Launcher") {
-    setktStackSize(8192); // Yeah, this one is heavy as fuck
+LauncherApp::LauncherApp() : App("Launcher"), autorunEnabled(ScriptService::getAutorunEnabled()) {
+    setktStackSize(16384); // Heavy run() frame plus Lua wallpaper modules (http, fs, socket)
 }
 
 void LauncherApp::run() {
@@ -332,7 +336,13 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_SD,
                         {
-                            ITEM::MENU(K_S_PARTITION_TABLE, [this]() { this->partitions(); }),
+                            ITEM::MENU(
+                                K_S_PARTITION_TABLE,
+                                [this]() {
+                                    this->runApp<PartManagerApp>();
+                                    ;
+                                }
+                            ),
                             ITEM::MENU(K_S_LAUNCHER_SD_FORMAT, [this]() { this->formatSD(); }),
                             ITEM::MENU(K_S_LAUNCHER_SD_SPEED, [this]() { this->setSpiSDSpeed(); }),
                         }
@@ -549,6 +559,24 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                                     ),
                                 }
                             ),
+                            ITEM::SUBMENU(
+                                K_S_LAUNCHER_AUTORUN,
+                                {
+                                    ITEM::MENU(
+                                        K_S_STATUS,
+                                        [this]() {
+                                            autorunEnabled = !autorunEnabled;
+                                            ScriptService::setAutorunEnabled(autorunEnabled);
+                                        },
+                                        nullptr,
+                                        lilka::colors::White,
+                                        [this](void* item) {
+                                            lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                            menuItem->postfix = autorunEnabled ? K_S_ON : K_S_OFF;
+                                        }
+                                    ),
+                                }
+                            ),
                         }
                     ),
                     ITEM::SUBMENU(
@@ -671,6 +699,7 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                             ITEM::MENU(K_S_LAUNCHER_DEVICE_INFO, [this]() { this->info(); }),
                         }
                     ),
+                    ITEM::MENU(K_S_LAUNCHER_KEIRA_UPDATE, [this]() { this->runApp<KeiraUpdateApp>(); }),
                     ITEM::MENU(K_S_LAUNCHER_FACTORY_RESET, [this]() { this->factoryReset(); }),
                     ITEM::MENU(K_S_LAUNCHER_REBOOT, []() { esp_restart(); }),
                 },
@@ -683,20 +712,31 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
 
 void LauncherApp::homeScreen(item_t& mainMenu) {
     Wallpaper wallpaper;
+    LuaWallpaper luaWallpaper;
     while (1) {
         // Wallpaper is reopened each time to free its memory while the menu and apps are running
-        for (const char* path : WALLPAPER_PATHS) {
-            if (wallpaper.open(path, canvas->width(), canvas->height())) break;
+        if (!luaWallpaper.open(WALLPAPER_LUA_PATH, this)) {
+            for (const char* path : WALLPAPER_PATHS) {
+                if (wallpaper.open(path, canvas->width(), canvas->height())) break;
+            }
         }
 
+        TickType_t lastFrame = xTaskGetTickCount();
         while (1) {
             int delayMs = 0;
-            if (wallpaper.isOpen()) {
+            TickType_t now = xTaskGetTickCount();
+            if (luaWallpaper.isOpen()) {
+                // Script error closes Lua wallpaper, black screen is shown instead
+                if (!luaWallpaper.frame(pdTICKS_TO_MS(now - lastFrame))) {
+                    canvas->fillScreen(lilka::colors::Black);
+                }
+            } else if (wallpaper.isOpen()) {
                 delayMs = wallpaper.nextFrame();
                 wallpaper.draw(canvas);
             } else {
                 canvas->fillScreen(lilka::colors::Black);
             }
+            lastFrame = now;
             canvas->setFont(FONT_9x15);
             canvas->setTextColor(lilka::colors::White);
             canvas->drawTextAligned(
@@ -717,6 +757,7 @@ void LauncherApp::homeScreen(item_t& mainMenu) {
             if (openMenu) break;
         }
 
+        luaWallpaper.close();
         wallpaper.close();
         showMenu(mainMenu.name, mainMenu.submenu);
     }
@@ -915,14 +956,11 @@ ITEM_LIST LauncherApp::loadCatalogItems() {
             execType = EXEC_TYPE_LUA;
         } else if (execTypeStr == "binary") {
             execType = EXEC_TYPE_BINARY;
-        } else if (execTypeStr == "dynapp" || execTypeStr == "so") {
-            execType = EXEC_TYPE_DYNAPP;
         } else {
             String loc = execLocation;
             loc.toLowerCase();
             if (loc.endsWith(".lua")) execType = EXEC_TYPE_LUA;
             else if (loc.endsWith(".bin")) execType = EXEC_TYPE_BINARY;
-            else if (loc.endsWith(".so")) execType = EXEC_TYPE_DYNAPP;
         }
 
         if (execType == EXEC_TYPE_UNKNOWN) {
@@ -950,9 +988,6 @@ ITEM_LIST LauncherApp::loadCatalogItems() {
                             break;
                         case EXEC_TYPE_BINARY:
                             ksystem.apps.spawn(new MultiBootApp(execPath));
-                            break;
-                        case EXEC_TYPE_DYNAPP:
-                            ksystem.apps.spawn(new DynApp(execPath));
                             break;
                         default:
                             break;
@@ -1072,6 +1107,79 @@ void LauncherApp::resetBatteryFullLevelCalibration() {
     if (confirm(K_S_LAUNCHER_BATTERY_RESET_FULL, K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM)) {
         lilka::battery.resetFullLevelCalibration();
     }
+}
+
+void LauncherApp::setDisplaySpeed() {
+    uint32_t displayFrequencies[] = {
+        10000000, // 10 MHz
+        20000000, // 20 MHz
+        40000000, // 40 MHz
+        80000000 // 80 MHz
+    };
+
+    lilka::Menu setDisplaySpeedMenu;
+    setDisplaySpeedMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPEED);
+    setDisplaySpeedMenu.addActivationButton(K_BTN_BACK); // Exit
+
+    // Add frequencies to menu
+    for (auto i = 0; i < sizeof(displayFrequencies) / sizeof(displayFrequencies[0]); i++)
+        setDisplaySpeedMenu.addItem(StringFormat("%d MHz", displayFrequencies[i] / 1000000));
+
+    // Perform draw
+    while (!setDisplaySpeedMenu.isFinished()) {
+        setDisplaySpeedMenu.update();
+        setDisplaySpeedMenu.draw(canvas);
+        queueDraw();
+    }
+    auto button = setDisplaySpeedMenu.getButton();
+
+    if (button == K_BTN_BACK) return;
+
+    auto index = setDisplaySpeedMenu.getCursor();
+
+    // store new frequency to NVS
+    NVS_LOCK;
+    Preferences prefs;
+    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
+    prefs.putUInt(LILKA_SPI_NVS_DISPLAY_FREQUENCY_KEY, displayFrequencies[index]);
+    prefs.end();
+    NVS_UNLOCK;
+
+    alert("", K_S_CHANGE_ON_NEXT_BOOT);
+}
+
+void LauncherApp::setDisplaySpiMode() {
+    uint8_t spiModes[] = {SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3};
+
+    lilka::Menu setDisplaySpiModeMenu;
+    setDisplaySpiModeMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPI_MODE);
+    setDisplaySpiModeMenu.addActivationButton(K_BTN_BACK); // Exit
+
+    // Add SPI modes to menu
+    for (auto i = 0; i < sizeof(spiModes) / sizeof(spiModes[0]); i++)
+        setDisplaySpiModeMenu.addItem(StringFormat("SPI_MODE%d", spiModes[i]));
+
+    // Perform draw
+    while (!setDisplaySpiModeMenu.isFinished()) {
+        setDisplaySpiModeMenu.update();
+        setDisplaySpiModeMenu.draw(canvas);
+        queueDraw();
+    }
+    auto button = setDisplaySpiModeMenu.getButton();
+
+    if (button == K_BTN_BACK) return;
+
+    auto index = setDisplaySpiModeMenu.getCursor();
+
+    // store new SPI mode to NVS
+    NVS_LOCK;
+    Preferences prefs;
+    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
+    prefs.putUChar(LILKA_SPI_NVS_DISPLAY_MODE_KEY, spiModes[index]);
+    prefs.end();
+    NVS_UNLOCK;
+
+    alert("", K_S_CHANGE_ON_NEXT_BOOT);
 }
 
 void LauncherApp::wifiToggle() {
@@ -1353,27 +1461,7 @@ void LauncherApp::showEasterEgg() {
         taskYIELD();
     }
 }
-void LauncherApp::partitions() {
-    // TODO : support more than 16 partitions
-    String names[16];
-    int partitionCount = lilka::sys.get_partition_labels(names);
 
-    ITEM_LIST partitionsMenu;
-    for (int i = 0; i < partitionCount; i++) {
-        String partition = names[i];
-        partitionsMenu.push_back(ITEM::MENU(names[i].c_str(), [this, partition]() {
-            alert(
-                partition,
-                StringFormat(
-                    K_S_LAUNCHER_PARTITION_FMT,
-                    String(lilka::sys.get_partition_address(partition.c_str()), HEX).c_str(),
-                    String(lilka::sys.get_partition_size(partition.c_str()), HEX).c_str()
-                )
-            );
-        }));
-    }
-    showMenu(K_S_PARTITION_TABLE, partitionsMenu);
-}
 void LauncherApp::formatSD() {
     if (!confirm(K_S_LAUNCHER_FORMAT, K_S_LAUNCHER_FORMAT_DISCLAIMER_ALERT)) return;
 
