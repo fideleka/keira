@@ -368,16 +368,16 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
     fonts = (u8g2 / "u8g2_fonts.c").read_text(encoding="latin1")
     start = fonts.index("const uint8_t u8g2_font_10x20_t_cyrillic[")
     asset = fonts[start:fonts.index('";', start) + 2]
-    (tmp / "font.c").write_text('#include "u8g2.h"\n' + asset)
+    (tmp / "font.c").write_text('#include "clib/u8g2.h"\n' + asset)
     for flags in ([], ["-fsanitize=address", "-fno-pie", "-no-pie"],
                   ["-fsanitize=undefined", "-fno-pie", "-no-pie"]):
         objects = []
         for source in [u8g2 / name for name in ("u8g2_font.c", "u8g2_hvline.c", "u8g2_intersection.c")] + [tmp / "font.c"]:
             obj = tmp / (source.stem + ".o")
             subprocess.run(["gcc", "-std=c99", "-ffunction-sections", "-fdata-sections", *flags,
-                            "-I" + str(u8g2), "-c", str(source), "-o", str(obj)], check=True)
+                            "-I" + str(u8g2.parent), "-c", str(source), "-o", str(obj)], check=True)
             objects.append(str(obj))
-        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk), "-I" + str(u8g2), "-Wl,--gc-sections",
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
                         *objects, str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
     # Prove guard sensitivity: a background transfer through the footprint must
@@ -386,7 +386,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
                             "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
     assert bad_code != code
     (tmp / "test.cpp").write_text(prelude + bad_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-I" + str(sdk), "-I" + str(u8g2), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
+    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
                     "-o", str(tmp / "test")], check=True)
     rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
     assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
