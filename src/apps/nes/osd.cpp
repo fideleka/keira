@@ -7,6 +7,7 @@
 #include "keira/utils/acquire.h"
 #include "services/screenshot/request.h"
 #include "driver.h"
+#include "keira/keira_lang.h"
 
 #define OSD_OK          0
 #define OSD_INIT_FAILED -1
@@ -35,7 +36,6 @@ static bool soundInitialized = false;
 namespace {
 constexpr size_t JOYPAD_EVENT_COUNT = 8;
 constexpr uint8_t TURBO_HALF_PERIOD_FRAMES = 2;
-constexpr uint32_t EXIT_HOLD_TIME_MS = 2000;
 constexpr TickType_t AUDIO_STOP_TIMEOUT = pdMS_TO_TICKS(100);
 
 const int joypadEvents[JOYPAD_EVENT_COUNT] = {
@@ -53,7 +53,6 @@ struct NesInputState {
     bool forwarded[JOYPAD_EVENT_COUNT] = {};
     bool saveChordActive = false;
     bool loadChordActive = false;
-    bool screenChordActive = false;
     bool selectWasPressed = false;
     bool startWasPressed = false;
     bool selectConsumed = false;
@@ -61,12 +60,12 @@ struct NesInputState {
     bool exitRequested = false;
     uint8_t turboAFrame = 0;
     uint8_t turboBFrame = 0;
-    uint32_t screenChordStartedAt = 0;
 };
 
 NesInputState inputState;
 
 void prepareRuntimeShutdown();
+void openSystemMenu();
 
 void resetInputState() {
     inputState = NesInputState();
@@ -130,37 +129,22 @@ void osd_getinput(void) {
         return;
     }
 
-    // A Start press without Select is a normal NES press immediately. If Select
-    // is already down, reserve Start for the screenshot/exit chord instead.
+    // Reserve Select-first Start for the system menu. Start-first remains an
+    // ordinary game press, as before; never reinterpret a consumed Select.
     if (state.start.pressed && !inputState.startWasPressed) {
         inputState.startGameActive = !state.select.pressed;
         if (!inputState.startGameActive && !inputState.selectConsumed && !state.c.pressed && !state.d.pressed) {
-            inputState.screenChordActive = true;
-            inputState.screenChordStartedAt = millis();
             inputState.selectConsumed = true;
-        }
-    }
-
-    if (inputState.screenChordActive) {
-        if (millis() - inputState.screenChordStartedAt >= EXIT_HOLD_TIME_MS) {
-            inputState.exitRequested = true;
-            releaseJoypad();
-            prepareRuntimeShutdown();
-            event_t quitHandler = event_get(event_quit);
-            if (quitHandler) {
-                quitHandler(INP_STATE_MAKE);
-            }
+            inputState.startWasPressed = true;
+            openSystemMenu();
             return;
-        }
-        if (!state.select.pressed || !state.start.pressed) {
-            inputState.screenChordActive = false;
-            screenshot::request();
         }
     }
 
     // Both state buttons together are ambiguous. Suppress turbo and wait for
     // a fresh Select press rather than firing save/load as one is released.
-    if (state.select.pressed && state.c.pressed && state.d.pressed) {
+    if (state.select.pressed &&
+        ((state.c.pressed && state.d.pressed) || (state.start.pressed && (state.c.pressed || state.d.pressed)))) {
         inputState.selectConsumed = true;
     }
 
@@ -181,7 +165,7 @@ void osd_getinput(void) {
     inputState.loadChordActive = loadChord;
 
     // A solitary Select release becomes a one-frame NES tap. Never forward a
-    // Select used by save/load or screenshot/exit to the game.
+    // Select used by save/load or menu to the game.
     bool selectTap = inputState.selectWasPressed && !state.select.pressed && !inputState.selectConsumed;
     if (!state.select.pressed) {
         inputState.selectConsumed = false;
@@ -192,14 +176,30 @@ void osd_getinput(void) {
     inputState.selectWasPressed = state.select.pressed;
     inputState.startWasPressed = state.start.pressed;
 
-    bool turboA = turboPulse(state.c.pressed && !state.select.pressed, inputState.turboAFrame);
-    bool turboB = turboPulse(state.d.pressed && !state.select.pressed, inputState.turboBFrame);
+    bool turboA =
+        turboPulse(Driver::app->preferences.turboA && state.c.pressed && !state.select.pressed, inputState.turboAFrame);
+    bool turboB =
+        turboPulse(Driver::app->preferences.turboB && state.d.pressed && !state.select.pressed, inputState.turboBFrame);
 
-    const bool desiredStates[JOYPAD_EVENT_COUNT] = {
-        state.up.pressed,
-        state.down.pressed,
+    int direction = Driver::app->directionFilter.update(
         state.left.pressed,
         state.right.pressed,
+        millis(),
+        Driver::app->preferences.precisionMode,
+        Driver::app->preferences.directionDelayXMs
+    );
+    int vertical = Driver::app->verticalFilter.update(
+        state.up.pressed,
+        state.down.pressed,
+        millis(),
+        Driver::app->preferences.precisionMode,
+        Driver::app->preferences.directionDelayYMs
+    );
+    const bool desiredStates[JOYPAD_EVENT_COUNT] = {
+        Driver::app->preferences.precisionMode ? vertical < 0 : state.up.pressed,
+        Driver::app->preferences.precisionMode ? vertical > 0 : state.down.pressed,
+        Driver::app->preferences.precisionMode ? direction < 0 : state.left.pressed,
+        Driver::app->preferences.precisionMode ? direction > 0 : state.right.pressed,
         selectTap,
         state.start.pressed && inputState.startGameActive,
         state.a.pressed || turboA,
@@ -356,7 +356,10 @@ void do_audio_frame() {
         size_t i2s_bytes_write;
         // adjust volume
         lilka::audio.adjustVolume(audio_frame, 4 * n, 16, volume);
-        i2s_write(esp_i2s::I2S_NUM_0, static_cast<int16_t*>(audio_frame), 4 * n, &i2s_bytes_write, portMAX_DELAY);
+        esp_err_t result = i2s_write(
+            esp_i2s::I2S_NUM_0, static_cast<int16_t*>(audio_frame), 4 * n, &i2s_bytes_write, pdMS_TO_TICKS(50)
+        );
+        if (result != ESP_OK || i2s_bytes_write < 4) break; // bounded mutex hold even on I2S failure
         left -= i2s_bytes_write / 4;
     }
 }
@@ -379,7 +382,8 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
                     if (!audio_frame) {
                         break;
                     }
-                    do_audio_frame();
+                    if (!Driver::app->audioPaused) do_audio_frame();
+                    else xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
                 }
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
             }
@@ -396,6 +400,10 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
         1
     );
 #endif
+    // Nofrendo calls this only on entry to nes_emulate(), after cartridge,
+    // mapper, video and timer setup succeeded. Persist before gameplay, not
+    // on exit. The app guard also covers later resets/restarts in this session.
+    Driver::app->rememberSuccessfulLaunch();
 }
 
 void osd_getsoundinfo(sndinfo_t* info) {
@@ -427,6 +435,56 @@ void osd_shutdown() {
 }
 
 namespace {
+// Stop commands are asynchronous. The timer-daemon barrier proves the callback
+// is quiescent before the modal loop, so nofrendo_ticks cannot accrue catch-up.
+void openSystemMenu() {
+    releaseJoypad();
+    SemaphoreHandle_t stopped = xSemaphoreCreateBinary();
+    if (!stopped) {
+        lilka::serial.err(K_S_EMU_MENU_UNAVAILABLE);
+        return; // chord already consumed; keep emulator running safely
+    }
+    if (timer) {
+        xTimerStop(timer, portMAX_DELAY);
+        xTimerPendFunctionCall(
+            [](void* semaphore, uint32_t) { xSemaphoreGive(static_cast<SemaphoreHandle_t>(semaphore)); },
+            stopped,
+            0,
+            portMAX_DELAY
+        );
+        xSemaphoreTake(stopped, portMAX_DELAY);
+    }
+    vSemaphoreDelete(stopped);
+    {
+        Acquire lock(xSoundMutex);
+        Driver::app->audioPaused = true;
+        if (soundInitialized) i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
+    }
+    Driver::app->directionFilter.reset();
+    NesApp::SystemAction action =
+        Driver::app->holdExitRequested() ? NesApp::SystemAction::Exit : Driver::app->showSystemMenu();
+    Driver::app->waitForRelease();
+    resetInputState();
+    Driver::app->clearGameCanvases();
+    if (action == NesApp::SystemAction::Exit) {
+        inputState.exitRequested = true;
+        prepareRuntimeShutdown();
+        event_t quitHandler = event_get(event_quit);
+        if (quitHandler) quitHandler(INP_STATE_MAKE);
+        return;
+    }
+    if (action == NesApp::SystemAction::Reset) triggerStateEvent(event_soft_reset);
+    if (action == NesApp::SystemAction::Save) triggerStateEvent(event_state_save);
+    if (action == NesApp::SystemAction::Load) triggerStateEvent(event_state_load);
+    {
+        Acquire lock(xSoundMutex);
+        Driver::app->audioPaused = false;
+    }
+    if (timer) xTimerReset(timer, portMAX_DELAY);
+    // Screenshot is deferred until the next game blit, not the menu framebuffer.
+    if (action == NesApp::SystemAction::Screenshot) Driver::app->screenshotOnNextFrame = true;
+}
+
 void prepareRuntimeShutdown() {
     if (timer) {
         xTimerStop(timer, portMAX_DELAY);

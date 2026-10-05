@@ -1,9 +1,9 @@
 #pragma once
 
 #include "gbcore.h"
-#include "keira/app.h"
+#include "apps/emulator/systemmenu.h"
 
-class GameBoyApp : public App {
+class GameBoyApp : public EmulatorMenuApp {
 public:
     explicit GameBoyApp(const String& path);
     ~GameBoyApp() override;

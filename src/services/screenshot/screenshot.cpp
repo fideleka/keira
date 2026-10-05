@@ -1,5 +1,6 @@
 #include <contrib/LodePNG/lodepng.h>
 #include <atomic>
+#include <new>
 
 #include "services/screenshot/request.h"
 #include "services/screenshot/screenshot.h"
@@ -9,10 +10,27 @@
 
 namespace {
 std::atomic<bool> requested{false};
+std::atomic<lilka::Canvas*> captured{nullptr};
 } // namespace
 
 void screenshot::request() {
     requested.store(true);
+}
+
+bool screenshot::request(lilka::Canvas* gameFrame) {
+    auto* copy = new (std::nothrow) lilka::Canvas(lilka::display.width(), lilka::display.height());
+    if (!copy || !copy->getFramebuffer()) {
+        delete copy;
+        return false;
+    }
+    copy->fillScreen(lilka::colors::Black);
+    copy->drawCanvas(gameFrame);
+    lilka::Canvas* empty = nullptr;
+    if (!captured.compare_exchange_strong(empty, copy)) {
+        delete copy;
+        return false;
+    }
+    return true;
 }
 
 #if !defined(KEIRA_SCREENSHOT_BMP) && !defined(KEIRA_SCREENSHOT_PNG)
@@ -187,7 +205,7 @@ void ScreenshotService::run() {
         if (shortcutPressed && !activated) {
             activated = true;
             // Emulators own this chord so a long-press exit never captures.
-            // They request a screenshot themselves on a short release.
+            // They request an immutable game-frame copy from their menus.
             if (!ksystem.apps.isTopAppNamed("NES") && !ksystem.apps.isTopAppNamed("Game Boy")) {
                 capture = true;
             }
@@ -195,15 +213,17 @@ void ScreenshotService::run() {
             activated = false;
         }
 
-        if (capture) {
-            ksystem.apps.renderToCanvas(&canvas);
+        auto* gameFrame = captured.exchange(nullptr);
+        if (capture || gameFrame) {
+            if (!gameFrame) ksystem.apps.renderToCanvas(&canvas);
 
-            if (saveScreenshot(&canvas)) {
+            if (saveScreenshot(gameFrame ? gameFrame : &canvas)) {
                 ksystem.apps.startToast(K_S_SCREENSHOT_SAVED);
             } else {
                 ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
             }
         }
+        delete gameFrame;
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }

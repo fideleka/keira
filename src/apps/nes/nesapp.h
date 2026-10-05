@@ -1,13 +1,17 @@
 #pragma once
-#include "keira/app.h"
+#include "apps/emulator/systemmenu.h"
+#include "preferences.h"
 
-class NesApp : public App {
+class NesApp : public EmulatorMenuApp {
 public:
+    void rememberSuccessfulLaunch();
     explicit NesApp(String path);
     ~NesApp();
+    bool audioPaused = false; // guarded by OSD sound mutex
 
 private:
     void run() override;
 
     char* argv[1];
+    bool launchRemembered = false;
 };

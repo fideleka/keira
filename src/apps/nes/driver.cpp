@@ -1,4 +1,7 @@
 #include "driver.h"
+#include "services/screenshot/request.h"
+#include "keira/ksystem.h"
+#include "keira/keira_lang.h"
 
 NesApp* Driver::app;
 int16_t Driver::w, Driver::h, Driver::frame_x, Driver::frame_y, Driver::frame_x_offset, Driver::frame_width,
@@ -68,8 +71,6 @@ void Driver::clear(uint8 color) {
     app->canvas->fillScreen(0);
 }
 
-bool odd = true;
-
 void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
 #ifdef NES_FPS_COUNTER
     last_frame_duration = micros() - last_render;
@@ -77,9 +78,10 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
 #endif
 
     lilka::Canvas* canvas = app->canvas;
+    canvas->fillScreen(lilka::colors::Black);
 
 #ifdef INTERLACED
-    for (int y = odd ? 1 : 0; y < frame_height; y += 2) {
+    for (int y = 0; y < frame_height; ++y) {
         const uint8_t* line = bmp->line[y];
         int dst_y = y + frame_y;
         int dst_x = frame_x;
@@ -88,7 +90,6 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
             // app->canvas->drawPixel(dst_x + x, dst_y, nesPalette[line[x]]);
         }
     }
-    odd = !odd;
 #else
     // can't move framebuffer ptr outside, cause we dealing with different canvas
     // unfortunatelly we can't reuse dirtyRects due to doublebuffering
@@ -165,6 +166,10 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
 
     // Serial.println("Draw 2 took " + String(micros() - last_render) + "us");
 
+    if (app->screenshotOnNextFrame) {
+        app->screenshotOnNextFrame = false;
+        if (!screenshot::request(canvas)) ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
+    }
     app->queueDraw();
 }
 

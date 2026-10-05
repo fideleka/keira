@@ -1,6 +1,8 @@
 #include "nesapp.h"
+#include "keira/keira_lang.h"
 #include "apps/launcher/recentroms.h"
 #include "driver.h"
+#include "keira/keira_lang.h"
 
 extern "C" {
 #include <gui.h>
@@ -10,7 +12,7 @@ extern "C" {
 #include <vid_drv.h>
 }
 
-NesApp::NesApp(String path) : App("NES") {
+NesApp::NesApp(String path) : EmulatorMenuApp("NES", path, K_S_EMU_NES_PAUSED) {
     setktStackSize(8192); // This task requires 4KB, but let's be careful here
     argv[0] = new char[path.length() + 1];
     strcpy(argv[0], path.c_str());
@@ -25,10 +27,17 @@ NesApp::~NesApp() {
     delete[] argv[0];
 }
 
+void NesApp::rememberSuccessfulLaunch() {
+    if (launchRemembered) return;
+    launchRemembered = true;
+    rememberRecentRom(argv[0]);
+}
+
 void NesApp::run() {
+    loadPreferences();
     // Load the ROM
     Driver::setNesApp(this);
-    const int result = nofrendo_main(1, argv);
+    nofrendo_main(1, argv);
 
     // Nofrendo normally relies on process-exit cleanup. Keira keeps running, so
     // release every emulator subsystem before returning to the launcher.
@@ -38,5 +47,4 @@ void NesApp::run() {
     vid_shutdown();
     nofrendo_log_shutdown();
     Driver::setNesApp(NULL);
-    if (result == 0) rememberRecentRom(argv[0]);
 }
