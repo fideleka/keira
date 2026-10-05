@@ -72,6 +72,8 @@ private:
     std::vector<String> guestShortcutNames_;
     void refreshRecentRomFolders(ITEM_LIST& apps);
     void refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind);
+    // Cached autorun setting, menu redraws every frame and it's stored in NVS
+    bool autorunEnabled = false;
 
     void homeScreen(item_t& mainMenu);
     void showMenu(
@@ -93,7 +95,6 @@ private:
     void about();
     void info();
     void showEasterEgg();
-    void partitions();
     void formatSD();
     void factoryReset();
 };
