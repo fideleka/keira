@@ -23,6 +23,7 @@ Lua API
     audio
     sdcard
     state
+    service
     wifi
     serial
     http
@@ -30,3 +31,12 @@ Lua API
     net
     mqtt
     crypto
+    modules
+    gps
+    can
+    ir
+    lora
+    nrf24
+    cc1101
+    imu
+    mag

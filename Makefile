@@ -35,7 +35,6 @@ clang-format: ## Run clang-format check
 		-not \( -name .pio -prune \) \
 		-not \( -name doomgeneric -prune \) \
 		-not \( -name bak -prune \) \
-		-not \( -name mJS -prune \) \
 		-not \( -name SimpleFTPServer -prune \) \
 		-not \( -name LodePNG -prune \) \
 		-not \( -name Gnuboy -prune \) \
@@ -49,7 +48,7 @@ clang-format: ## Run clang-format check
 
 .PHONY: cppcheck
 cppcheck: ## Run cppcheck check
-	$(CPPCHECK) . -i.ccls-cache -i.pio -idoomgeneric -ibak -imJS -iSimpleFTPServer -iLodePNG -iGnuboy \
+	$(CPPCHECK) . -i.ccls-cache -i.pio -idoomgeneric -ibak -iSimpleFTPServer -iLodePNG -iGnuboy \
 		-isrc/apps/gameboy/vendor \
 		--enable=performance,style \
 		--suppress=knownPointerToBool \
@@ -61,3 +60,7 @@ cppcheck: ## Run cppcheck check
 .PHONY: checklang
 checklang: ## Run localization files check
 	python tools/checklang.py
+
+.PHONY: layer_audit
+layer_audit: ## Run audit on source code
+	python tools/layer_audit.py

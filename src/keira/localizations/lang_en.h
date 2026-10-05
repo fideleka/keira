@@ -12,6 +12,7 @@
 #define K_S_CURRENT_LANGUAGE_SHORT      "en"
 #define K_S_CURRENT_LANGUAGE_FULL       "English"
 
+#define K_S_ARE_YOU_SURE                "Are you sure?"
 #define K_S_ERROR                       "Error"
 #define K_S_ATTENTION                   "Attention"
 #define K_S_SUCCESS                     "Success"
@@ -42,6 +43,7 @@
 #define K_S_LAUNCHER_MDNS               K_S_MDNS
 #define K_S_LAUNCHER_MDNS_HOSTNAME      "Hostname"
 #define K_S_LAUNCHER_MDNS_ENTER_HOSTNAME "Enter hostname:"
+#define K_S_LAUNCHER_AUTORUN            "Autorun"
 #define K_S_CHANGE_ON_NEXT_BOOT         "Changes would apply on next boot"
 #define K_S_OS_NAME                     "Keira OS"
 #define K_S_OS_DESCRIPTION              "by Андерсон & friends"
@@ -116,6 +118,9 @@
 #define K_S_LAUNCHER_SD                "SD"
 #define K_S_LAUNCHER_SD_FORMAT         "Format SD"
 #define K_S_LAUNCHER_SD_SPEED          "SD card frequency"
+#define K_S_LAUNCHER_DISPLAY           "Display"
+#define K_S_LAUNCHER_DISPLAY_SPEED     "Display frequency"
+#define K_S_LAUNCHER_DISPLAY_SPI_MODE  "Display SPI mode"
 #define K_S_LAUNCHER_SOUND             "Sound"
 #define K_S_LAUNCHER_SERVICES          K_S_SERVICES
 #define K_S_LAUNCHER_WEB               K_S_WEB
@@ -214,6 +219,10 @@
 #define K_S_I2C_SCANNER_SCAN_START    "Starting I2C scan..."
 #define K_S_I2C_SCANNER_SCAN_DONE     "I2C scan done."
 #define K_S_I2C_SCANNER_DEVICES_FOUND "Found %d devices."
+#define K_S_I2C_SCANNER_SDA           "SDA"
+#define K_S_I2C_SCANNER_SCL           "SCL"
+#define K_S_I2C_SCANNER_FREQUENCY     "Frequency"
+#define K_S_I2C_SCANNER_SCAN          "Scan"
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // apps/demos/transform.cpp ///////////////////////////////////////////////////////////////////////////
@@ -249,10 +258,8 @@
 #define K_S_GB_STATE_LOAD_ERROR                    "Could not load Game Boy state"
 #define K_S_FMANAGER_FIRMWARE_LOADER               "Flash loader"
 #define K_S_FMANAGER_LUA                           "Lua"
-#define K_S_FMANAGER_MJS                           "mJS"
 #define K_S_FMANAGER_LILTRACKER                    K_S_LAUNCHER_LILTRACKER
 #define K_S_FMANAGER_MAD_PLAYER                    "MadPlayer"
-#define K_S_FMANAGER_DYNAPP                        "DynApp (.so)"
 #define K_S_FMANAGER_IMAGE_VIEWER                  K_S_IMAGEVIEWER_NAME
 #define K_S_FMANAGER_ACTIONS_ON_SELECTED           "Actions on selected"
 #define K_S_FMANAGER_COPY_SELECTED                 "Copy selected"
@@ -260,7 +267,7 @@
 #define K_S_FMANAGER_DELETE_SELECTED               "Delete selected"
 #define K_S_FMANAGER_CLEAR_SELECTION               "Clear selection"
 #define K_S_FMANAGER_CALC_INTERRUPTED              "Not computed"
-#define K_S_FMANAGER_ARE_YOU_SURE_ALERT            "Are you sure"
+#define K_S_FMANAGER_ARE_YOU_SURE_ALERT            K_S_ARE_YOU_SURE
 
 #define K_S_FMANAGER_THIS_OP_WOULD_DELETE_FILE_FMT          "This operation would delete file\n %s\nProceed: START\nExit: B"
 #define K_S_FMANAGER_THIS_OP_WOULD_DELETE_COUNT_FILES_FMT   "This operation would delete %d file(s)\nProceed: START\nExit: B"
@@ -299,6 +306,7 @@
 
 #define K_S_LILCATALOG_APPS                          "Apps"
 #define K_S_LILCATALOG_MODS                          "Mods"
+#define K_S_LILCATALOG_WALLPAPERS                    "Wallpapers"
 #define K_S_LILCATALOG_STOP                          "Exit"
 #define K_S_LILCATALOG_BACK                          "Back"
 #define K_S_LILCATALOG_EMPTY                         ""
@@ -307,6 +315,8 @@
 #define K_S_LILCATALOG_INSTALL                       "Install"
 #define K_S_LILCATALOG_REMOVE                        "Delete"
 #define K_S_LILCATALOG_UPDATE                        "Update"
+#define K_S_LILCATALOG_SET_WALLPAPER                 "Set as wallpaper"
+#define K_S_LILCATALOG_WALLPAPER_SET                 "Wallpaper set"
 #define K_S_LILCATALOG_SOURCE                        "Source"
 #define K_S_LILCATALOG_ENTRY_DESCRIPTION             "Description"
 #define K_S_LILCATALOG_LOADING                       "Downloading"
@@ -476,11 +486,7 @@
 #define K_S_PASTEBIN_REQUEST_FAIL_FMT             "HTTP Error\n%s"
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// apps/mjs/mjsrunner.cpp /////////////////////////////////////////////////////////////////////////////
-#define K_S_MJS_ERROR                             "Error: "
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// apps/mjs/luarunner.cpp /////////////////////////////////////////////////////////////////////////////
+// apps/lua/luarunner.cpp /////////////////////////////////////////////////////////////////////////////
 #define K_S_LUA_ERROR                             "Error: "
 #define K_S_LUA_AWAIT_CODE_FROM_UART              "Awaiting code\nfrom UART...\n\nPress [A]\nto exit."
 #define K_S_LUA_DOWNLOAD                          "Downloading..."
@@ -598,6 +604,37 @@
 #define K_S_LUA_CRYPTO_INVALID_HEX_STRING          "Invalid hex string"
 #define K_S_LUA_CRYPTO_INVALID_DATA_SIZE           "Invalid encrypted data size"
 #define K_S_LUA_CRYPTO_INVALID_KEY_OR_DATA         "Invalid key or corrupted data"
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// apps/partmanager/partmanager.cpp ///////////////////////////////////////////////////////////////////
+#define K_S_PART_MGR_OPTIONS                       "Options"
+#define K_S_PART_MGR_BACKUPS                       "Backups"
+#define K_S_PART_MGR_OPT_BACKUP                    "Backup"
+#define K_S_PART_MGR_OPT_RESTORE                   "Restore"
+#define K_S_PART_MGR_OPT_DESELECT                  "Deselect"
+#define K_S_PART_MGR_OPT_DESELECT_ALL              "Deselect all"
+#define K_S_PART_MGR_OPT_SELECT                    "Select"
+#define K_S_PART_MGR_OPT_SELECT_ALL                "Select all"
+#define K_S_PART_MGR_ENTER_BACKUP_NAME             "Enter backup name:"
+#define K_S_PART_MGR_BACKUP_CAVEATS                "This command would flash these partitions:\n" 
+#define K_S_PART_MGR_PART_RUNNING_FMT              "Partition %s is running. Skiping..."
+
+#define K_S_PART_MGR_INTERRUPT_CONFIRM             "Do you want to interrupt that operation?"
+#define K_S_PART_MGR_SELECTED_ENTRIES_FMT          "Selected %d entries" 
+// Keira update //////////////////////////////////////////////////////////////////////////////////////
+#define K_S_LAUNCHER_KEIRA_UPDATE           "Update Keira"
+#define K_S_KEIRA_UPDATE                    "Keira update"
+#define K_S_KEIRA_UPDATE_CHECKING           "Checking for updates..."
+#define K_S_KEIRA_UPDATE_FETCH_FAILED       "Failed to fetch update info"
+#define K_S_KEIRA_UPDATE_PARSE_FAILED       "Invalid update info"
+#define K_S_KEIRA_UPDATE_NO_VERSIONS        "No firmware available"
+#define K_S_KEIRA_UPDATE_CURRENT            "current"
+#define K_S_KEIRA_UPDATE_LATEST             "latest"
+#define K_S_KEIRA_UPDATE_PRERELEASE         "pre"
+#define K_S_KEIRA_UPDATE_CONFIRM_FMT        "Install v%s?\n\nCurrent: v%s\nLanguage: %s\nSize: %s\nDate: %s\n\nSTART - continue\nB - exit"
+#define K_S_KEIRA_UPDATE_DOWNLOADING_FMT    "Installing v%s...\n\nB - cancel"
+#define K_S_KEIRA_UPDATE_ERROR_FMT          "Update failed\n\n%s"
+#define K_S_KEIRA_UPDATE_SUCCESS            "Update installed!\n\nSystem will reboot."
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // clang-format on
 

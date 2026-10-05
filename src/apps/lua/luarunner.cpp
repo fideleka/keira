@@ -31,6 +31,9 @@
 #include "lualilka_socket.h"
 #include "lualilka_mqtt.h"
 #include "lualilka_httpserver.h"
+#include "lualilka_service.h"
+#include "lualilka_hw.h"
+#include "lualilka_modules.h"
 #include "keira/ksound/sound.h"
 #define SERIAL_DELAY 1000
 
@@ -114,19 +117,13 @@ AbstractLuaRunnerApp::AbstractLuaRunnerApp(const char* appName) : App(appName), 
 }
 
 void* lua_smart_alloc(void* ud, void* ptr, size_t osize, size_t nsize) {
-    // If there will be less than 32 KB of free RAM after reallocating, use PSRAM allocator.
+    // Prefer PSRAM to keep internal RAM free for WiFi/TLS/DMA; fall back to internal RAM if PSRAM is exhausted.
     (void)ud;
     (void)osize;
-    int32_t free_mem = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     if (nsize) {
-        uint32_t caps = MALLOC_CAP_8BIT;
-        if (free_mem - nsize < 32 * 1024) {
-            // Less than 32 KB of free RAM after reallocating. Use PSRAM allocator.
-            caps |= MALLOC_CAP_SPIRAM;
-        } else {
-            // More than 32 KB of free RAM after reallocating. Use regular allocator.
-        }
-        return heap_caps_realloc(ptr, nsize, caps);
+        void* newPtr = heap_caps_realloc(ptr, nsize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!newPtr) newPtr = heap_caps_realloc(ptr, nsize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        return newPtr;
     } else {
         free(ptr);
         return NULL;
@@ -191,6 +188,8 @@ void AbstractLuaRunnerApp::luaSetup(const char* dir) {
     lualilka_mqtt_register(L);
     lualilka_httpserver_register(L);
     lualilka_state_register(L);
+    lualilka_service_register(L);
+    lualilka_modules_register(L);
 
     // lilka::serial.log("lua: init canvas");
     // lilka::Canvas* canvas = new lilka::Canvas();
@@ -244,7 +243,23 @@ void AbstractLuaRunnerApp::luaTeardown() {
     // lilka::Canvas* canvas = (lilka::Canvas*)lua_touserdata(L, lua_getfield(L, LUA_REGISTRYINDEX, "canvas"));
     // delete canvas;
 
+    // Hardware objects release their pins in __gc; anything left over is released after the state is gone
+    const void* hwOwner = lualilka_hw_owner(L);
     lua_close(L);
+    lualilka_hw_releaseOwner(hwOwner);
+}
+
+void AbstractLuaRunnerApp::resetCanvasState() {
+    for (lilka::Canvas* c : {canvas, backCanvas}) {
+        if (!c) continue;
+        // Match defaults of a freshly constructed lilka::Canvas
+        c->setFont(FONT_10x20);
+        c->setTextBound(0, 0, c->width(), c->height());
+        c->setTextColor(lilka::colors::White);
+        c->setTextSize(1);
+        c->setTextWrap(true);
+        c->setCursor(0, 0);
+    }
 }
 
 int AbstractLuaRunnerApp::execute() {
@@ -254,6 +269,7 @@ int AbstractLuaRunnerApp::execute() {
 
     if (jmpCode == 0) {
         // Run script
+        resetCanvasState();
         canvas->fillScreen(0);
         int retCode = lua_pcall(L, 0, LUA_MULTRET, 0);
         if (retCode) {

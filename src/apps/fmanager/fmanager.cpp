@@ -107,14 +107,6 @@ FileManagerApp::FileManagerApp(const String& path) :
         LILKA_MENU_CLBK_DATA_CAST(this)
     );
     fileOpenWithMenu.addItem(
-        K_S_FMANAGER_MJS,
-        0,
-        lilka::colors::White,
-        "",
-        LILKA_MENU_CLBK_CAST(&FileManagerApp::onFileOpenWithMJS),
-        LILKA_MENU_CLBK_DATA_CAST(this)
-    );
-    fileOpenWithMenu.addItem(
         K_S_FMANAGER_LILTRACKER,
         0,
         lilka::colors::White,
@@ -128,14 +120,6 @@ FileManagerApp::FileManagerApp(const String& path) :
         lilka::colors::White,
         "",
         LILKA_MENU_CLBK_CAST(&FileManagerApp::onFileOpenWithMadPlayer),
-        LILKA_MENU_CLBK_DATA_CAST(this)
-    );
-    fileOpenWithMenu.addItem(
-        K_S_FMANAGER_DYNAPP,
-        0,
-        lilka::colors::White,
-        "",
-        LILKA_MENU_CLBK_CAST(&FileManagerApp::onFileOpenWithDynApp),
         LILKA_MENU_CLBK_DATA_CAST(this)
     );
     fileOpenWithMenu.addItem(
@@ -326,10 +310,6 @@ FMEntry FileManagerApp::pathToEntry(const String& path) {
         newEntry.type = FT_LUA_SCRIPT;
         newEntry.icon = FT_LUA_SCRIPT_ICON;
         newEntry.color = FT_LUA_SCRIPT_COLOR;
-    } else if (lowerCasedPath.endsWith(".js")) {
-        newEntry.type = FT_JS_SCRIPT;
-        newEntry.icon = FT_JS_SCRIPT_ICON;
-        newEntry.color = FT_JS_SCRIPT_COLOR;
     } else if (lowerCasedPath.endsWith(".mod") || lowerCasedPath.endsWith(".wav") || lowerCasedPath.endsWith(".mp3") ||
                lowerCasedPath.endsWith(".aac") || lowerCasedPath.endsWith(".flac")) {
         newEntry.type = FT_SOUND;
@@ -339,10 +319,6 @@ FMEntry FileManagerApp::pathToEntry(const String& path) {
         newEntry.type = FT_LT;
         newEntry.icon = FT_LT_ICON;
         newEntry.color = FT_LT_COLOR;
-    } else if (lowerCasedPath.endsWith(".so")) {
-        newEntry.type = FT_SO;
-        newEntry.icon = FT_SO_ICON;
-        newEntry.color = FT_SO_COLOR;
     } else if (lowerCasedPath.endsWith(".png") || lowerCasedPath.endsWith(".jpg") || lowerCasedPath.endsWith(".jpeg") ||
                lowerCasedPath.endsWith(".gif") || lowerCasedPath.endsWith(".bmp")) {
         newEntry.type = FT_IMAGE;
@@ -383,17 +359,11 @@ void FileManagerApp::openCurrentEntry() {
         case FT_LUA_SCRIPT:
             K_FT_LUA_SCRIPT_HANDLER(path);
             break;
-        case FT_JS_SCRIPT:
-            K_FT_JS_SCRIPT_HANDLER(path);
-            break;
         case FT_SOUND:
             K_FT_SOUND_HANDLER(path);
             break;
         case FT_LT:
             K_FT_LT_HANDLER(path);
-            break;
-        case FT_SO:
-            K_FT_SO_HANDLER(path);
             break;
         case FT_IMAGE:
             K_FT_IMAGE_HANDLER(path);
@@ -517,16 +487,6 @@ void FileManagerApp::onFileOpenWithLua() {
     FM_DBG LXP;
 }
 
-void FileManagerApp::onFileOpenWithMJS() {
-    FM_DBG LEP;
-
-    FM_MENU_HANDLE_EXIT(fileOpenWithMenu);
-
-    K_FT_JS_SCRIPT_HANDLER(lilka::fileutils.joinPath(currentEntry.path, currentEntry.name));
-
-    FM_DBG LXP;
-}
-
 void FileManagerApp::onFileOpenWithLilTracker() {
     FM_DBG LEP;
 
@@ -545,14 +505,6 @@ void FileManagerApp::onFileOpenWithMadPlayer() {
     K_FT_SOUND_HANDLER(lilka::fileutils.joinPath(currentEntry.path, currentEntry.name));
 
     FM_DBG LXP;
-}
-
-void FileManagerApp::onFileOpenWithDynApp() {
-    FM_DBG lilka::serial.log("Enter onFileOpenWithDynApp");
-    auto button = fileOpenWithMenu.getButton();
-    if (button == FM_EXIT_BUTTON) return; // Exit
-
-    K_FT_SO_HANDLER(lilka::fileutils.joinPath(currentEntry.path, currentEntry.name));
 }
 
 void FileManagerApp::onFileOpenWithImageViewer() {
@@ -1367,7 +1319,8 @@ void FileManagerApp::run() {
 }
 
 void FileManagerApp::queueDraw() {
-    drawStatusBar();
+    // TODO: ToolBar part unified, so we can probably avoid overriding queueDraw at all
+    drawToolBar();
     App::queueDraw();
 }
 void FileManagerApp::spaceUsageUpdate() {
@@ -1383,43 +1336,39 @@ void FileManagerApp::spaceUsageUpdate() {
         }
     }
 }
-void FileManagerApp::drawStatusBar() {
-    spaceUsageUpdate();
-    canvas->fillRect(
-        0, canvas->height() - STATUS_BAR_HEIGHT, canvas->width(), STATUS_BAR_HEIGHT, STATUS_BAR_FILL_COLOR
-    );
-    // Uncomment those to get an idea where is x, and where is y
-    // Draw xy
-    //canvas->drawLine(0, 0, 50, 0, lilka::colors::Red);
-    //canvas->drawLine(0, 0, 0, 50, lilka::colors::Blue);
-    // canvas->printf("Height %d, width %d", canvas->height(), canvas->width());
+void FileManagerApp::drawToolBar() {
+    sToolBar = "";
 
-    canvas->setCursor(STATUS_BAR_SAFE_DISTANCE, canvas->height() - 20 / 2); // FONT_Y / 2
-    canvas->setFont(FONT_8x13);
+    uint16_t toolBarColor = lilka::colors::White;
+    uint16_t toolBarBgColor = lilka::colors::Black;
 
-    canvas->setTextBound(
-        STATUS_BAR_SAFE_DISTANCE, canvas->height() - STATUS_BAR_HEIGHT, STATUS_BAR_WIDTH, STATUS_BAR_HEIGHT
-    );
     // Show errno if set
     if (errno != 0) {
         errnoTime = millis();
         errnoStr = String(errno) + ":" + strerror(errno);
         errno = 0;
     }
+
     if ((millis() - errnoTime) <= FM_ERRNO_TIME) {
-        canvas->setTextColor(lilka::colors::Red);
-        canvas->printf("%s", errnoStr.c_str());
-        return;
+        toolBarColor = lilka::colors::Red;
+        sToolBar = errnoStr.c_str();
     }
+
     // Other significant data to show
-    if (mode == FM_MODE_SELECT) {
-        canvas->setTextColor(lilka::colors::White);
-        canvas->printf(K_S_FMANAGER_SELECTED_FILES_FMT, selectedDirEntries.size());
-    } else if (mode == FM_MODE_VIEW) {
-        canvas->setTextColor(lilka::colors::White);
+    if (sToolBar == "" && mode == FM_MODE_SELECT) {
+        sToolBar = StringFormat(K_S_FMANAGER_SELECTED_FILES_FMT, selectedDirEntries.size());
+    }
+
+    if (sToolBar == "" && mode == FM_MODE_VIEW) {
         auto fileListMenuIndex = fileListMenu.getCursor();
         auto dirLength = currentDirEntries.size();
-        if (fileListMenuIndex != dirLength)
-            canvas->printf("(%s) [ %d / %d ] ", spaceUsageStr.c_str(), fileListMenuIndex + 1, dirLength);
+        if (fileListMenuIndex != dirLength) {
+            spaceUsageUpdate();
+            sToolBar = StringFormat("(%s) [ %d / %d ] ", spaceUsageStr.c_str(), fileListMenuIndex + 1, dirLength);
+        }
     }
+
+    // Configure tool bar
+    setToolBarColor(toolBarColor, toolBarBgColor);
+    setToolBar(sToolBar);
 }
