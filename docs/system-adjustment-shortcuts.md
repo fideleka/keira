@@ -35,7 +35,7 @@ a stale initial snapshot, while preserving unsaved local edits when master is un
 
 AppManager's existing display/render owner presents a 75%-width, centered 76px-high
 black panel with a double white border, 22px-thick progressbar (cyan fill), and
-12x20px percent/MUTE glyphs. Every shortcut tap/repeat renews the 1200ms timeout,
+unscaled regular SDK FONT_10x20 percent/MUTE text (10px character advance). Every shortcut tap/repeat renews the 1200ms timeout,
 including limit hits; opposite directions do not trigger feedback. Rotation uses
 current display dimensions. No font/cursor state is modified.
 
@@ -78,3 +78,30 @@ not changed or live-resolved. Future explicitly authorized firmware validation m
 select this matching SDK revision, not silently use an old SDK sibling. Hardware
 brightness, audio latency/clicks, stack headroom, I2S device behavior and persistence
 across reboot remain outstanding device gates.
+
+### Regular overlay font regression
+
+The overlay uses the maintained U8g2 u8g2_font_10x20_t_cyrillic
+asset (the SDK's FONT_10x20), not enlarged custom block glyphs. A private,
+stack-local decoder sends clipped horizontal spans to off-screen RAM targets;
+scanline targets clip to one row. Application font/cursor state, canvases and
+screenshots remain untouched, and only final panel rows reach the LCD.
+
+Run python3 tests/volume_overlay.py --sdk ../sdk-system-shortcuts. It compiles
+the real U8g2 font decoder, line clipping and exact regular font asset from the
+existing read-only ../lilka-sdk/lib/lilka/.pio/libdeps/v2/U8g2/src/clib dependency.
+Use --u8g2 /existing/path/to/clib or U8G2_CLIB elsewhere; the test never
+creates .pio or fetches dependencies. Normal, ASan and UBSan runs compare
+regular text pixels with independent U8g2 rendering and a pinned M bitmap,
+including every digit, percent and MUTE, both orientations, guarded rows,
+source/screenshot immutability and final-only LCD transfers. The intentional
+intermediate-write mutation must still fail.
+
+The persistent presentation state stays 624 bytes on the host (560-byte row).
+The font context is 248 bytes on this 64-bit host, temporarily on the stack;
+there is no per-frame heap allocation or additional framebuffer. The existing
+font asset is 6979 bytes, referenced rather than copied into production source.
+A changed panel decodes at most four glyphs on each of its 20 text-band rows;
+unchanged feedback does no rasterization/transfer. The test prints a 1000-panel
+host timing, not an ESP32/SPI benchmark or embedded stack/flash size claim.
+Firmware builds, device timing and stack watermark checks remain unperformed.

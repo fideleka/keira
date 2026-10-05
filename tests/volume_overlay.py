@@ -10,13 +10,20 @@ Hardware timing/SPI library implementation are intentionally not simulated.
 """
 from pathlib import Path
 import argparse
+import os
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--sdk", type=Path, default=ROOT.parent / "sdk-system-shortcuts")
+parser.add_argument(
+    "--u8g2", type=Path,
+    default=Path(os.environ.get("U8G2_CLIB", ROOT.parent / "lilka-sdk/lib/lilka/.pio/libdeps/v2/U8g2/src/clib")),
+    help="Existing read-only U8g2 clib directory; never downloads dependencies")
 args = parser.parse_args()
+u8g2 = args.u8g2
+assert (u8g2 / "u8g2_font.c").is_file(), "Supply --u8g2 with an existing dependency directory"
 sdk = args.sdk / "lib/lilka/src/lilka"
 
 def function(path, signature):
@@ -35,6 +42,8 @@ prelude = r'''
 #include <vector>
 #include <cstdio>
 #include <algorithm>
+#include <cstring>
+#include <chrono>
 using std::min;using std::max;
 #include "volume_overlay.h"
 uint32_t now = 100;
@@ -85,6 +94,10 @@ struct Surface {
   for(int j=0;j<h;++j)for(int i=0;i<w;++i)pixels.at((y+j)*this->w+x+i)=p[j*w+i];
  }
 };
+void referenceFontLine(u8g2_t* font,u8g2_uint_t x,u8g2_uint_t y,u8g2_uint_t len,uint8_t dir){
+ assert(dir==0);
+ static_cast<Surface*>(u8g2_GetUserPtr(font))->fillRect(x,y,len,1,0xffff);
+}
 struct Canvas:Surface,GFX<Canvas> {
  int cx,cy;
  Canvas(int x,int y,int w,int h):Surface(w,h),cx(x),cy(y){}
@@ -177,7 +190,7 @@ int main(){
    feedback.valid=false;protectedRegion={};app.redraw=true;panel.redraw=true;
    app.backgroundDirty=true;manager.tick();const auto clean=display.pixels;
    // Paused: no queueDraw, yet overlay appears, changes, renews, and expires.
-   for(int level : {0,1,5,50,100,135,-1}){
+   for(int level : {0,1,2,3,4,5,6,7,8,9,10,50,100,135,-1}){
     now+=100;feedback.level=level;feedback.valid=true;feedback.adjustedAt=now;
     Surface finalFrame(w,h);finalFrame.pixels=clean;
     drawVolumeOverlay(finalFrame,feedback,w,h,now);
@@ -202,11 +215,40 @@ int main(){
     for(int x=0;x<g.barWidth-4;++x)
      assert(display.pixels[(g.barY+2)*w+g.barX+2+x]==(x<filled?0x07ff:0));
     assert(display.pixels[g.y*w+g.x]==0xffff);
-    if(level==0){ // Verify readable high-contrast M in MUTE, independent of renderer constants.
-     const int sx=g.x+(g.width-60)/2;
-     const int rows[]={5,7,7,5,5};
-     for(int r=0;r<5;++r)for(int c=0;c<3;++c)
-      assert(display.pixels[(g.y+12+r*4)*w+sx+c*4]==((rows[r]&(1<<(2-c)))?0xffff:0));
+    // Independent regular-font reference: actual U8g2 asset/decoder, fixed
+    // 10px advances and baseline, not drawVolumeOverlay or block-font mocks.
+    Surface reference(w,h);
+    u8g2_t font{};
+    u8g2_SetUserPtr(&font,&reference);
+    static const u8g2_cb_t fontCallbacks={nullptr,nullptr,referenceFontLine};
+    font.cb=&fontCallbacks;font.user_x1=w;font.user_y1=h;
+#ifdef U8G2_WITH_CLIP_WINDOW_SUPPORT
+    font.is_page_clip_window_intersection=1;
+#endif
+    font.draw_color=1;u8g2_SetFont(&font,u8g2_font_10x20_t_cyrillic);
+    u8g2_SetFontMode(&font,1);u8g2_SetFontPosBaseline(&font);
+    char label[5];
+    if(bounded)snprintf(label,sizeof(label),"%d%%",bounded);else strcpy(label,"MUTE");
+    const int length=strlen(label);
+    for(int i=0;i<length;++i){
+     assert(u8g2_GetGlyphWidth(&font,label[i])==10);
+     assert(u8g2_DrawGlyph(&font,g.x+(g.width-length*10)/2+i*10,g.y+32,label[i])==10);
+    }
+    int ink=0;
+    for(int y=g.y+12;y<g.y+32;++y)for(int x=g.x+2;x<g.x+g.width-2;++x){
+     assert(display.pixels[y*w+x]==reference.pixels[y*w+x]);
+     ink+=reference.pixels[y*w+x]!=0;
+    }
+    assert(ink>0);
+    if(level==0){
+     // Pinned real FONT_10x20 M bitmap: 1px raster, not the old scaled block M.
+     const char* rows[]={"..........","..........","..........","..........","..........",
+                         "..........","..........",".##....##.",".##....##.",".###..###.",
+                         ".###..###.",".########.",".##.##.##.",".##.##.##.",".##.##.##.",
+                         ".##.##.##.",".##....##.",".##....##.",".##....##.",".##....##."};
+     const int sx=g.x+(g.width-40)/2;
+     for(int yy=0;yy<20;++yy)for(int xx=0;xx<10;++xx)
+      assert(display.pixels[(g.y+12+yy)*w+sx+xx]==(rows[yy][xx]=='#'?0xffff:0));
     }
     assert(app.backCanvas->pixels==source && panelCanvas.pixels==panelSource);
     Canvas screenshot(0,0,w,h);manager.renderToCanvas(&screenshot);
@@ -282,6 +324,19 @@ int main(){
  }
  Surface tiny(95,79);feedback.adjustedAt=now;
  drawVolumeOverlay(tiny,feedback,95,79,now);for(auto p:tiny.pixels)assert(p==0);
+ uint16_t guarded[212]={};
+ const auto benchStart=std::chrono::steady_clock::now();
+ for(int frame=0;frame<1000;++frame){
+  VolumeOverlaySnapshot state;state.valid=true;state.level=frame%101;
+  const auto geometry=volumeOverlayGeometry(280,240);
+  for(int y=geometry.y;y<geometry.y+geometry.height;++y){
+   VolumeOverlayRow row{guarded+1,geometry.x,y,geometry.width};
+   drawVolumeOverlay(row,state,280,240,0);
+   assert(guarded[0]==0 && guarded[211]==0);
+  }
+ }
+ const auto micros=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-benchStart).count();
+ printf("Host 1000 changed scanline panels: %lld us; font context %zu bytes, decoder %zu bytes, source asset 6979 bytes\n",(long long)micros,sizeof(VolumeOverlayFontTarget<VolumeOverlayRow>),sizeof(u8g2_t));
  puts("Every LCD write: SDK + Keira static/menu/statusbar/NES/GB/GBC/interlace, expiry/switch/rotation/immutable sources PASS");
 }
 '''
@@ -308,9 +363,22 @@ assert "drawVolumeOverlay" not in function(ROOT / "src/keira/appmanager.cpp", "v
 with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
     tmp = Path(directory)
     (tmp / "test.cpp").write_text(prelude + code + checks)
-    for flags in ([], ["-fsanitize=address,undefined", "-fno-pie", "-no-pie"]):
-        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk),
-                        str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
+    # Extract verbatim the maintained 6979-byte regular font, rather than
+    # compiling every unrelated font in the dependency's multi-megabyte file.
+    fonts = (u8g2 / "u8g2_fonts.c").read_text(encoding="latin1")
+    start = fonts.index("const uint8_t u8g2_font_10x20_t_cyrillic[")
+    asset = fonts[start:fonts.index('";', start) + 2]
+    (tmp / "font.c").write_text('#include "u8g2.h"\n' + asset)
+    for flags in ([], ["-fsanitize=address", "-fno-pie", "-no-pie"],
+                  ["-fsanitize=undefined", "-fno-pie", "-no-pie"]):
+        objects = []
+        for source in [u8g2 / name for name in ("u8g2_font.c", "u8g2_hvline.c", "u8g2_intersection.c")] + [tmp / "font.c"]:
+            obj = tmp / (source.stem + ".o")
+            subprocess.run(["gcc", "-std=c99", "-ffunction-sections", "-fdata-sections", *flags,
+                            "-I" + str(u8g2), "-c", str(source), "-o", str(obj)], check=True)
+            objects.append(str(obj))
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk), "-I" + str(u8g2), "-Wl,--gc-sections",
+                        *objects, str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
     # Prove guard sensitivity: a background transfer through the footprint must
     # fail, even if finishSystemOverlay would leave a correct final framebuffer.
@@ -318,7 +386,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
                             "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
     assert bad_code != code
     (tmp / "test.cpp").write_text(prelude + bad_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-I" + str(sdk), str(tmp / "test.cpp"),
+    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-I" + str(sdk), "-I" + str(u8g2), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
                     "-o", str(tmp / "test")], check=True)
     rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
     assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
