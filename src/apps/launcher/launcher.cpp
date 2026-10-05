@@ -18,6 +18,7 @@
 #include "services/web/web.h"
 #include "services/mdns/mdns.h"
 #include "services/clock/clock.h"
+#include "services/script/script.h"
 // Demos:
 #include "apps/demos/lines/lines.h"
 #include "apps/demos/disk/disk.h"
@@ -39,6 +40,7 @@
 #include "apps/gpiomanager/gpiomanager.h"
 #include "apps/tamagotchi/tamagotchi.h"
 #include "apps/lua/luarunner.h"
+#include "apps/lua/luawallpaper.h"
 #include "apps/mjs/mjsrunner.h"
 #include "apps/nes/nesapp.h"
 #include "apps/gameboy/gameboyapp.h"
@@ -50,6 +52,7 @@
 #include "apps/pastebin/pastebinApp.h"
 #include "apps/usbdrive/usbdrive.h"
 #include "apps/soundsettings/sound.h"
+#include "apps/partmanager/partmanager.h"
 
 // Icons
 #include "apps/icons/demos.h"
@@ -184,11 +187,12 @@ bool utcOffsetFromTimezone(const String& timezone, int16_t& offsetMinutes) {
     return true;
 }
 } // namespace
-// Home screen wallpaper, first existing one is used
+// Home screen wallpaper, Lua script takes priority over images, first existing image is used
+static const char* const WALLPAPER_LUA_PATH = "/sd/wallpaper.lua";
 static const char* const WALLPAPER_PATHS[] =
     {"/sd/wallpaper.gif", "/sd/wallpaper.png", "/sd/wallpaper.jpg", "/sd/wallpaper.jpeg", "/sd/wallpaper.bmp"};
 
-LauncherApp::LauncherApp() : App("Launcher") {
+LauncherApp::LauncherApp() : App("Launcher"), autorunEnabled(ScriptService::getAutorunEnabled()) {
     setktStackSize(8192); // Yeah, this one is heavy as fuck
 }
 
@@ -332,7 +336,13 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_SD,
                         {
-                            ITEM::MENU(K_S_PARTITION_TABLE, [this]() { this->partitions(); }),
+                            ITEM::MENU(
+                                K_S_PARTITION_TABLE,
+                                [this]() {
+                                    this->runApp<PartManagerApp>();
+                                    ;
+                                }
+                            ),
                             ITEM::MENU(K_S_LAUNCHER_SD_FORMAT, [this]() { this->formatSD(); }),
                             ITEM::MENU(K_S_LAUNCHER_SD_SPEED, [this]() { this->setSpiSDSpeed(); }),
                         }
@@ -549,6 +559,24 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                                     ),
                                 }
                             ),
+                            ITEM::SUBMENU(
+                                K_S_LAUNCHER_AUTORUN,
+                                {
+                                    ITEM::MENU(
+                                        K_S_STATUS,
+                                        [this]() {
+                                            autorunEnabled = !autorunEnabled;
+                                            ScriptService::setAutorunEnabled(autorunEnabled);
+                                        },
+                                        nullptr,
+                                        lilka::colors::White,
+                                        [this](void* item) {
+                                            lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
+                                            menuItem->postfix = autorunEnabled ? K_S_ON : K_S_OFF;
+                                        }
+                                    ),
+                                }
+                            ),
                         }
                     ),
                     ITEM::SUBMENU(
@@ -683,20 +711,31 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
 
 void LauncherApp::homeScreen(item_t& mainMenu) {
     Wallpaper wallpaper;
+    LuaWallpaper luaWallpaper;
     while (1) {
         // Wallpaper is reopened each time to free its memory while the menu and apps are running
-        for (const char* path : WALLPAPER_PATHS) {
-            if (wallpaper.open(path, canvas->width(), canvas->height())) break;
+        if (!luaWallpaper.open(WALLPAPER_LUA_PATH, this)) {
+            for (const char* path : WALLPAPER_PATHS) {
+                if (wallpaper.open(path, canvas->width(), canvas->height())) break;
+            }
         }
 
+        TickType_t lastFrame = xTaskGetTickCount();
         while (1) {
             int delayMs = 0;
-            if (wallpaper.isOpen()) {
+            TickType_t now = xTaskGetTickCount();
+            if (luaWallpaper.isOpen()) {
+                // Script error closes Lua wallpaper, black screen is shown instead
+                if (!luaWallpaper.frame(pdTICKS_TO_MS(now - lastFrame))) {
+                    canvas->fillScreen(lilka::colors::Black);
+                }
+            } else if (wallpaper.isOpen()) {
                 delayMs = wallpaper.nextFrame();
                 wallpaper.draw(canvas);
             } else {
                 canvas->fillScreen(lilka::colors::Black);
             }
+            lastFrame = now;
             canvas->setFont(FONT_9x15);
             canvas->setTextColor(lilka::colors::White);
             canvas->drawTextAligned(
@@ -717,6 +756,7 @@ void LauncherApp::homeScreen(item_t& mainMenu) {
             if (openMenu) break;
         }
 
+        luaWallpaper.close();
         wallpaper.close();
         showMenu(mainMenu.name, mainMenu.submenu);
     }
@@ -726,7 +766,8 @@ void LauncherApp::showMenu(const String& title, ITEM_LIST& list, bool back, Laun
     if (back) menu.addActivationButton(K_BTN_BACK);
     auto rebuild = [&]() {
         menu.clearItems();
-        for (const item_t& item : list) menu.addItem(item.name, item.icon, item.color);
+        for (const item_t& item : list)
+            menu.addItem(item.name, item.icon, item.color);
         if (back) menu.addItem(K_S_MENU_BACK);
     };
     auto refresh = [&]() {
@@ -782,18 +823,18 @@ void LauncherApp::showMenu(const String& title, ITEM_LIST& list, bool back, Laun
 void LauncherApp::refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind) {
     RomSystem system = kind == LauncherMenuKind::NES       ? RomSystem::NES
                        : kind == LauncherMenuKind::GameBoy ? RomSystem::GameBoy
-                                                          : RomSystem::GameBoyColor;
+                                                           : RomSystem::GameBoyColor;
     items.clear();
     for (const String& path : readRecentRoms(system)) {
         String name = path.substring(path.lastIndexOf('/') + 1);
         if (system == RomSystem::NES) {
-            items.push_back(
-                ITEM::APP(name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
-            );
+            items.push_back(ITEM::APP(
+                name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
+            ));
         } else {
-            items.push_back(
-                ITEM::APP(name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
-            );
+            items.push_back(ITEM::APP(
+                name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
+            ));
         }
     }
 }
@@ -940,28 +981,26 @@ ITEM_LIST LauncherApp::loadCatalogItems() {
         const char* nameCStr = catalogItemNames_.back().c_str();
         String execPath = e.execPath;
         ExecutionType execType = e.type;
-        items.push_back(
-            ITEM::APP(
-                nameCStr,
-                [this, execPath, execType]() {
-                    switch (execType) {
-                        case EXEC_TYPE_LUA:
-                            ksystem.apps.spawn(new LuaFileRunnerApp(execPath));
-                            break;
-                        case EXEC_TYPE_BINARY:
-                            ksystem.apps.spawn(new MultiBootApp(execPath));
-                            break;
-                        case EXEC_TYPE_DYNAPP:
-                            ksystem.apps.spawn(new DynApp(execPath));
-                            break;
-                        default:
-                            break;
-                    }
-                },
-                nullptr,
-                lilka::colors::Aquamarine
-            )
-        );
+        items.push_back(ITEM::APP(
+            nameCStr,
+            [this, execPath, execType]() {
+                switch (execType) {
+                    case EXEC_TYPE_LUA:
+                        ksystem.apps.spawn(new LuaFileRunnerApp(execPath));
+                        break;
+                    case EXEC_TYPE_BINARY:
+                        ksystem.apps.spawn(new MultiBootApp(execPath));
+                        break;
+                    case EXEC_TYPE_DYNAPP:
+                        ksystem.apps.spawn(new DynApp(execPath));
+                        break;
+                    default:
+                        break;
+                }
+            },
+            nullptr,
+            lilka::colors::Aquamarine
+        ));
     }
     return items;
 }
@@ -1353,27 +1392,7 @@ void LauncherApp::showEasterEgg() {
         taskYIELD();
     }
 }
-void LauncherApp::partitions() {
-    // TODO : support more than 16 partitions
-    String names[16];
-    int partitionCount = lilka::sys.get_partition_labels(names);
 
-    ITEM_LIST partitionsMenu;
-    for (int i = 0; i < partitionCount; i++) {
-        String partition = names[i];
-        partitionsMenu.push_back(ITEM::MENU(names[i].c_str(), [this, partition]() {
-            alert(
-                partition,
-                StringFormat(
-                    K_S_LAUNCHER_PARTITION_FMT,
-                    String(lilka::sys.get_partition_address(partition.c_str()), HEX).c_str(),
-                    String(lilka::sys.get_partition_size(partition.c_str()), HEX).c_str()
-                )
-            );
-        }));
-    }
-    showMenu(K_S_PARTITION_TABLE, partitionsMenu);
-}
 void LauncherApp::formatSD() {
     if (!confirm(K_S_LAUNCHER_FORMAT, K_S_LAUNCHER_FORMAT_DISCLAIMER_ALERT)) return;
 
