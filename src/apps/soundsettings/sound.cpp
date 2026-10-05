@@ -3,7 +3,16 @@
 
 SoundConfigApp::SoundConfigApp() : App("SoundConfig") {
 }
+bool SoundConfigApp::syncSystemVolume() {
+    const int current = lilka::audio.getVolume();
+    if (current == observedSystemVolume) return false;
+    volumeLevel = current;
+    observedSystemVolume = current;
+    return true;
+}
+
 void SoundConfigApp::saveSettings() {
+    syncSystemVolume(); // Do not overwrite a newer global shortcut with a stale UI snapshot.
     lilka::audio.setVolume(volumeLevel);
     lilka::audio.setStartupSoundEnabled(startupSound);
     lilka::buzzer.setStartupBuzzerEnabled(startupBuzzer);
@@ -30,6 +39,10 @@ void SoundConfigApp::run() {
     auto lastVolumeChange = millis();
     auto volumeDelay = VOLUME_BUTTON_DELAY; // inital value
     while (!soundMenu.isFinished()) {
+        if (syncSystemVolume()) {
+            mItems[0].postfix = String("< ") + String(volumeLevel) + " >";
+            soundMenu.setItem(0, mItems[0].title, mItems[0].icon, mItems[0].color, mItems[0].postfix);
+        }
         soundMenu.update();
         soundMenu.draw(canvas);
         queueDraw();

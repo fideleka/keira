@@ -69,6 +69,19 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
 
+        // Only this presentation task touches SPI. Feedback uses an immutable
+        // snapshot and never writes into app/back/screenshot canvases.
+        const uint32_t overlayNow = millis();
+        const auto volumeOverlay = lilka::audio.getVolumeOverlay();
+        const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
+        KMTX_LOCK(topApp->canvasMutex);
+        const bool repaintLayers = topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
+        if (repaintLayers) {
+            lilka::display.clearOutsideOverlay(lilka::colors::Black);
+            topApp->backgroundDirty = false;
+        }
+        KMTX_UNLOCK(topApp->canvasMutex);
+
         // Draw panel and top app
         for (App* app : {panel, topApp}) {
             if (app == panel) {
@@ -84,28 +97,36 @@ void AppManager::run() {
             /// LOCK APP CANVAS
             KMTX_LOCK(app->canvasMutex);
 
-            if (app == topApp && app->backgroundDirty) {
-                lilka::display.fillScreen(lilka::colors::Black);
-                app->backgroundDirty = false;
-            }
-
             // Draw toast message on app's canvas to prevent flickering
             if (millis() < toast.endTime) {
                 renderToast(topApp->backCanvas);
             }
 
             // Redraw app
-            if (app->getRedraw()) {
-                if (app->flags & AppFlags::APP_FLAG_INTERLACED) {
-                    lilka::display.drawCanvasInterlaced(app->backCanvas, app->frame % 2);
-                } else {
-                    lilka::display.drawCanvas(app->backCanvas);
-                }
+            if (app->getRedraw() || repaintLayers) {
+                const int parity = (app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers ? app->frame % 2 : -1;
+                lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
                 app->setRedraw(false);
             }
             /// UNLOCK APP CANVAS
             KMTX_UNLOCK(app->canvasMutex);
         }
+        if (lilka::display.systemOverlayNeedsTransfer()) {
+            // Match screenshot lock order: panel mutex, panel canvas, top canvas.
+            // The SDK takes no locks. Expiry reads retained canvases even for paused
+            // scenes; active feedback is opaque and needs no underlying repaint.
+            KMTX_LOCK(panelMtx);
+            KMTX_LOCK(panel->canvasMutex);
+            KMTX_LOCK(topApp->canvasMutex);
+            lilka::Canvas* layers[] = {
+                (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas, topApp->backCanvas
+            };
+            lilka::display.finishSystemOverlay(layers, 2);
+            KMTX_UNLOCK(topApp->canvasMutex);
+            KMTX_UNLOCK(panel->canvasMutex);
+            KMTX_UNLOCK(panelMtx);
+        }
+        lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);

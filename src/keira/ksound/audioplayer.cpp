@@ -67,11 +67,8 @@ bool AudioPlayer::play(lilka::Sound* sound, AudioOutput* customOutput) {
     // Begin playback
     generator->begin(source, output);
 
-    // Set initial gain from system volume
-    if (gain < 0) {
-        gain = lilka::audio.getVolume() / 100.0f;
-    }
-    output->SetGain(gain);
+    // Application gain and live system master volume are independent.
+    output->SetGain(gain * lilka::audio.getVolume() / 100.0f);
 
     // Reset state
     playingSound = sound;
@@ -87,6 +84,7 @@ bool AudioPlayer::play(lilka::Sound* sound, AudioOutput* customOutput) {
 
 void AudioPlayer::audioTaskFunc(void* arg) {
     AudioPlayer* self = static_cast<AudioPlayer*>(arg);
+    float appliedGain = -1.0f;
 
     while (1) {
         // Check for commands
@@ -122,7 +120,6 @@ void AudioPlayer::audioTaskFunc(void* arg) {
                     if (self->gain < 0) self->gain = 0;
                     if (self->gain > 4) self->gain = 4;
                     KMTX_UNLOCK(self->mutex);
-                    self->output->SetGain(self->gain);
                     break;
             }
         }
@@ -138,6 +135,11 @@ void AudioPlayer::audioTaskFunc(void* arg) {
         }
 
         if (!currentPaused) {
+            const float outputGain = self->gain * lilka::audio.getVolume() / 100.0f;
+            if (outputGain != appliedGain) {
+                self->output->SetGain(outputGain);
+                appliedGain = outputGain;
+            }
             if (!self->generator->loop()) {
                 // Track finished
                 self->generator->stop();
@@ -250,7 +252,7 @@ void AudioPlayer::cleanup() {
     playing = false;
     paused = false;
     finished = false;
-    gain = -1.0f;
+    gain = 1.0f;
 }
 
 AudioPlayer audioPlayer;
