@@ -22,7 +22,7 @@ uint32_t now=0;uint32_t millis(){return now;}
 void vTaskDelay(unsigned n){now+=n;}
 namespace lilka {
 enum class Button{A,B};namespace colors{constexpr int White=0;}
-struct Key{bool pressed=false;};struct State{Key select,start;};
+struct Key{bool pressed=false;};struct State{Key select,start;bool selectHeld=false;bool selectConsumed=false;};
 struct Controller {unsigned calls=0,releaseAt=0;State getState(){State s;s.select.pressed=s.start.pressed=calls++<releaseAt;return s;}} controller;
 struct Canvas{};
 std::vector<int> choices;unsigned step=0;bool pressB=false;
