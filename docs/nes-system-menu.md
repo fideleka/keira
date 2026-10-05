@@ -10,10 +10,11 @@ Select+Start screenshot gesture is replaced; two-second exit is restored.
 Select+C save and Select+D load remain; ambiguous Select+C+D is consumed until a
 fresh Select press. Menu A activates, B returns/resumes; directions navigate.
 
-Top-level menu: Screenshot, Reset (Cancel-first confirmation), Controls,
+Top-level menu: Screenshot, Reset (immediate, no confirmation), Controls,
 More actions, Exit to Keira. All five rows are visible. Press B to resume; there
 is no separate Resume item. More actions contains Save/Load state, Turbo A/B and GB/GBC Frameskip.
-State/reset/screenshot actions close the menu and resume. Reset is a soft reset.
+State/reset/screenshot actions close the menu and resume. Reset is a soft reset, returned on one activation with no second dialog.
+English "Reset" and Ukrainian "Перезапуск" have no ellipsis; B still resumes.
 Existing state handlers and state file format/names are unchanged.
 
 Precision mode defaults OFF. When ON it changes **all four D-pad directions**:
@@ -57,7 +58,7 @@ failed/zero-byte output, preventing a stuck write from trapping the sound mutex.
 State/reset handlers take the same mutex while audio is paused. Exit uses the
 existing orderly shutdown path.
 
-The chord, every submenu boundary, confirmation, and resume are separated by a
+The chord, every submenu boundary and resume are separated by a
 sleeping **all physical buttons released** gate; button edge state, turbo phases,
 and direction timing are cleared. Holding menu A, a direction, or only one
 chord button cannot leak into gameplay or activate the next modal page.
@@ -201,11 +202,11 @@ ordinary gameplay Start; consumed/ambiguous state chords cannot become menu/exit
 No screenshot is requested on long exit or Reset. A short chord does not forward
 Start/Select to gameplay; release gates consume remaining physical buttons.
 
-Every shared menu/options/confirmation/config notice, status postfix and paused
+Every shared menu/options/config notice, status postfix and paused
 title uses K_S_EMU_* localization keys. Ukrainian (default) and English headers
 contain the complete same key set; no other locales exist in this checkout.
 Run python3 tests/menu_access.py for actual shared UI action routing, five-entry
-accessibility, cancel-first reset, short/long/rollover hold tests in both locales
+accessibility, immediate one-activation reset, short/long/rollover hold tests in both locales
 (normal and ASan/UBSan), plus the repository localization consistency gate.
 Physical follow-up: in Ukrainian and English, confirm first-page Screenshot and
 Exit visible, short release opens menu and >=2s chord exits NES/.gb/.gbc, with
