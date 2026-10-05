@@ -17,7 +17,7 @@ pre=r'''
 using String=std::string;
 #define pdMS_TO_TICKS(x) (x)
 namespace lilka {
-struct B {bool pressed=false;};struct State {B a,b,c,d,up,down,left,right,select,start;};
+struct B {bool pressed=false;};struct State {B a,b,c,d,up,down,left,right,select,start; bool selectHeld=false;};
 enum class Button {A,B};
 namespace colors {constexpr int Black=0,White=1;}
 struct Canvas {void fillScreen(int){}};
@@ -42,7 +42,7 @@ struct {template<typename...T> void err(T...){}} serial;
 String StringFormat(const char*,unsigned){return "delay";}
 uint32_t now=0,releaseAt=0;bool releaseSelect=true;
 uint32_t millis(){return now;}
-void vTaskDelay(unsigned n){now+=n;if(uint32_t(now-releaseAt)>=10 && uint32_t(now-releaseAt)<10000){lilka::controller.state=lilka::State();return;}if(int32_t(now-releaseAt)>=0){if(releaseSelect)lilka::controller.state.select.pressed=false;else lilka::controller.state.start.pressed=false;}}
+void vTaskDelay(unsigned n){now+=n;if(uint32_t(now-releaseAt)>=10 && uint32_t(now-releaseAt)<10000){lilka::controller.state=lilka::State();return;}if(int32_t(now-releaseAt)>=0){if(releaseSelect){lilka::controller.state.select.pressed=false;lilka::controller.state.selectHeld=false;}else lilka::controller.state.start.pressed=false;}}
 struct EmulatorMenuApp {
  enum class SystemAction {Resume,Exit,Reset,Save,Load,Screenshot};
  nesmenu::Preferences preferences;nesmenu::DirectionFilter directionFilter,verticalFilter;
@@ -77,12 +77,14 @@ checks=r'''
 int main(int argc,char** argv){
  assert(argc==2);
  auto& state=lilka::controller.state;
- for(bool selectRelease:{false,true}){
- now=0;releaseAt=1990;releaseSelect=selectRelease;state.select.pressed=state.start.pressed=true;
+ for(bool consumed:{false,true}) for(bool selectRelease:{false,true}){
+ now=0;releaseAt=1990;releaseSelect=selectRelease;state.select.pressed=!consumed;state.selectHeld=consumed;state.start.pressed=true;
  assert(!app.holdExitRequested());state=lilka::State();app.waitForRelease();
  }
  now=UINT32_MAX-1000;releaseAt=3000;state.select.pressed=state.start.pressed=true;
  assert(app.holdExitRequested());assert(uint32_t(now-(UINT32_MAX-1000))==2000);
+ now=0;releaseAt=3000;state.select.pressed=false;state.selectHeld=state.start.pressed=true;
+ assert(app.holdExitRequested());assert(now==2000);
  state=lilka::State();
  for(int choice:{0,4}){lilka::choices={choice};lilka::step=0;
  auto action=app.showSystemMenu();assert(action==(choice==0?NesApp::SystemAction::Screenshot:NesApp::SystemAction::Exit));}

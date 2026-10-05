@@ -7,7 +7,7 @@ namespace {
 bool anyPressed(const lilka::State& state) {
     return state.a.pressed || state.b.pressed || state.c.pressed || state.d.pressed || state.up.pressed ||
            state.down.pressed || state.left.pressed || state.right.pressed || state.select.pressed ||
-           state.start.pressed;
+           state.start.pressed || state.selectHeld;
 }
 } // namespace
 
@@ -238,7 +238,7 @@ bool EmulatorMenuApp::holdExitRequested() {
     const uint32_t began = millis();
     while (true) {
         const auto state = lilka::controller.getState();
-        if (!state.select.pressed || !state.start.pressed) return false;
+        if (!(state.select.pressed || state.selectHeld) || !state.start.pressed) return false;
         if (uint32_t(millis() - began) >= 2000) return true;
         vTaskDelay(pdMS_TO_TICKS(10));
     }

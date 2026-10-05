@@ -129,11 +129,14 @@ void osd_getinput(void) {
         return;
     }
 
+    if (state.selectConsumed) inputState.selectConsumed = true;
     // Reserve Select-first Start for the system menu. Start-first remains an
-    // ordinary game press, as before; never reinterpret a consumed Select.
+    // ordinary game press. Volume cancellation may yield to Start; application
+    // save/load consumption must not be reinterpreted as a menu chord.
     if (state.start.pressed && !inputState.startWasPressed) {
-        inputState.startGameActive = !state.select.pressed;
-        if (!inputState.startGameActive && !inputState.selectConsumed && !state.c.pressed && !state.d.pressed) {
+        inputState.startGameActive = !(state.select.pressed || state.selectHeld);
+        if (!inputState.startGameActive && (!inputState.selectConsumed || state.selectConsumed) &&
+            !state.c.pressed && !state.d.pressed) {
             inputState.selectConsumed = true;
             inputState.startWasPressed = true;
             openSystemMenu();
