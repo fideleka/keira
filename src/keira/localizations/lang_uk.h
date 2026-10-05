@@ -7,6 +7,7 @@
 // GUIDELINE: Keira all strings used in messages, or somehow written to serial, should be defined here
 
 // clang-format off
+#define K_S_VOLUME_MUTE "Без звуку"
 
 // Multi purpose strings  /////////////////////////////////////////////////////////////////////////////
 #define K_S_CURRENT_LANGUAGE_SHORT      "uk"
@@ -623,9 +624,7 @@
 #define K_S_EMU_LOAD "Завантажити стан"
 #define K_S_EMU_TURBO_A "Турбо A (C)"
 #define K_S_EMU_TURBO_B "Турбо B (D)"
-#define K_S_EMU_RESET "Перезапуск..."
-#define K_S_EMU_RESET_CONFIRM "Перезапустити гру?"
-#define K_S_EMU_CANCEL "Скасувати"
+#define K_S_EMU_RESET "Перезапуск"
 #define K_S_EMU_BACK "Назад"
 #define K_S_EMU_FRAMESKIP "Пропуск кадрів"
 #define K_S_EMU_ON "УВІМК."

@@ -45,14 +45,16 @@ int main(){EmulatorMenuApp app;
 for(bool gb:{false,true}){app.hasFrameskipSetting=gb;
  for(int entry:{0,4}){lilka::choices={entry};lilka::step=0;
  auto action=app.showSystemMenu();assert(action==(entry==0?EmulatorMenuApp::SystemAction::Screenshot:EmulatorMenuApp::SystemAction::Exit));}
- lilka::choices={1,0,3,gb?5:4,4};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // cancel reset/back/exit
- lilka::choices={1,1};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Reset);
- lilka::pressB=true;lilka::choices={0};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Resume);lilka::pressB=false;
+ lilka::choices={3,gb?5:4,4};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Exit);assert(app.writes==0); // back/exit
+ lilka::choices={1};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Reset);assert(lilka::step==1);
+ for(int stateAction:{0,1}){lilka::choices={3,stateAction};lilka::step=0;
+ assert(app.showSystemMenu()==(stateAction==0?EmulatorMenuApp::SystemAction::Save:EmulatorMenuApp::SystemAction::Load));assert(lilka::step==2);}
+ lilka::pressB=true;lilka::choices={1};lilka::step=0;assert(app.showSystemMenu()==EmulatorMenuApp::SystemAction::Resume);lilka::pressB=false;
 }
 for(unsigned duration:{0u,1u,199u,200u,201u}){now=0;lilka::controller.calls=0;lilka::controller.releaseAt=duration;
  assert(app.holdExitRequested()==(duration>200));}
 now=UINT32_MAX-100;lilka::controller.calls=0;lilka::controller.releaseAt=500;assert(app.holdExitRequested());
-puts("Actual shared menu first-page Resume/Screenshot/Exit, reset cancel, short/long/rollover gesture PASS");}
+puts("Actual shared menu first-page Resume/Screenshot/Exit, immediate one-activation reset, short/long/rollover gesture PASS");}
 '''
 with tempfile.TemporaryDirectory() as tmp:
  p=Path(tmp)

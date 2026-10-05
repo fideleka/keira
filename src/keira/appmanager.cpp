@@ -4,6 +4,7 @@
 
 #include "keira/appmanager.h"
 #include "keira/thread.h"
+#include "keira/keira_lang.h"
 
 // Apps:
 #include "apps/statusbar/statusbar.h"
@@ -72,7 +73,9 @@ void AppManager::run() {
         // Only this presentation task touches SPI. Feedback uses an immutable
         // snapshot and never writes into app/back/screenshot canvases.
         const uint32_t overlayNow = millis();
-        const auto volumeOverlay = lilka::audio.getVolumeOverlay();
+        auto volumeOverlay = lilka::audio.getVolumeOverlay();
+        static_assert(sizeof(K_S_VOLUME_MUTE) <= sizeof(volumeOverlay.muteLabel), "Mute label exceeds snapshot");
+        memcpy(volumeOverlay.muteLabel, K_S_VOLUME_MUTE, sizeof(K_S_VOLUME_MUTE));
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
         const bool repaintLayers = topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
