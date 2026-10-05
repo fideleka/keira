@@ -64,14 +64,14 @@ void* timer=nullptr;void* xSoundMutex=nullptr;bool soundInitialized=false;
 constexpr int portMAX_DELAY=0;namespace esp_i2s {int I2S_NUM_0=0;}
 void i2s_zero_dma_buffer(int){}struct Acquire {Acquire(void*){}};
 void* xSemaphoreCreateBinary(){return &app;} void xSemaphoreGive(void*){}void xSemaphoreTake(void*,int){}void vSemaphoreDelete(void*){}
-int stops=0,resets=0,quits=0,releases=0;
+int stops=0,resets=0,quits=0,releases=0,softResets=0;
 void xTimerStop(void*,int){++stops;}void xTimerReset(void*,int){++resets;}
 void xTimerPendFunctionCall(void(*f)(void*,uint32_t),void* p,int,int){f(p,0);}
 struct {bool exitRequested=false;} inputState;
 void releaseJoypad(){++releases;}void resetInputState(){inputState.exitRequested=false;}
 void prepareRuntimeShutdown(){++stops;}
 enum {event_quit,event_soft_reset,event_state_save,event_state_load,INP_STATE_MAKE};
-using event_t=void(*)(int);void quit(int){assert(stops);++quits;}event_t event_get(int){return quit;}void triggerStateEvent(int){}
+using event_t=void(*)(int);void quit(int){assert(stops);++quits;}event_t event_get(int){return quit;}void triggerStateEvent(int event){if(event==event_soft_reset)++softResets;}
 '''
 checks=r'''
 int main(int argc,char** argv){
@@ -113,6 +113,8 @@ int main(int argc,char** argv){
  lilka::choices={4};lilka::step=0;openSystemMenu();assert(quits==1&&inputState.exitRequested&&stops&&releases);assert(!app.screenshotOnNextFrame&&!resets);
  inputState.exitRequested=false;now=0;releaseAt=2010;state.select.pressed=state.start.pressed=true;
  lilka::step=0;openSystemMenu();assert(quits==2&&inputState.exitRequested);assert(lilka::step==0);assert(!app.screenshotOnNextFrame&&!resets);
+ inputState.exitRequested=false;state=lilka::State();lilka::choices={1};lilka::step=0;
+ openSystemMenu();assert(softResets==1&&lilka::step==1&&!inputState.exitRequested&&quits==2);
  puts("Shared actual short/long/wrap chord, localized visible root/axis routing/clamps/B, NES exit cleanup/callback PASS");
 }
 '''
@@ -133,5 +135,6 @@ for language in ['uk','en']:
 gb=(ROOT/'src/apps/gameboy/gameboyapp.cpp').read_text()
 assert 'holdExitRequested() ? SystemAction::Exit : showSystemMenu()' in gb
 assert 'if (action == SystemAction::Exit) break;' in gb
+assert 'if (action == SystemAction::Reset) gbcore_reset(core);' in gb
 assert 'stopAudio();\n    gbcore_copy_save(core);\n    if (!writeSave())' in gb
 assert 'releaseGame();' in gb

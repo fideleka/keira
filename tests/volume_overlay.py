@@ -36,6 +36,17 @@ def function(path, signature):
         end += 1
     return text[start:end]
 
+# Match the actual compile-time localization selector, including its UK default.
+for flag, mute, reset in [(None, "Без звуку", "Перезапуск"),
+                          ("LANG_UK", "Без звуку", "Перезапуск"),
+                          ("LANG_EN", "Mute", "Reset")]:
+    macros = subprocess.run(["g++", "-E", "-dM", "-x", "c++", *(["-D" + flag] if flag else []),
+                             str(ROOT / "src/keira/keira_lang.h")],
+                            capture_output=True, text=True, check=True).stdout
+    assert '#define K_S_VOLUME_MUTE "' + mute + '"' in macros
+    assert '#define K_S_EMU_RESET "' + reset + '"' in macros
+    assert "K_S_EMU_RESET_CONFIRM" not in macros and "K_S_EMU_CANCEL" not in macros
+
 prelude = r'''
 #include <cassert>
 #include <cstdint>
@@ -43,6 +54,7 @@ prelude = r'''
 #include <cstdio>
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <chrono>
 using std::min;using std::max;
 #include "volume_overlay.h"
@@ -169,7 +181,9 @@ struct AppManager:ThreadManager {
 checks = r'''
 int main(){
  using namespace lilka;
- static_assert(sizeof(OverlayStorage)==624, "Bounded presentation storage changed");
+ assert(std::string(VolumeOverlaySnapshot().muteLabel)=="Mute");
+ strcpy(feedback.muteLabel,K_S_VOLUME_MUTE);
+ static_assert(sizeof(OverlayStorage)==656, "Bounded presentation storage changed");
  for(auto dimensions : {std::pair<int,int>{280,240},{240,280}}){
   const int w=dimensions.first,h=dimensions.second;
   display=Display();display.w=w;display.h=h;display.pixels.assign(w*h,0);
@@ -216,7 +230,7 @@ int main(){
      assert(display.pixels[(g.barY+2)*w+g.barX+2+x]==(x<filled?0x07ff:0));
     assert(display.pixels[g.y*w+g.x]==0xffff);
     // Independent regular-font reference: actual U8g2 asset/decoder, fixed
-    // 10px advances and baseline, not drawVolumeOverlay or block-font mocks.
+    // actual glyph advances and baseline, not drawVolumeOverlay or block-font mocks.
     Surface reference(w,h);
     u8g2_t font{};
     u8g2_SetUserPtr(&font,&reference);
@@ -227,20 +241,23 @@ int main(){
 #endif
     font.draw_color=1;u8g2_SetFont(&font,u8g2_font_10x20_t_cyrillic);
     u8g2_SetFontMode(&font,1);u8g2_SetFontPosBaseline(&font);
-    char label[5];
-    if(bounded)snprintf(label,sizeof(label),"%d%%",bounded);else strcpy(label,"MUTE");
-    const int length=strlen(label);
-    for(int i=0;i<length;++i){
-     assert(u8g2_GetGlyphWidth(&font,label[i])==10);
-     assert(u8g2_DrawGlyph(&font,g.x+(g.width-length*10)/2+i*10,g.y+32,label[i])==10);
-    }
+    char label[32];
+    if(bounded)snprintf(label,sizeof(label),"%d%%",bounded);else strcpy(label,K_S_VOLUME_MUTE);
+    std::vector<uint16_t> glyphs;
+    if(bounded)for(const char* c=label;*c;++c)glyphs.push_back(*c);
+    else if(std::string(K_S_VOLUME_MUTE)=="Mute")glyphs={'M','u','t','e'};
+    else glyphs={0x411,0x435,0x437,0x20,0x437,0x432,0x443,0x43a,0x443}; // Без звуку
+    int advance=0;
+    for(auto glyph:glyphs){assert(u8g2_GetGlyphWidth(&font,glyph)==10);advance+=u8g2_GetGlyphWidth(&font,glyph);}
+    int labelX=g.x+(g.width-advance)/2;
+    for(auto glyph:glyphs) labelX+=u8g2_DrawGlyph(&font,labelX,g.y+32,glyph);
     int ink=0;
     for(int y=g.y+12;y<g.y+32;++y)for(int x=g.x+2;x<g.x+g.width-2;++x){
      assert(display.pixels[y*w+x]==reference.pixels[y*w+x]);
      ink+=reference.pixels[y*w+x]!=0;
     }
     assert(ink>0);
-    if(level==0){
+    if(level==0 && std::string(K_S_VOLUME_MUTE)=="Mute"){
      // Pinned real FONT_10x20 M bitmap: 1px raster, not the old scaled block M.
      const char* rows[]={"..........","..........","..........","..........","..........",
                          "..........","..........",".##....##.",".##....##.",".###..###.",
@@ -322,12 +339,39 @@ int main(){
   feedback.adjustedAt=now;display.presentCanvas(&sdkCanvas);display.drawCanvas(&partial);
   assert(display.pixels[g.y*w+g.x]!=0xffff); // Partial presentation never opts in.
  }
+ display=Display();
+ Canvas labels(0,0,280,240);labels.fillScreen(0x7777);
+ feedback.level=0;feedback.valid=true;feedback.adjustedAt=now;
+ strcpy(feedback.muteLabel,"Mute");display.drawCanvas(&labels);
+ const auto english=display.pixels;const auto stamp=feedback.adjustedAt;
+ strcpy(feedback.muteLabel,"Без звуку");
+ Surface labelFinal(280,240);labelFinal.pixels=labels.pixels;drawVolumeOverlay(labelFinal,feedback,280,240,now);
+ expected=labelFinal.pixels;protectedRegion=volumeOverlayGeometry(280,240);touched.assign(280*240,0);
+ display.drawCanvas(&labels);
+ const auto lg=protectedRegion;
+ for(int y=lg.y;y<lg.y+lg.height;++y)for(int x=lg.x;x<lg.x+lg.width;++x)assert(touched[y*280+x]==1);
+ assert(display.pixels!=english && display.overlayState.adjustedAt==stamp);
+ const auto ukrainian=display.pixels;
+ pixelWrites=0;touched.assign(280*240,0);display.drawCanvas(&labels);for(auto n:touched)assert(n==0);
+ assert(display.pixels==ukrainian);
+ now=stamp+1200;expected=labels.pixels;touched.assign(280*240,0);display.drawCanvas(&labels);assert(display.pixels==labels.pixels);protectedRegion={};
+ // Decoder guards: malformed, truncated, surrogate, non-BMP and maximum unterminated label.
+ for(const char* bad:{"\xc0\xaf","\xe0\x80\xaf","\xed\xa0\x80","\xf0\x90\x80\x80","\xd0"}){
+  size_t offset=0;assert(volumeOverlayNextGlyph(bad,strlen(bad)+1,offset)==0);
+ }
+ feedback.adjustedAt=now;memset(feedback.muteLabel,'M',sizeof(feedback.muteLabel));
+ Surface narrow(96,80);drawVolumeOverlay(narrow,feedback,96,80,now);
+ for(int y=0;y<80;++y)for(int x=0;x<96;++x){
+  auto g=volumeOverlayGeometry(96,80);
+  if(x<g.x||x>=g.x+g.width||y<g.y||y>=g.y+g.height)assert(narrow.pixels[y*96+x]==0);
+ }
  Surface tiny(95,79);feedback.adjustedAt=now;
  drawVolumeOverlay(tiny,feedback,95,79,now);for(auto p:tiny.pixels)assert(p==0);
  uint16_t guarded[212]={};
  const auto benchStart=std::chrono::steady_clock::now();
  for(int frame=0;frame<1000;++frame){
   VolumeOverlaySnapshot state;state.valid=true;state.level=frame%101;
+  strcpy(state.muteLabel,frame%2?"Без звуку":"Mute");
   const auto geometry=volumeOverlayGeometry(280,240);
   for(int y=geometry.y;y<geometry.y+geometry.height;++y){
    VolumeOverlayRow row{guarded+1,geometry.x,y,geometry.width};
@@ -369,15 +413,16 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
     start = fonts.index("const uint8_t u8g2_font_10x20_t_cyrillic[")
     asset = fonts[start:fonts.index('";', start) + 2]
     (tmp / "font.c").write_text('#include "clib/u8g2.h"\n' + asset)
-    for flags in ([], ["-fsanitize=address", "-fno-pie", "-no-pie"],
-                  ["-fsanitize=undefined", "-fno-pie", "-no-pie"]):
+    modes = ([], ["-fsanitize=address", "-fno-pie", "-no-pie"],
+             ["-fsanitize=undefined", "-fno-pie", "-no-pie"])
+    for language, flags in [(language, flags) for language in ("en", "uk") for flags in modes]:
         objects = []
         for source in [u8g2 / name for name in ("u8g2_font.c", "u8g2_hvline.c", "u8g2_intersection.c")] + [tmp / "font.c"]:
             obj = tmp / (source.stem + ".o")
             subprocess.run(["gcc", "-std=c99", "-ffunction-sections", "-fdata-sections", *flags,
                             "-I" + str(u8g2.parent), "-c", str(source), "-o", str(obj)], check=True)
             objects.append(str(obj))
-        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
                         *objects, str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
     # Prove guard sensitivity: a background transfer through the footprint must
@@ -386,8 +431,8 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
                             "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
     assert bad_code != code
     (tmp / "test.cpp").write_text(prelude + bad_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
+    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
                     "-o", str(tmp / "test")], check=True)
     rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
     assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
-    print("Intermediate-write mutation rejected PASS; presentation state 624 bytes, zero heap")
+    print("Intermediate-write mutation rejected PASS; presentation state 656 bytes, zero heap")

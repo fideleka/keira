@@ -90,20 +90,8 @@ EmulatorMenuApp::SystemAction EmulatorMenuApp::showSystemMenu() {
         waitForRelease();
         if (menu.getButton() == lilka::Button::B) return SystemAction::Resume;
         switch (menu.getCursor()) {
-            case 1: {
-                lilka::Menu confirm(K_S_EMU_RESET_CONFIRM);
-                confirm.addItem(K_S_EMU_CANCEL);
-                confirm.addItem(K_S_EMU_RESET);
-                confirm.addActivationButton(lilka::Button::B);
-                do {
-                    confirm.update();
-                    confirm.draw(canvas);
-                    queueDraw();
-                } while (!confirm.isFinished());
-                waitForRelease();
-                if (confirm.getButton() != lilka::Button::B && confirm.getCursor() == 1) return SystemAction::Reset;
-                break;
-            }
+            case 1:
+                return SystemAction::Reset;
             case 2: {
                 lilka::Menu controls(K_S_EMU_CONTROLS);
                 controls.addItem(K_S_EMU_PRECISION);
