@@ -656,9 +656,9 @@
 // Display settings (shared SDK persistence).
 #define K_S_LAUNCHER_DISPLAY "Дисплей"
 #define K_S_DISPLAY_BRIGHTNESS "Яскравість"
-#define K_S_DISPLAY_TIMEOUT "Автовимк."
+#define K_S_DISPLAY_TIMEOUT "Автовимкнення"
 #define K_S_DISPLAY_NEVER "Ніколи"
 #define K_S_DISPLAY_SECONDS "с"
-#define K_S_DISPLAY_UNAVAILABLE "Н/Д"
+#define K_S_DISPLAY_UNAVAILABLE "Недоступно"
 #define K_S_DISPLAY_MINUTES "хв"
-#define K_S_DISPLAY_DIM "Затемн."
+#define K_S_DISPLAY_DIM "Затемнення"
