@@ -118,15 +118,20 @@ A common EL827/PC827 dual-channel arrangement is::
            _________
       A1  1|       |8  C1
       K1  2| EL827 |7  E1
-      K2  3|       |6  C2
-      A2  4|_______|5  E2
+      A2  3|       |6  C2
+      K2  4|_______|5  E2
 
-``A/K`` are LED anode/cathode; ``C/E`` are phototransistor
-collector/emitter.
+Top view, with the orientation mark at the pin-1 end. ``A/K`` are LED
+anode/cathode; ``C/E`` are phototransistor collector/emitter.
 
-**Do not solder from this drawing alone.** Confirm the exact manufacturer's
-pinout. Equivalent-part drawings sometimes present channel 2 in a visually
-reversed orientation.
+For the Lite-On LTV-827, pins **1/3 are anodes**, **2/4 are cathodes**,
+**8/6 are collectors**, and **7/5 are emitters**, respectively for channels
+1/2. This corrects an earlier drawing that reversed channel-2 pins 3 and 4.
+See the `Lite-On datasheet, printed page 2
+<https://datasheet.octopart.com/LTV-827-Lite-On-datasheet-7282434.pdf>`_.
+
+**Do not solder from this drawing alone.** Confirm the delivered part's exact
+manufacturer and pinout; do not assume every equivalent part is identical.
 
 Connection points on Lilka v2
 -----------------------------
