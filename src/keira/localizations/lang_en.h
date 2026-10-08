@@ -669,3 +669,4 @@
 #define K_S_DISPLAY_SECONDS "sec"
 #define K_S_DISPLAY_UNAVAILABLE "N/A"
 #define K_S_DISPLAY_MINUTES "min"
+#define K_S_DISPLAY_DIM "Idle dim"

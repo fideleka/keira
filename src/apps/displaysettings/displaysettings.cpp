@@ -10,8 +10,9 @@ String timeoutText(uint32_t seconds) {
     return String(seconds) + " " + K_S_DISPLAY_SECONDS;
 }
 
-void changeTimeout(int direction) {
-    const uint32_t current = lilka::displaySettings.getTimeoutSeconds();
+void changeTimeout(int direction, bool dim) {
+    const uint32_t current = dim ? lilka::displaySettings.getDimTimeoutSeconds() :
+                                  lilka::displaySettings.getTimeoutSeconds();
     uint32_t next = current;
     if (direction > 0) {
         for (auto value : timeoutChoices) {
@@ -22,7 +23,8 @@ void changeTimeout(int direction) {
             if (value < current) next = value;
         }
     }
-    lilka::displaySettings.setTimeoutSeconds(next);
+    if (dim) lilka::displaySettings.setDimTimeoutSeconds(next);
+    else lilka::displaySettings.setTimeoutSeconds(next);
 }
 } // namespace
 
@@ -33,6 +35,7 @@ void DisplayConfigApp::run() {
     lilka::Menu menu(K_S_LAUNCHER_DISPLAY);
     menu.addItem(K_S_DISPLAY_BRIGHTNESS);
     menu.addItem(K_S_DISPLAY_TIMEOUT);
+    menu.addItem(K_S_DISPLAY_DIM);
     menu.addActivationButton(K_BTN_BACK);
     menu.removeActivationButton(lilka::Button::A);
     menu.setHorizontalNavigationEnabled(false);
@@ -47,6 +50,12 @@ void DisplayConfigApp::run() {
             lilka::displaySettings.isAvailable() ?
                 String("< ") + timeoutText(lilka::displaySettings.getTimeoutSeconds()) + " >" : String(K_S_DISPLAY_UNAVAILABLE)
         );
+        menu.setItem(
+            2, K_S_DISPLAY_DIM, nullptr, lilka::colors::White,
+            lilka::displaySettings.isAvailable() && lilka::brightness.isEnabled() ?
+                String("< ") + timeoutText(lilka::displaySettings.getDimTimeoutSeconds()) + " >" :
+                String(K_S_DISPLAY_UNAVAILABLE)
+        );
         // Observe adjustment keys before Menu::update consumes event flags.
         const auto state = lilka::controller.peekState();
         int direction = 0;
@@ -57,7 +66,8 @@ void DisplayConfigApp::run() {
         }
         if (direction) {
             if (menu.getCursor() == 0) lilka::brightness.stepBrightnessShortcut(direction);
-            else changeTimeout(direction);
+            else if (menu.getCursor() == 1) changeTimeout(direction, false);
+            else if (lilka::brightness.isEnabled()) changeTimeout(direction, true);
         }
         menu.update();
         menu.draw(canvas);

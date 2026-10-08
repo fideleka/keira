@@ -661,3 +661,4 @@
 #define K_S_DISPLAY_SECONDS "с"
 #define K_S_DISPLAY_UNAVAILABLE "Н/Д"
 #define K_S_DISPLAY_MINUTES "хв"
+#define K_S_DISPLAY_DIM "Затемн."
