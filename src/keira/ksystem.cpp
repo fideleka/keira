@@ -20,6 +20,9 @@
 // Apps:
 #include "apps/statusbar/statusbar.h"
 #include "apps/launcher/launcher.h"
+#if defined(KEIRA_BACKLIGHT_TEST) && LILKA_VERSION == 2
+#    include "apps/brightnesstest/brightnesstest.h"
+#endif
 
 // Resources:
 #include "keira/keira_splash.h"
@@ -275,6 +278,10 @@ void KeiraSystem::setup() {
     // Send greetings to serial
     showWelcomeMessage();
 
+#if defined(KEIRA_BACKLIGHT_TEST) && LILKA_VERSION == 2
+    // Isolated modified-hardware test: no scripts/apps competing for LEDC timers.
+    apps.spawn(new BrightnessTestApp(), false);
+#else
     // Time to launch services
     launchServices();
 
@@ -285,6 +292,7 @@ void KeiraSystem::setup() {
 
     // Launch first app
     apps.spawn(new LauncherApp(), false);
+#endif
 
     // Run thread managers
     apps.start();
