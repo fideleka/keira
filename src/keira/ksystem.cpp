@@ -258,6 +258,7 @@ void KeiraSystem::showStartupScreen() {
 void KeiraSystem::setup() {
     // Init Hardware
     lilka::begin();
+    if (!lilka::displaySettings.begin()) lilka::serial.err("Display settings task unavailable");
 
     // Display splash [Should be done as fast as possible]
     // Maybe pass a black screen on display init in SDK to avoid noise display

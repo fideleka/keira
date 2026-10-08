@@ -52,6 +52,7 @@
 #include "apps/pastebin/pastebinApp.h"
 #include "apps/usbdrive/usbdrive.h"
 #include "apps/soundsettings/sound.h"
+#include "apps/displaysettings/displaysettings.h"
 #include "apps/partmanager/partmanager.h"
 
 // Icons
@@ -427,6 +428,7 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                         }
                     ),
                     ITEM::MENU(K_S_LAUNCHER_SOUND, [this]() { this->runApp<SoundConfigApp>(); }),
+                    ITEM::MENU(K_S_LAUNCHER_DISPLAY, [this]() { this->runApp<DisplayConfigApp>(); }),
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_SERVICES,
                         {

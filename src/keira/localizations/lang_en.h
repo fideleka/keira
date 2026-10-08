@@ -660,3 +660,13 @@
 #define K_S_EMU_GB_PAUSED "GB/GBC paused"
 #define K_S_EMU_MENU_UNAVAILABLE "NES menu unavailable: timer barrier allocation failed"
 // clang-format on
+
+// Display settings (shared SDK persistence).
+#define K_S_LAUNCHER_DISPLAY "Display"
+#define K_S_DISPLAY_BRIGHTNESS "Brightness"
+#define K_S_DISPLAY_TIMEOUT "Auto-off"
+#define K_S_DISPLAY_NEVER "Never"
+#define K_S_DISPLAY_SECONDS "sec"
+#define K_S_DISPLAY_UNAVAILABLE "N/A"
+#define K_S_DISPLAY_MINUTES "min"
+#define K_S_DISPLAY_DIM "Idle dim"

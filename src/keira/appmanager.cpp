@@ -70,6 +70,13 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
 
+        const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
+        if (lilka::displaySettings.isSleeping()) {
+            KMTX_UNLOCK(ThreadManager::lock);
+            vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
+            continue;
+        }
+
         // Only this presentation task touches SPI. Feedback uses an immutable
         // snapshot and never writes into app/back/screenshot canvases.
         const uint32_t overlayNow = millis();
@@ -78,7 +85,7 @@ void AppManager::run() {
         memcpy(volumeOverlay.muteLabel, K_S_VOLUME_MUTE, sizeof(K_S_VOLUME_MUTE));
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
-        const bool repaintLayers = topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
+        const bool repaintLayers = wokeDisplay || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
         if (repaintLayers) {
             lilka::display.clearOutsideOverlay(lilka::colors::Black);
             topApp->backgroundDirty = false;
