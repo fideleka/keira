@@ -4,6 +4,9 @@
 #include "apps/icons/battery.h"
 #include "apps/icons/battery_danger.h"
 #include "apps/icons/battery_absent.h"
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+#    include "apps/icons/battery_charge.h"
+#endif
 #include "apps/icons/wifi_disabled.h"
 #include "apps/icons/wifi_offline.h"
 #include "apps/icons/wifi_connecting.h"
@@ -229,6 +232,35 @@ int StatusBarApp::drawNetwork(lilka::Canvas* canvas) {
 }
 
 int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+    // One median ADC sample per 1 Hz status-bar tick; never calibrate tagged data.
+    float rawVoltage = lilka::battery.readRawVoltage();
+    auto chargeStatus = chargeStatusFilter.update(rawVoltage);
+    if (chargeStatus != keira::ChargeStatus::Battery) {
+        stableBatteryLevel(-1);
+        if (chargeStatus == keira::ChargeStatus::Unknown) {
+            if (batteryMode == 1 || batteryMode == 2) {
+                canvas->draw16bitRGBBitmapWithTranColor(0, 0, battery_absent_img, lilka::colors::Fuchsia, 16, 24);
+            }
+            if (batteryMode != 2) {
+                canvas->setCursor(batteryMode == 1 ? 18 : 0, 17);
+                canvas->print("N/A");
+                return canvas->getCursorX() + 2;
+            }
+            return 18;
+        }
+        bool charging = chargeStatus == keira::ChargeStatus::Charging;
+        canvas->draw16bitRGBBitmapWithTranColor(
+            0, 0, charging ? battery_charging_img : battery_charged_img, lilka::colors::Fuchsia, 16, 24
+        );
+        if (batteryMode != 2) {
+            canvas->setCursor(18, 17);
+            canvas->print(charging ? K_S_BATTERY_CHARGING_SHORT : K_S_BATTERY_CHARGED_SHORT);
+            return canvas->getCursorX() + 2;
+        }
+        return 18;
+    }
+#endif
     auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readEstimatedLevel());
     auto xOffset = 0;
     const uint16_t* icon = nullptr;
@@ -271,7 +303,11 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
 
     if (batteryMode == 4) {
         canvas->setCursor(xOffset, 17);
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+        float voltage = rawVoltage;
+#else
         float voltage = lilka::battery.readVoltage();
+#endif
         canvas->print(String(voltage, 2) + "v");
         xOffset = canvas->getCursorX() + 2;
     }
