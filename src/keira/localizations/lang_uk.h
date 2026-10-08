@@ -652,3 +652,12 @@
 #define K_S_EMU_GB_PAUSED "GB/GBC на паузі"
 #define K_S_EMU_MENU_UNAVAILABLE "Меню NES недоступне: помилка виділення бар’єра таймера"
 // clang-format on
+
+// Display settings (shared SDK persistence).
+#define K_S_LAUNCHER_DISPLAY "Дисплей"
+#define K_S_DISPLAY_BRIGHTNESS "Яскравість"
+#define K_S_DISPLAY_TIMEOUT "Автовимк."
+#define K_S_DISPLAY_NEVER "Ніколи"
+#define K_S_DISPLAY_SECONDS "с"
+#define K_S_DISPLAY_UNAVAILABLE "Н/Д"
+#define K_S_DISPLAY_MINUTES "хв"
