@@ -17,4 +17,4 @@ Read `../sdk/docs/INDEPENDENT_BACKLIGHT.md` for APIs, peripheral reservations,
 verification details and remaining hardware checks. No firmware build/flash
 was performed for this integration.
 
-Reviewed SDK commit: `ee133682f2e4b0bafaef98c50ad94dd037b8df1f`.
+Reviewed SDK commit: `efb586104f479d20b2631e73e856e75150c89891`.
