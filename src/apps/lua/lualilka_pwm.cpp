@@ -1,5 +1,6 @@
 #include "lualilka_pwm.h"
 #include <Arduino.h>
+#include <lilka.h>
 
 // PWM is backed by the ESP32 LEDC peripheral.
 // The buzzer also uses LEDC, so prefer higher channel numbers (e.g. 2..15)
@@ -10,6 +11,7 @@ static int lualilka_pwm_setup(lua_State* L) {
     int channel = luaL_checkinteger(L, 1);
     uint32_t freq = (uint32_t)luaL_checkinteger(L, 2);
     int resolution = luaL_optinteger(L, 3, 8);
+    if (lilka::brightness.isPWMChannelReserved(channel)) return luaL_error(L, "PWM timer reserved for backlight");
     uint32_t actual = ledcSetup((uint8_t)channel, freq, (uint8_t)resolution);
     lua_pushinteger(L, actual);
     return 1;
@@ -19,6 +21,8 @@ static int lualilka_pwm_setup(lua_State* L) {
 static int lualilka_pwm_attachPin(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int channel = luaL_checkinteger(L, 2);
+    if (lilka::brightness.isPWMChannelReserved(channel) || (lilka::brightness.isEnabled() && pin == LILKA_SLEEP))
+        return luaL_error(L, "Backlight PWM is reserved");
     ledcAttachPin((uint8_t)pin, (uint8_t)channel);
     return 0;
 }
@@ -26,6 +30,7 @@ static int lualilka_pwm_attachPin(lua_State* L) {
 // pwm.detach_pin(pin)
 static int lualilka_pwm_detachPin(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
+    if (lilka::brightness.isEnabled() && pin == LILKA_SLEEP) return luaL_error(L, "Backlight pin is reserved");
     ledcDetachPin((uint8_t)pin);
     return 0;
 }
@@ -34,6 +39,7 @@ static int lualilka_pwm_detachPin(lua_State* L) {
 static int lualilka_pwm_write(lua_State* L) {
     int channel = luaL_checkinteger(L, 1);
     uint32_t duty = (uint32_t)luaL_checkinteger(L, 2);
+    if (lilka::brightness.isPWMChannelReserved(channel)) return luaL_error(L, "PWM timer reserved for backlight");
     ledcWrite((uint8_t)channel, duty);
     return 0;
 }
@@ -42,6 +48,7 @@ static int lualilka_pwm_write(lua_State* L) {
 static int lualilka_pwm_writeTone(lua_State* L) {
     int channel = luaL_checkinteger(L, 1);
     uint32_t freq = (uint32_t)luaL_checkinteger(L, 2);
+    if (lilka::brightness.isPWMChannelReserved(channel)) return luaL_error(L, "PWM timer reserved for backlight");
     uint32_t actual = ledcWriteTone((uint8_t)channel, freq);
     lua_pushinteger(L, actual);
     return 1;

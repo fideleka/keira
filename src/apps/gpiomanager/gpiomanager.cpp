@@ -45,6 +45,10 @@ void GPIOManagerApp::updatePWM(uint8_t pinIndex) {
 
 void GPIOManagerApp::startPWM(uint8_t pinIndex, uint8_t dutyCycle) {
     if (pinIndex >= PIN_COUNT) return;
+    if (lilka::brightness.isPWMChannelReserved(ledcConfigs[pinIndex].channel)) {
+        lilka::serial.err("PWM timer reserved for backlight");
+        return;
+    }
 
     // Reset to default
     pinM[pinIndex] = PIN_MODE_PWM;

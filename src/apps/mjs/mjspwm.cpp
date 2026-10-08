@@ -1,5 +1,6 @@
 #include "mjspwm.h"
 #include <Arduino.h>
+#include <lilka.h>
 #include "mjs.h"
 
 // pwm.setup(channel, freq, resolution_bits) -> actual frequency in Hz
@@ -8,6 +9,7 @@ static void mjs_pwm_setup(struct mjs* mjs) {
     uint32_t freq = (uint32_t)mjs_get_int(mjs, mjs_arg(mjs, 1));
     mjs_val_t resArg = mjs_arg(mjs, 2);
     int resolution = mjs_is_number(resArg) ? mjs_get_int(mjs, resArg) : 8;
+    if (lilka::brightness.isPWMChannelReserved(channel)) { mjs_return(mjs, mjs_mk_number(mjs, 0)); return; }
     uint32_t actual = ledcSetup((uint8_t)channel, freq, (uint8_t)resolution);
     mjs_return(mjs, mjs_mk_number(mjs, actual));
 }
@@ -16,6 +18,9 @@ static void mjs_pwm_setup(struct mjs* mjs) {
 static void mjs_pwm_attach_pin(struct mjs* mjs) {
     int pin = mjs_get_int(mjs, mjs_arg(mjs, 0));
     int channel = mjs_get_int(mjs, mjs_arg(mjs, 1));
+    if (lilka::brightness.isPWMChannelReserved(channel) || (lilka::brightness.isEnabled() && pin == LILKA_SLEEP)) {
+        mjs_return(mjs, mjs_mk_boolean(mjs, false)); return;
+    }
     ledcAttachPin((uint8_t)pin, (uint8_t)channel);
     mjs_return(mjs, mjs_mk_undefined());
 }
@@ -23,6 +28,7 @@ static void mjs_pwm_attach_pin(struct mjs* mjs) {
 // pwm.detach_pin(pin)
 static void mjs_pwm_detach_pin(struct mjs* mjs) {
     int pin = mjs_get_int(mjs, mjs_arg(mjs, 0));
+    if (lilka::brightness.isEnabled() && pin == LILKA_SLEEP) { mjs_return(mjs, mjs_mk_boolean(mjs, false)); return; }
     ledcDetachPin((uint8_t)pin);
     mjs_return(mjs, mjs_mk_undefined());
 }
@@ -31,6 +37,7 @@ static void mjs_pwm_detach_pin(struct mjs* mjs) {
 static void mjs_pwm_write(struct mjs* mjs) {
     int channel = mjs_get_int(mjs, mjs_arg(mjs, 0));
     uint32_t duty = (uint32_t)mjs_get_int(mjs, mjs_arg(mjs, 1));
+    if (lilka::brightness.isPWMChannelReserved(channel)) { mjs_return(mjs, mjs_mk_boolean(mjs, false)); return; }
     ledcWrite((uint8_t)channel, duty);
     mjs_return(mjs, mjs_mk_undefined());
 }
@@ -39,6 +46,7 @@ static void mjs_pwm_write(struct mjs* mjs) {
 static void mjs_pwm_write_tone(struct mjs* mjs) {
     int channel = mjs_get_int(mjs, mjs_arg(mjs, 0));
     uint32_t freq = (uint32_t)mjs_get_int(mjs, mjs_arg(mjs, 1));
+    if (lilka::brightness.isPWMChannelReserved(channel)) { mjs_return(mjs, mjs_mk_number(mjs, 0)); return; }
     uint32_t actual = ledcWriteTone((uint8_t)channel, freq);
     mjs_return(mjs, mjs_mk_number(mjs, actual));
 }
