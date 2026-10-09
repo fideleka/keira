@@ -4,6 +4,10 @@
 #include "apps/icons/battery.h"
 #include "apps/icons/battery_danger.h"
 #include "apps/icons/battery_absent.h"
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+#    include "apps/icons/battery_charge.h"
+#    include "apps/icons/battery_measuring.h"
+#endif
 #include "apps/icons/wifi_disabled.h"
 #include "apps/icons/wifi_offline.h"
 #include "apps/icons/wifi_connecting.h"
@@ -229,12 +233,56 @@ int StatusBarApp::drawNetwork(lilka::Canvas* canvas) {
 }
 
 int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+    // One median ADC sample per 1 Hz status-bar tick; never calibrate tagged data.
+    float rawVoltage = lilka::battery.readRawVoltage();
+    auto chargeStatus = chargeStatusFilter.update(rawVoltage);
+    if (chargeStatus != keira::ChargeStatus::Battery) {
+        stableBatteryLevel(-1);
+        if (chargeStatus == keira::ChargeStatus::Unknown || chargeStatus == keira::ChargeStatus::Absent) {
+            bool absent = chargeStatus == keira::ChargeStatus::Absent;
+            if (batteryMode == 1 || batteryMode == 2) {
+                canvas->draw16bitRGBBitmapWithTranColor(0, 0, absent ? battery_absent_img : battery_measuring_img, lilka::colors::Fuchsia, 16, 24);
+            }
+            if (batteryMode != 2) {
+                canvas->setCursor(batteryMode == 1 ? 18 : 0, 17);
+                canvas->print(absent ? "N/A" : "...");
+                return canvas->getCursorX() + 2;
+            }
+            return 18;
+        }
+        bool charging = chargeStatus == keira::ChargeStatus::Charging;
+        canvas->draw16bitRGBBitmapWithTranColor(
+            0, 0, charging ? battery_charging_img : battery_charged_img, lilka::colors::Fuchsia, 16, 24
+        );
+        if (batteryMode != 2) {
+            canvas->setCursor(18, 17);
+            canvas->print(charging ? K_S_BATTERY_CHARGING_SHORT : K_S_BATTERY_CHARGED_SHORT);
+            return canvas->getCursorX() + 2;
+        }
+        return 18;
+    }
+#endif
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+    // A retained Battery status may accompany a provisional tag/invalid sample.
+    // Freeze the old display; never convert that tag into a percentage/voltage.
+    bool normalBatterySample = keira::ChargeStatusFilter::classify(rawVoltage) == keira::ChargeStatus::Battery;
+    if (normalBatterySample) displayedBatteryVoltage = rawVoltage;
+    int candidateLevel = normalBatterySample && batteryMode != 4 ? lilka::battery.readEstimatedLevel() : -1;
+    auto level = batteryMode == 4 ? -1 : candidateLevel >= 0 ?
+        stableBatteryLevel(candidateLevel) : displayedBatteryLevel;
+#else
     auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readEstimatedLevel());
+#endif
     auto xOffset = 0;
     const uint16_t* icon = nullptr;
     if (batteryMode == 1 || batteryMode == 2) {
         if (level == -1) {
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+            icon = battery_measuring_img;
+#else
             icon = battery_absent_img;
+#endif
         } else if (level <= 10) {
             icon = battery_danger_img;
         } else {
@@ -264,14 +312,22 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
         if (level > -1) {
             canvas->print(String(level) + "%");
         } else {
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+            canvas->print("...");
+#else
             canvas->print("N/A");
+#endif
         }
         xOffset = canvas->getCursorX() + 2;
     }
 
     if (batteryMode == 4) {
         canvas->setCursor(xOffset, 17);
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+        float voltage = displayedBatteryVoltage;
+#else
         float voltage = lilka::battery.readVoltage();
+#endif
         canvas->print(String(voltage, 2) + "v");
         xOffset = canvas->getCursorX() + 2;
     }

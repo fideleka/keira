@@ -7,6 +7,8 @@
 // GUIDELINE: Keira all strings used in messages, or somehow written to serial, should be defined here
 
 // clang-format off
+#define K_S_BATTERY_CHARGING_SHORT "ЗАР"
+#define K_S_BATTERY_CHARGED_SHORT "ГОТО"
 #define K_S_VOLUME_MUTE "Без звуку"
 
 // Multi purpose strings  /////////////////////////////////////////////////////////////////////////////
