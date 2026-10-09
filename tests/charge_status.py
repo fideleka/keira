@@ -33,6 +33,7 @@ source = r'''
 #include "apps/icons/battery_absent.h"
 #include "apps/icons/battery_danger.h"
 #include "apps/icons/battery_charge.h"
+#include "apps/icons/battery_measuring.h"
 struct String {
  std::string value;
  String(int x): value(std::to_string(x)) {}
@@ -84,9 +85,10 @@ int main() {
   assert(F::classify(v*(24.812f/(33+24.812f))/.75188f)==S::Charging);
   assert(F::classify(v*(9.0909f/(33+9.0909f))/.75188f)==S::Charged);
  }
- for(float v:{0.f,.49f,1.4f,1.45f,1.5f,2.65f,2.7f,2.8f,4.61f,
+ for(float v:{-1.f,1.4f,1.45f,1.5f,2.65f,2.7f,2.8f,4.61f,
               std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()})
   assert(F::classify(v)==S::Unknown);
+ for(float v:{0.f,.49f})assert(F::classify(v)==S::Absent);
  F filter;S confirmed=S::Unknown;
  for(int cycle=0;cycle<100;++cycle)for(float v:{2.1f,1.1f,3.9f}){
   assert(filter.update(v)==confirmed);assert(filter.update(v)==confirmed);
@@ -109,7 +111,7 @@ int main() {
     int before=lilka::battery.estimatedCalls;lilka::Canvas c;int width=app.drawBattery(&c);
     assert(width<=60);assert(lilka::battery.voltageCalls==0);
     S shown=n<2?previous:F::classify(v);
-    if(shown==S::Unknown){assert(c.text==(mode==2?"":"..."));if(mode==1||mode==2)assert(c.icon==battery_img);}
+    if(shown==S::Unknown){assert(c.text==(mode==2?"":"..."));if(mode==1||mode==2)assert(c.icon==battery_measuring_img);}
     else if(shown==S::Battery){assert(c.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));}
     else {
      assert(c.icon==(shown==S::Charging?battery_charging_img:battery_charged_img));assert(c.fills==0);
@@ -129,6 +131,18 @@ int main() {
   }
   StatusBarApp boot;boot.batteryMode=mode;lilka::battery.raw=0;lilka::Canvas waiting;boot.drawBattery(&waiting);
   assert(waiting.text==(mode==2?"":"..."));
+  lilka::Canvas stillWaiting;boot.drawBattery(&stillWaiting);assert(stillWaiting.text==(mode==2?"":"..."));
+  lilka::Canvas absent;boot.drawBattery(&absent);assert(absent.text==(mode==2?"":"N/A"));
+  if(mode==1||mode==2)assert(absent.icon==battery_absent_img);
+  // Three low readings confirm absence; one low transition sample cannot.
+  lilka::battery.raw=0;app.drawBattery(&waiting);app.drawBattery(&waiting);
+  lilka::Canvas removed;app.drawBattery(&removed);assert(removed.text==(mode==2?"":"N/A"));
+  lilka::battery.raw=3.9f;
+  for(int n=0;n<3;++n){lilka::Canvas restored;app.drawBattery(&restored);assert(restored.text==(n<2?(mode==2?"":"N/A"):(mode==1||mode==3?"80%":mode==4?"3.90v":"")));}
+  // A failed secondary estimate is not evidence of physical battery absence.
+  lilka::battery.level=-1;lilka::Canvas badEstimate;app.drawBattery(&badEstimate);
+  assert(badEstimate.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));
+
 
 #else
   lilka::Canvas c;assert(app.drawBattery(&c)<=60);
