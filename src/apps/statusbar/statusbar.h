@@ -24,6 +24,7 @@ private:
     uint8_t batteryMode;
 #if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
     keira::ChargeStatusFilter chargeStatusFilter;
+    float displayedBatteryVoltage = 0.0f;
 #endif
     int displayedBatteryLevel = -1;
     int pendingBatteryLevel = -1;

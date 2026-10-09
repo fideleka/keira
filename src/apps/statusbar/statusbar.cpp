@@ -240,11 +240,11 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
         stableBatteryLevel(-1);
         if (chargeStatus == keira::ChargeStatus::Unknown) {
             if (batteryMode == 1 || batteryMode == 2) {
-                canvas->draw16bitRGBBitmapWithTranColor(0, 0, battery_absent_img, lilka::colors::Fuchsia, 16, 24);
+                canvas->draw16bitRGBBitmapWithTranColor(0, 0, battery_img, lilka::colors::Fuchsia, 16, 24);
             }
             if (batteryMode != 2) {
                 canvas->setCursor(batteryMode == 1 ? 18 : 0, 17);
-                canvas->print("N/A");
+                canvas->print("...");
                 return canvas->getCursorX() + 2;
             }
             return 18;
@@ -261,7 +261,16 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
         return 18;
     }
 #endif
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+    // A retained Battery status may accompany a provisional tag/invalid sample.
+    // Freeze the old display; never convert that tag into a percentage/voltage.
+    bool normalBatterySample = keira::ChargeStatusFilter::classify(rawVoltage) == keira::ChargeStatus::Battery;
+    if (normalBatterySample) displayedBatteryVoltage = rawVoltage;
+    auto level = batteryMode == 4 ? -1 : normalBatterySample ?
+        stableBatteryLevel(lilka::battery.readEstimatedLevel()) : displayedBatteryLevel;
+#else
     auto level = batteryMode == 4 ? -1 : stableBatteryLevel(lilka::battery.readEstimatedLevel());
+#endif
     auto xOffset = 0;
     const uint16_t* icon = nullptr;
     if (batteryMode == 1 || batteryMode == 2) {
@@ -304,7 +313,7 @@ int StatusBarApp::drawBattery(lilka::Canvas* canvas) {
     if (batteryMode == 4) {
         canvas->setCursor(xOffset, 17);
 #if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
-        float voltage = rawVoltage;
+        float voltage = displayedBatteryVoltage;
 #else
         float voltage = lilka::battery.readVoltage();
 #endif
