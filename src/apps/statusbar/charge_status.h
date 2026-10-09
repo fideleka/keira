@@ -23,8 +23,9 @@ public:
     ChargeStatus update(float voltage) {
         ChargeStatus next = classify(voltage);
         if (next == ChargeStatus::Unknown) {
-            reset();
-            return next;
+            candidate = ChargeStatus::Unknown;
+            count = 0;
+            return confirmed;
         }
         if (next != candidate) {
             candidate = next;
@@ -32,17 +33,20 @@ public:
         } else if (count < 3) {
             ++count;
         }
-        // Hide stale battery percentages immediately during plug/unplug;
-        // publish the new state after three consistent one-second samples.
-        return count >= 3 ? candidate : ChargeStatus::Unknown;
+        // Keep the last confirmed presentation through noisy/guard-band and
+        // plug/unplug samples; publish only after three matching samples.
+        if (count >= 3) confirmed = candidate;
+        return confirmed;
     }
 
     void reset() {
+        confirmed = ChargeStatus::Unknown;
         candidate = ChargeStatus::Unknown;
         count = 0;
     }
 
 private:
+    ChargeStatus confirmed = ChargeStatus::Unknown;
     ChargeStatus candidate = ChargeStatus::Unknown;
     uint8_t count = 0;
 };

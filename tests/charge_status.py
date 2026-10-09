@@ -68,6 +68,7 @@ public:
  int displayedBatteryLevel=-1,pendingBatteryLevel=-1;
  uint8_t pendingBatteryLevelSeconds=0;
  keira::ChargeStatusFilter chargeStatusFilter;
+ float displayedBatteryVoltage=0.0f;
  int drawBattery(lilka::Canvas*);
  int stableBatteryLevel(int);
 };
@@ -86,32 +87,49 @@ int main() {
  for(float v:{0.f,.49f,1.4f,1.45f,1.5f,2.65f,2.7f,2.8f,4.61f,
               std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()})
   assert(F::classify(v)==S::Unknown);
- F filter;
+ F filter;S confirmed=S::Unknown;
  for(int cycle=0;cycle<100;++cycle)for(float v:{2.1f,1.1f,3.9f}){
-  assert(filter.update(v)==S::Unknown);assert(filter.update(v)==S::Unknown);
-  assert(filter.update(v)==F::classify(v));assert(filter.update(v)==F::classify(v));
+  assert(filter.update(v)==confirmed);assert(filter.update(v)==confirmed);
+  confirmed=F::classify(v);assert(filter.update(v)==confirmed);assert(filter.update(v)==confirmed);
  }
- assert(filter.update(1.45f)==S::Unknown);
+ assert(filter.update(1.45f)==S::Battery);
+ assert(filter.update(2.1f)==S::Battery);assert(filter.update(1.45f)==S::Battery);
+ assert(filter.update(2.1f)==S::Battery);assert(filter.update(2.1f)==S::Battery);
+ assert(filter.update(2.1f)==S::Charging);
+ assert(filter.update(std::numeric_limits<float>::quiet_NaN())==S::Charging);
+ filter.reset();assert(filter.update(2.1f)==S::Unknown);
  for(int mode=1;mode<=4;++mode){
   StatusBarApp app;app.batteryMode=mode;lilka::battery={};
 #if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
-  // Boot and all transitions: never show tagged percentage/voltage.
+  // Boot placeholder, then preserve the exact old presentation during debounce.
+  S previous=S::Unknown;
   for(float v:{3.9f,2.1f,1.1f,3.9f}){
-   lilka::battery.raw=v;
+   lilka::battery.raw=v;lilka::battery.level=v<2.7f?5:80;
    for(int n=0;n<3;++n){
     int before=lilka::battery.estimatedCalls;lilka::Canvas c;int width=app.drawBattery(&c);
     assert(width<=60);assert(lilka::battery.voltageCalls==0);
-    if(n<2){assert(c.text== (mode==2?"":"N/A"));assert(lilka::battery.estimatedCalls==before);}
-    else if(v<2.7f){
-     assert(c.icon==(v>1.5f?battery_charging_img:battery_charged_img));assert(c.fills==0);
-     assert(c.text==(mode==2?"":v>1.5f?K_S_BATTERY_CHARGING_SHORT:K_S_BATTERY_CHARGED_SHORT));
-     assert(lilka::battery.estimatedCalls==before);
-    }else {assert(c.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));}
+    S shown=n<2?previous:F::classify(v);
+    if(shown==S::Unknown){assert(c.text==(mode==2?"":"..."));if(mode==1||mode==2)assert(c.icon==battery_img);}
+    else if(shown==S::Battery){assert(c.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));}
+    else {
+     assert(c.icon==(shown==S::Charging?battery_charging_img:battery_charged_img));assert(c.fills==0);
+     assert(c.text==(mode==2?"":shown==S::Charging?K_S_BATTERY_CHARGING_SHORT:K_S_BATTERY_CHARGED_SHORT));
+    }
+    if(shown!=S::Battery || v<2.7f || mode==4)assert(lilka::battery.estimatedCalls==before);
    }
+   previous=F::classify(v);
   }
   assert(lilka::battery.rawCalls==12);
-  lilka::battery.raw=0; lilka::Canvas absent;app.drawBattery(&absent);
-  assert(absent.text==(mode==2?"":"N/A"));
+  // Guard-band/invalid samples retain prior state and never sample a fake percent.
+  int before=lilka::battery.estimatedCalls;
+  for(float invalid:{0.f,2.7f,std::numeric_limits<float>::quiet_NaN()}){
+   lilka::battery.raw=invalid;lilka::Canvas retained;app.drawBattery(&retained);
+   assert(retained.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));
+   assert(lilka::battery.estimatedCalls==before);
+  }
+  StatusBarApp boot;boot.batteryMode=mode;lilka::battery.raw=0;lilka::Canvas waiting;boot.drawBattery(&waiting);
+  assert(waiting.text==(mode==2?"":"..."));
+
 #else
   lilka::Canvas c;assert(app.drawBattery(&c)<=60);
   assert(c.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));
