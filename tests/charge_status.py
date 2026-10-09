@@ -1,34 +1,39 @@
 #!/usr/bin/env python3
 """Source-only: compile real decoder and extracted status-bar functions against HAL stubs.
-No firmware build, dependency download or SDK changes. --sanitize uses ASan/UBSan.
+No firmware build or dependency download; requires the matching sibling SDK. --sanitize uses ASan/UBSan.
 """
 from pathlib import Path
 import subprocess
 import tempfile
 import argparse
+import os
+
 ROOT = Path(__file__).resolve().parents[1]
+SDK = Path(os.environ.get("LILKA_SDK_DIR", ROOT.parent / "sdk"))
 parser = argparse.ArgumentParser()
-parser.add_argument('--sanitize', action='store_true')
+parser.add_argument("--sanitize", action="store_true")
 args = parser.parse_args()
 
+
 def function(signature):
-    text = (ROOT / 'src/apps/statusbar/statusbar.cpp').read_text()
+    text = (ROOT / "src/apps/statusbar/statusbar.cpp").read_text()
     start = text.index(signature)
-    opening = text.index('{', start)
+    opening = text.index("{", start)
     end, depth = opening + 1, 1
     while depth:
-        depth += (text[end] == '{') - (text[end] == '}')
+        depth += (text[end] == "{") - (text[end] == "}")
         end += 1
     return text[start:end]
 
-source = r'''
+
+source = r"""
 #include <cassert>
 #include <algorithm>
 #include <string>
 #include <cstdio>
 #include <limits>
 #include <cmath>
-#include "apps/statusbar/charge_status.h"
+#include "lilka/charge_status.h"
 #include "apps/icons/battery.h"
 #include "apps/icons/battery_absent.h"
 #include "apps/icons/battery_danger.h"
@@ -57,7 +62,18 @@ struct Canvas {
  int getCursorX()const{return cursor;}
 };
 struct Battery {
- float raw=3.9f;int level=80;int rawCalls=0,estimatedCalls=0,voltageCalls=0;
+ float raw=3.9f;int level=80;int rawCalls=0,estimatedCalls=0,voltageCalls=0,snapshotCalls=0;
+ ChargeStatusFilter filter;
+ BatteryChargeSnapshot cached;
+ BatteryChargeSnapshot getChargeSnapshot(){
+  ++snapshotCalls;
+  BatteryChargeSnapshot snapshot=cached;
+  snapshot.status=filter.update(raw);snapshot.sampleStatus=ChargeStatusFilter::classify(raw);
+  snapshot.rawVoltage=raw;
+  if(snapshot.sampleStatus==ChargeStatus::Battery){snapshot.estimatedLevel=level;snapshot.batteryVoltage=raw;}
+  cached=snapshot;
+  return snapshot;
+ }
  float readRawVoltage(){++rawCalls;return raw;}
  int readEstimatedLevel(){++estimatedCalls;return level;}
  float readVoltage(){++voltageCalls;return raw;}
@@ -68,17 +84,16 @@ public:
  uint8_t batteryMode=1;
  int displayedBatteryLevel=-1,pendingBatteryLevel=-1;
  uint8_t pendingBatteryLevelSeconds=0;
- keira::ChargeStatusFilter chargeStatusFilter;
  float displayedBatteryVoltage=0.0f;
  int drawBattery(lilka::Canvas*);
  int stableBatteryLevel(int);
 };
-'''
-source += function('int StatusBarApp::drawBattery(') + '\n' + function('int StatusBarApp::stableBatteryLevel(')
-source += r'''
+"""
+source += function("int StatusBarApp::drawBattery(") + "\n" + function("int StatusBarApp::stableBatteryLevel(")
+source += r"""
 int main() {
- using S=keira::ChargeStatus;
- using F=keira::ChargeStatusFilter;
+ using S=lilka::ChargeStatus;
+ using F=lilka::ChargeStatusFilter;
  // Theoretical normal-divider reconstructed bands over 3.0..4.2V VBAT.
  for(int i=0;i<=120;++i){float v=3.0f+i*.01f;
   assert(F::classify(v)==S::Battery);
@@ -102,7 +117,7 @@ int main() {
  filter.reset();assert(filter.update(2.1f)==S::Unknown);
  for(int mode=1;mode<=4;++mode){
   StatusBarApp app;app.batteryMode=mode;lilka::battery={};
-#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+#if defined(LILKA_ADC_CHARGE_STATUS) && LILKA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
   // Boot placeholder, then preserve the exact old presentation during debounce.
   S previous=S::Unknown;
   for(float v:{3.9f,2.1f,1.1f,3.9f}){
@@ -121,7 +136,12 @@ int main() {
    }
    previous=F::classify(v);
   }
-  assert(lilka::battery.rawCalls==12);
+  assert(lilka::battery.rawCalls==0 && lilka::battery.snapshotCalls==12);
+  // A newly created panel during a provisional tag uses SDK last-normal values.
+  StatusBarApp reopened;reopened.batteryMode=mode;lilka::battery.raw=2.1f;
+  lilka::Canvas opening;reopened.drawBattery(&opening);
+  assert(opening.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));
+  lilka::battery.raw=3.9f;app.drawBattery(&opening);
   // Guard-band/invalid samples retain prior state and never sample a fake percent.
   int before=lilka::battery.estimatedCalls;
   for(float invalid:{0.f,2.7f,std::numeric_limits<float>::quiet_NaN()}){
@@ -129,7 +149,7 @@ int main() {
    assert(retained.text==(mode==1||mode==3?"80%":mode==4?"3.90v":""));
    assert(lilka::battery.estimatedCalls==before);
   }
-  StatusBarApp boot;boot.batteryMode=mode;lilka::battery.raw=0;lilka::Canvas waiting;boot.drawBattery(&waiting);
+  StatusBarApp boot;boot.batteryMode=mode;lilka::battery={};lilka::battery.raw=0;lilka::Canvas waiting;boot.drawBattery(&waiting);
   assert(waiting.text==(mode==2?"":"..."));
   lilka::Canvas stillWaiting;boot.drawBattery(&stillWaiting);assert(stillWaiting.text==(mode==2?"":"..."));
   lilka::Canvas absent;boot.drawBattery(&absent);assert(absent.text==(mode==2?"":"N/A"));
@@ -158,16 +178,36 @@ int main() {
  assert(level.stableBatteryLevel(90)==90);
  puts("decoder + real drawBattery passed");
 }
-'''
-with tempfile.TemporaryDirectory(prefix='keira-charge-host-') as tmp:
+"""
+with tempfile.TemporaryDirectory(prefix="keira-charge-host-") as tmp:
     path = Path(tmp)
-    (path/'test.cpp').write_text(source)
-    for language in ('uk','en'):
-        for version,enabled in ((2,False),(2,True),(1,True)):
-            flags=['-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie'] if args.sanitize else []
-            subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Werror',*flags,
-                            '-DLILKA_VERSION='+str(version),*(['-DKEIRA_ADC_CHARGE_STATUS=1'] if enabled else []),
-                            '-include',str(ROOT/f'src/keira/localizations/lang_{language}.h'),
-                            '-I'+str(ROOT/'src'),str(path/'test.cpp'),'-o',str(path/'test')],check=True)
-            subprocess.run([str(path/'test')],check=True)
-print('6 configurations passed: UK/EN, stock v2, modified v2, v1 guard')
+    (path / "test.cpp").write_text(source)
+    for language in ("uk", "en"):
+        for version, enabled in ((2, False), (2, True), (1, True)):
+            flags = (
+                ["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
+                if args.sanitize
+                else []
+            )
+            subprocess.run(
+                [
+                    "g++",
+                    "-std=c++11",
+                    "-Wall",
+                    "-Wextra",
+                    "-Werror",
+                    *flags,
+                    "-DLILKA_VERSION=" + str(version),
+                    *(["-DLILKA_ADC_CHARGE_STATUS=1"] if enabled else []),
+                    "-include",
+                    str(ROOT / f"src/keira/localizations/lang_{language}.h"),
+                    "-I" + str(ROOT / "src"),
+                    "-I" + str(SDK / "lib/lilka/src"),
+                    str(path / "test.cpp"),
+                    "-o",
+                    str(path / "test"),
+                ],
+                check=True,
+            )
+            subprocess.run([str(path / "test")], check=True)
+print("6 configurations passed: UK/EN, stock v2, modified v2, v1 guard")
