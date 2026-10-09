@@ -1,7 +1,7 @@
 #pragma once
 
 #include "keira/app.h"
-#include "charge_status.h"
+#include <lilka/charge_status.h>
 
 #define STATUSBAR_KEIRA_NAMESPACE "kstatusbar"
 
@@ -22,8 +22,7 @@ private:
     uint8_t memMode;
     uint8_t networkMode;
     uint8_t batteryMode;
-#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
-    keira::ChargeStatusFilter chargeStatusFilter;
+#if defined(LILKA_ADC_CHARGE_STATUS) && LILKA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
     float displayedBatteryVoltage = 0.0f;
 #endif
     int displayedBatteryLevel = -1;

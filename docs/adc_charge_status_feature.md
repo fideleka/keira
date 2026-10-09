@@ -10,10 +10,10 @@ Use the corrected LTV827 pinout (3=A2, 4=K2), CHRG tag 33k, STDBY tag 10k.
   isolated amplifier SD, as required by existing modified-backlight profile.
 - Existing `v2` / `v2-modified-backlight` stay unchanged; there is no automatic
   detection of whether the modification is physically installed.
-- Flag: `KEIRA_ADC_CHARGE_STATUS=1`; v1 ignores it.
+- Flag: `LILKA_ADC_CHARGE_STATUS=1`; v1 ignores it.
 
-No SDK changes or new libraries. Uses existing `Battery::readRawVoltage()` and
-`readEstimatedLevel()`; preserve sibling SDK configuration and matching general
+Uses the SDK charge monitor (`LILKA_ADC_CHARGE_STATUS=1`) and
+`Battery::getChargeSnapshot()`; preserve sibling SDK configuration and matching general
 SDK staging for Keira. Feature base is local Keira stage `152b727` (includes
 previous corrected hardware documentation), whose parent is remote stage
 `f441106`. SDK general stage inspected: `add708a5`.
@@ -48,12 +48,11 @@ NOT actual GPIO3 volts and NOT full-level calibrated volts.**
   There is no invalid-reading timeout: retained status is last-known, not proof
   that a disconnected or faulty sensor remains healthy.
 
-Require three consecutive matching samples at the existing 1 Hz status-bar tick.
-Decoder has constant work and three small state fields; no allocations or NVS.
-Sampling: 32-sample SDK median once/tick; battery-percent modes additionally use
-existing 32-sample estimated-level read. Thus <=64 ADC conversions/tick; voltage
-and tagged states use 32. No new worker/task/lock, writes, pin reconfiguration or
-positive voltage injection. Existing status-bar Canvas/String behavior retained.
+Require three consecutive matching samples at the SDK's 1 Hz poll.
+Detection is bounded and allocation-free. One 32-reading median is shared by
+state and percentage estimation; a calibration attempt adds one fresh median.
+Keira drawing performs no ADC/NVS work. The opt-in SDK worker owns these tasks;
+stock/v1 builds do not start it. Existing status-bar Canvas/String behavior stays.
 
 Device measurements MUST establish bands (including optocoupler saturation,
 battery range, unplug/replug, Wi-Fi/display load). Tags indicate charger output,
@@ -79,44 +78,38 @@ pending plug/full/unplug, and confirmed states in English and Ukrainian.
 Host tests are NOT firmware build/link or device certification. No build,
 flash, packaging, dependency installation or hardware changes were performed.
 
-## Automatic full-charge calibration
+## SDK-owned charging and automatic calibration
 
-Enabled only by the existing ADC-charge-status build gate on v2. A background
-`BatteryCalibrationService` polls the existing raw-voltage median once per second,
-independently of the status-bar widget, fullscreen apps and LCD sleep.
+The matching SDK owns ADC sampling, charge-state classification/debounce, and
+full-reference calibration. Keira's profiles enable the shared SDK hardware flag
+`LILKA_ADC_CHARGE_STATUS=1`, which also selects its charging presentation. No Keira battery-calibration service
+or private decoder remains.
 
-- Observe a confirmed **Charged → Battery** transition (three valid samples per
-  state), never Charging → Battery and never startup directly on Battery.
-- Wait **30 seconds from confirmed Battery**, with valid battery-band samples.
-- Any reconnect/tag, guard-band/invalid/absent sample, or battery voltage below
-  the SDK's 3.5 V full-reference minimum cancels that opportunity.
-- Attempt calibration once per cycle. The SDK takes a fresh 32-reading median,
-  rejects tagged/implausible samples again, checks the NVS write, and publishes
-  the new reference only after a successful save. Failure retains the old value.
-- This calibrates the upper reference for estimated percentages, not raw voltage
-  or battery capacity. Existing percentage smoothing and discharge profiles stay.
-- Battery settings now contains **Profile only**; manual calibration/reset entries
-  are removed. Existing saved calibration/profile values are preserved.
-- Eligibility is RAM-only: restarting Keira while unplugged does not invent a
-  previously observed Charged event. Guest firmware has its own lifecycle.
+A confirmed **Charged → Battery** transition starts **30 seconds** of stabilization;
+reconnection/tag, invalid/guard/absent or below-3.5 V samples cancel the opportunity.
+Startup on Battery and unplugging from Charging never calibrate. Saving is checked
+and attempted once per charge cycle; failure preserves the old reference.
 
-Use matching `features/stage` checkouts of Keira and the SDK. The SDK includes
-checked saving and an atomic full-reference snapshot for background updates.
-Standard/untagged builds do not start the automatic-calibration service; their
-Battery settings also intentionally shows only Profile.
+The SDK worker runs independently of hidden widgets, fullscreen apps and LCD
+sleep. It shares one 32-reading median per second between detection and percentage
+estimation. Keira only reads a coherent cached snapshot and renders it, retaining
+its icons, localized labels, provisional-state behavior and visual percentage
+smoothing. Raw/voltage and discharge-profile APIs are unchanged.
+
+Battery settings remains **Profile only**. Existing saved calibration/profile
+values are preserved. Use matching `features/stage` or merged SDK
+`features/stage-lilplayer` and Keira `features/stage`.
 
 Checks (no firmware build or flash):
 
 ```sh
-python3 tests/auto_full_calibration.py
 python3 tests/charge_status.py
 python3 tools/checklang.py
 # In the matching SDK checkout:
 python3 tests/battery_calibration/run.py
 ```
 
-The service adds one bounded 32-reading median per second and the inherited
-4 KiB service-task stack, with no per-poll allocation or NVS access. A calibration
-attempt adds one fresh median and one checked write on the service task under
-Keira's NVS mutex; there is no input/audio/render-task write. Firmware size, heap,
-on-device timing and power remain unmeasured in source-only verification.
+SDK implementation and public API: [battery calibration and snapshots](https://github.com/fideleka/sdk/blob/features/stage/docs/BATTERY_CALIBRATION_SAVE.md).
+Firmware size, live heap, physical UI, timing and power remain unmeasured by the
+source-only checks. The SDK worker requests a 3 KiB stack instead of Keira's former
+4 KiB service stack; there is no per-poll allocation or input/render-task NVS work.
