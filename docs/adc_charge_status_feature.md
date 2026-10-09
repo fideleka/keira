@@ -26,10 +26,11 @@ With CHRG tag: yellow lightning battery + CHG / ЗАР (no charging percentage).
 With STDBY tag: green check battery + FULL / ГОТО (termination, not fuel-gauge data).
 Icon-only mode shows only the changed battery icon. Percent-only and voltage
 modes show the charge icon + short state instead of falsely reporting tagged
-voltage/percentage. During startup, an empty battery outline and `...` indicate
-that the first state is being measured (icon-only shows the outline).
+voltage/percentage. During startup, a solid gray battery silhouette (no cross) and `...` indicate
+that the first state is being measured (icon-only shows that same gray silhouette).
 During band changes, retain the last confirmed icon/text/percentage/voltage until
-three matching valid samples confirm the replacement. Never recompute percent
+three matching samples confirm the replacement. A confirmed absent battery
+uses the original crossed gray battery icon + `N/A` (icon-only omits the text). Never recompute percent
 or voltage from provisional charging tags; cache the normal battery values. After USB unplug, require three normal-band samples and
 reset percent smoothing so the current battery estimate reappears immediately.
 
@@ -38,10 +39,11 @@ reset percent smoothing so the current battery estimate reappears immediately.
 **These are normal-divider reconstructed volts returned by SDK readRawVoltage,
 NOT actual GPIO3 volts and NOT full-level calibrated volts.**
 
+- Absent: 0.00 <= V < 0.50 (same threshold as the SDK; three samples)
 - Charged: 0.50 <= V < 1.40
 - Charging: 1.50 < V < 2.65
 - Battery: 2.80 < V <= 4.60
-- Guard bands, absent/invalid values, NaN/infinity: reset candidate debounce,
+- Guard bands, invalid values, NaN/infinity: reset candidate debounce,
   retain the last confirmed display. With no confirmed state yet, keep `...`.
   There is no invalid-reading timeout: retained status is last-known, not proof
   that a disconnected or faulty sensor remains healthy.

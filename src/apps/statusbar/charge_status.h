@@ -7,13 +7,15 @@
 // Input is SDK readRawVoltage(): normal-divider reconstructed volts, NOT
 // actual GPIO3 volts and NOT calibrated/estimated battery percentage.
 namespace keira {
-enum class ChargeStatus { Unknown, Battery, Charging, Charged };
+enum class ChargeStatus { Unknown, Battery, Charging, Charged, Absent };
 
 class ChargeStatusFilter {
 public:
     static ChargeStatus classify(float voltage) {
         // Guard bands around provisional boundaries suppress noisy transitions.
-        if (!std::isfinite(voltage) || voltage < 0.5f || voltage > 4.6f) return ChargeStatus::Unknown;
+        if (!std::isfinite(voltage) || voltage < 0.0f || voltage > 4.6f) return ChargeStatus::Unknown;
+        // Same absent-battery threshold as the SDK, confirmed by debounce.
+        if (voltage < 0.5f) return ChargeStatus::Absent;
         if (voltage < 1.40f) return ChargeStatus::Charged;
         if (voltage > 1.50f && voltage < 2.65f) return ChargeStatus::Charging;
         if (voltage > 2.80f) return ChargeStatus::Battery;
