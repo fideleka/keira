@@ -9,6 +9,9 @@
 #    include "services/watchdog/watchdog.h"
 #endif
 #include "services/clock/clock.h"
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+#    include "services/battery/battery.h"
+#endif
 #include "services/network/network.h"
 #include "services/screenshot/screenshot.h"
 #include "services/telnet/telnet.h"
@@ -191,6 +194,9 @@ void KeiraSystem::launchServices() {
 #endif
     services.spawn(new NetworkService());
     services.spawn(new ClockService());
+#if defined(KEIRA_ADC_CHARGE_STATUS) && KEIRA_ADC_CHARGE_STATUS && LILKA_VERSION >= 2
+    services.spawn(new BatteryCalibrationService());
+#endif
     services.spawn(new ScreenshotService());
     services.spawn(new TelnetService());
     services.spawn(new FTPService());

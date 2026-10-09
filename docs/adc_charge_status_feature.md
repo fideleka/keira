@@ -78,3 +78,45 @@ pending plug/full/unplug, and confirmed states in English and Ukrainian.
 
 Host tests are NOT firmware build/link or device certification. No build,
 flash, packaging, dependency installation or hardware changes were performed.
+
+## Automatic full-charge calibration
+
+Enabled only by the existing ADC-charge-status build gate on v2. A background
+`BatteryCalibrationService` polls the existing raw-voltage median once per second,
+independently of the status-bar widget, fullscreen apps and LCD sleep.
+
+- Observe a confirmed **Charged → Battery** transition (three valid samples per
+  state), never Charging → Battery and never startup directly on Battery.
+- Wait **30 seconds from confirmed Battery**, with valid battery-band samples.
+- Any reconnect/tag, guard-band/invalid/absent sample, or battery voltage below
+  the SDK's 3.5 V full-reference minimum cancels that opportunity.
+- Attempt calibration once per cycle. The SDK takes a fresh 32-reading median,
+  rejects tagged/implausible samples again, checks the NVS write, and publishes
+  the new reference only after a successful save. Failure retains the old value.
+- This calibrates the upper reference for estimated percentages, not raw voltage
+  or battery capacity. Existing percentage smoothing and discharge profiles stay.
+- Battery settings now contains **Profile only**; manual calibration/reset entries
+  are removed. Existing saved calibration/profile values are preserved.
+- Eligibility is RAM-only: restarting Keira while unplugged does not invent a
+  previously observed Charged event. Guest firmware has its own lifecycle.
+
+Use matching `features/stage` checkouts of Keira and the SDK. The SDK includes
+checked saving and an atomic full-reference snapshot for background updates.
+Standard/untagged builds do not start the automatic-calibration service; their
+Battery settings also intentionally shows only Profile.
+
+Checks (no firmware build or flash):
+
+```sh
+python3 tests/auto_full_calibration.py
+python3 tests/charge_status.py
+python3 tools/checklang.py
+# In the matching SDK checkout:
+python3 tests/battery_calibration/run.py
+```
+
+The service adds one bounded 32-reading median per second and the inherited
+4 KiB service-task stack, with no per-poll allocation or NVS access. A calibration
+attempt adds one fresh median and one checked write on the service task under
+Keira's NVS mutex; there is no input/audio/render-task write. Firmware size, heap,
+on-device timing and power remain unmeasured in source-only verification.
