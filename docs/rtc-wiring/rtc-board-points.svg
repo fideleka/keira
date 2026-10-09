@@ -1,0 +1,169 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1000">
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#253448}.wire{fill:none;stroke-width:3;stroke-linejoin:round}</style>
+<rect width="1500" height="1000" fill="#ffffff"/>
+<text x="40" y="48" font-size="28" text-anchor="start" style="fill:#253448" font-weight="bold">Lilka board • five connection points on amplifier J5</text>
+<text x="40" y="82" font-size="17" text-anchor="start" style="fill:#253448">PCB-derived rear/amp-side view • board top (extension connector) stays at the top • not a photograph</text>
+<polygon points="966.7800000000002,278.90000000000003 877.88,190.0 148.90000000000012,190.0 60.0,278.90000000000003 60.0,456.7 148.90000000000012,545.6 877.88,545.6 966.7800000000002,456.7" fill="#edf4ee" stroke="#72937b" stroke-width="3"/>
+<circle cx="273.3599999999999" cy="234.45000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="237.80000000000004" cy="234.45000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="664.5200000000001" cy="510.04" r="4" fill="#b7c9bb"/>
+<circle cx="664.5200000000001" cy="279.789" r="4" fill="#b7c9bb"/>
+<circle cx="362.26000000000016" cy="461.1449999999999" r="4" fill="#b7c9bb"/>
+<circle cx="664.5200000000001" cy="461.1449999999999" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="308.23699999999997" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="326.017" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="343.79699999999997" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="361.577" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="379.35699999999997" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="397.137" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="414.91700000000003" r="4" fill="#b7c9bb"/>
+<circle cx="355.14800000000014" cy="432.697" r="4" fill="#b7c9bb"/>
+<circle cx="719.781262658471" cy="386.78446265847083" r="4" fill="#b7c9bb"/>
+<circle cx="806.401843353823" cy="349.6613566461771" r="4" fill="#b7c9bb"/>
+<circle cx="744.5300000000002" cy="411.5332" r="4" fill="#b7c9bb"/>
+<circle cx="781.6531060122938" cy="324.91261930464793" r="4" fill="#b7c9bb"/>
+<circle cx="815.2918373415292" cy="394.11136265847085" r="4" fill="#b7c9bb"/>
+<circle cx="852.414943353823" cy="480.73194335382294" r="4" fill="#b7c9bb"/>
+<circle cx="790.5431000000001" cy="418.86010000000005" r="4" fill="#b7c9bb"/>
+<circle cx="877.1636806953521" cy="455.9832060122938" r="4" fill="#b7c9bb"/>
+<circle cx="138.08896265847088" cy="409.6126373415292" r="4" fill="#b7c9bb"/>
+<circle cx="100.96585664617723" cy="322.99205664617716" r="4" fill="#b7c9bb"/>
+<circle cx="162.83770000000004" cy="384.86390000000006" r="4" fill="#b7c9bb"/>
+<circle cx="76.21711930464807" cy="347.7407939877063" r="4" fill="#b7c9bb"/>
+<circle cx="611.1800000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="593.4" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="575.6200000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="557.84" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="540.0600000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="522.28" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="504.5000000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="486.72" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="468.9400000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="451.1600000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="433.38" cy="225.56" r="4" fill="#b7c9bb"/>
+<circle cx="415.6000000000001" cy="225.56" r="4" fill="#b7c9bb"/>
+<text x="611.1800000000001" y="205.56" font-size="17" text-anchor="middle" style="fill:#253448">J2</text>
+<circle cx="931.22" cy="287.78999999999996" r="4" fill="#b7c9bb"/>
+<circle cx="275.3900000000001" cy="442.84" r="4" fill="#b7c9bb"/>
+<circle cx="275.3900000000001" cy="488.34" r="4" fill="#b7c9bb"/>
+<circle cx="306.8900070000001" cy="442.84" r="4" fill="#b7c9bb"/>
+<circle cx="306.8900000000001" cy="488.34000699999996" r="4" fill="#b7c9bb"/>
+<circle cx="95.56000000000009" cy="287.78999999999996" r="4" fill="#b7c9bb"/>
+<circle cx="655.63" cy="363.35499999999996" r="4" fill="#b7c9bb"/>
+<circle cx="655.63" cy="310.015" r="4" fill="#b7c9bb"/>
+<circle cx="235.8787373415292" cy="276.97873734152915" r="4" fill="#b7c9bb"/>
+<circle cx="149.258156646177" cy="314.1018433538229" r="4" fill="#b7c9bb"/>
+<circle cx="211.13000000000002" cy="252.23000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="174.00689398770618" cy="338.85058069535216" r="4" fill="#b7c9bb"/>
+<circle cx="852.7728626584709" cy="338.85033734152915" r="4" fill="#b7c9bb"/>
+<circle cx="815.6497566461771" cy="252.2297566461771" r="4" fill="#b7c9bb"/>
+<circle cx="877.5216" cy="314.10159999999996" r="4" fill="#b7c9bb"/>
+<circle cx="790.901019304648" cy="276.97849398770626" r="4" fill="#b7c9bb"/>
+<circle cx="700.08" cy="207.78" r="4" fill="#b7c9bb"/>
+<circle cx="682.58" cy="207.78" r="4" fill="#b7c9bb"/>
+<circle cx="665.08" cy="207.78" r="4" fill="#b7c9bb"/>
+<circle cx="700.08" cy="230.18" r="4" fill="#b7c9bb"/>
+<circle cx="682.58" cy="230.18" r="4" fill="#b7c9bb"/>
+<circle cx="665.08" cy="230.18" r="4" fill="#b7c9bb"/>
+<circle cx="446.15500000000003" cy="438.91999999999996" r="4" fill="#b7c9bb"/>
+<circle cx="411.15500000000003" cy="438.91999999999996" r="4" fill="#b7c9bb"/>
+<circle cx="884.8485000000001" cy="232.52849999999998" r="4" fill="#b7c9bb"/>
+<circle cx="860.0997626584709" cy="207.77976265847082" r="4" fill="#b7c9bb"/>
+<circle cx="931.22" cy="447.81000000000006" r="4" fill="#b7c9bb"/>
+<circle cx="751.3900000000001" cy="488.34" r="4" fill="#b7c9bb"/>
+<circle cx="751.3900000000001" cy="442.84" r="4" fill="#b7c9bb"/>
+<circle cx="719.8899930000001" cy="488.34" r="4" fill="#b7c9bb"/>
+<circle cx="719.8900000000001" cy="442.839993" r="4" fill="#b7c9bb"/>
+<circle cx="405.6600000000001" cy="514.87" r="4" fill="#b7c9bb"/>
+<circle cx="451.1600000000001" cy="514.87" r="4" fill="#b7c9bb"/>
+<circle cx="405.6600000000001" cy="483.37" r="4" fill="#b7c9bb"/>
+<circle cx="451.1600000000001" cy="483.37" r="4" fill="#b7c9bb"/>
+<circle cx="371.1500000000001" cy="270.01" r="4" fill="#b7c9bb"/>
+<circle cx="353.37000000000006" cy="270.01" r="4" fill="#b7c9bb"/>
+<circle cx="335.59000000000003" cy="270.01" r="4" fill="#b7c9bb"/>
+<circle cx="317.81000000000006" cy="270.01" r="4" fill="#b7c9bb"/>
+<text x="302.4100000000001" y="267.78999999999996" font-size="17" text-anchor="middle" style="fill:#253448">J1</text>
+<circle cx="851.21" cy="234.17000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="826.4612626584708" cy="209.42126265847085" r="4" fill="#b7c9bb"/>
+<circle cx="149.2581626584708" cy="456.3420626584708" r="4" fill="#b7c9bb"/>
+<circle cx="235.87874335382278" cy="419.21895664617705" r="4" fill="#b7c9bb"/>
+<circle cx="174.00689999999997" cy="481.09079999999994" r="4" fill="#b7c9bb"/>
+<circle cx="211.13000601229362" cy="394.4702193046479" r="4" fill="#b7c9bb"/>
+<circle cx="95.56000000000009" cy="447.81000000000006" r="4" fill="#b7c9bb"/>
+<circle cx="862.021262658471" cy="386.78446265847083" r="4" fill="#b7c9bb"/>
+<circle cx="948.641843353823" cy="349.6613566461771" r="4" fill="#b7c9bb"/>
+<circle cx="886.7700000000001" cy="411.5332" r="4" fill="#b7c9bb"/>
+<circle cx="923.8931060122939" cy="324.91261930464793" r="4" fill="#b7c9bb"/>
+<circle cx="362.26000000000005" cy="510.04" r="4" fill="#b7c9bb"/>
+<circle cx="455.60500000000013" cy="456.7" r="4" fill="#b7c9bb"/>
+<circle cx="402.2650000000001" cy="456.7" r="4" fill="#b7c9bb"/>
+<circle cx="280.328962658471" cy="409.6126373415292" r="4" fill="#b7c9bb"/>
+<circle cx="243.20585664617718" cy="322.99205664617716" r="4" fill="#b7c9bb"/>
+<circle cx="305.0777000000001" cy="384.86390000000006" r="4" fill="#b7c9bb"/>
+<circle cx="218.45711930464802" cy="347.7407939877063" r="4" fill="#b7c9bb"/>
+<circle cx="691.715" cy="265.565" r="4" fill="#b7c9bb"/>
+<circle cx="762.835" cy="265.565" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="416.695" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="434.4749999999999" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="452.255" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="470.035" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="487.81499999999994" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="505.595" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="523.375" r="4" fill="#b7c9bb"/>
+<circle cx="784.5350000000001" cy="458.135" r="4" fill="#b7c9bb"/>
+<circle cx="784.5350000000001" cy="481.93499999999995" r="4" fill="#b7c9bb"/>
+<circle cx="713.4150000000001" cy="345.57500000000005" r="4" fill="#b7c9bb"/>
+<circle cx="713.4150000000001" cy="292.235" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="292.235" r="4" fill="#b7c9bb"/>
+<circle cx="695.635" cy="345.57500000000005" r="4" fill="#b7c9bb"/>
+<circle cx="432.85500000000013" cy="252.23000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="432.85500000000013" cy="350.22999999999996" r="4" fill="#b7c9bb"/>
+<circle cx="593.8550000000001" cy="252.23000000000002" r="4" fill="#b7c9bb"/>
+<circle cx="593.8550000000001" cy="350.22999999999996" r="4" fill="#b7c9bb"/>
+<text x="422.35500000000013" y="221.03" font-size="17" text-anchor="middle" style="fill:#253448">J4</text>
+<circle cx="473.38500000000005" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<circle cx="455.60500000000013" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<circle cx="437.82500000000005" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<circle cx="420.04500000000013" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<circle cx="402.2650000000001" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<circle cx="384.4850000000001" cy="376.68999999999994" r="4" fill="#b7c9bb"/>
+<text x="491.1650000000001" y="347.79999999999995" font-size="17" text-anchor="middle" style="fill:#253448">J3</text>
+<text x="844.0980000000001" y="472.26" font-size="17" text-anchor="middle" style="fill:#253448">J6</text>
+<text x="510" y="153" font-size="19" text-anchor="middle" style="fill:#08796b">Extension header: no wires added</text>
+<text x="510" y="579" font-size="17" text-anchor="middle" style="fill:#253448">Mirrored rear view — J5 is toward the right here</text>
+<circle cx="695.635" cy="416.695" r="7" fill="#1760a0"/>
+<circle cx="695.635" cy="434.4749999999999" r="7" fill="#1760a0"/>
+<circle cx="695.635" cy="452.255" r="7" fill="#1760a0"/>
+<circle cx="695.635" cy="505.595" r="7" fill="#1760a0"/>
+<circle cx="695.635" cy="523.375" r="7" fill="#1760a0"/>
+<polyline class="wire" points="707.635,434.4749999999999 1010,434.4749999999999 1010,185" stroke="#1760a0" stroke-dasharray="7 5"/>
+<rect x="1040" y="120" width="420" height="600" rx="6" fill="#f1f5f9" stroke="#b7c6d6" stroke-width="2"/>
+<text x="1065" y="157" font-size="23" text-anchor="start" style="fill:#253448" font-weight="bold">J5 signal row • enlarged</text>
+<circle cx="1080" cy="213" r="10" fill="#1760a0"/>
+<text x="1105" y="219" font-size="19" text-anchor="start" style="fill:#1760a0" font-weight="bold">1  LRCK / GPIO1</text>
+<text x="1105" y="243" font-size="16" text-anchor="start" style="fill:#253448">→ U1 pin 10 COM1</text>
+<circle cx="1080" cy="280" r="10" fill="#1760a0"/>
+<text x="1105" y="286" font-size="19" text-anchor="start" style="fill:#1760a0" font-weight="bold">2  BCK / GPIO42</text>
+<text x="1105" y="310" font-size="16" text-anchor="start" style="fill:#253448">→ R1 1k detector input</text>
+<circle cx="1080" cy="347" r="10" fill="#1760a0"/>
+<text x="1105" y="353" font-size="19" text-anchor="start" style="fill:#1760a0" font-weight="bold">3  DIN / GPIO2</text>
+<text x="1105" y="377" font-size="16" text-anchor="start" style="fill:#253448">→ U1 pin 6 COM2</text>
+<circle cx="1080" cy="414" r="10" fill="#8a949e"/>
+<text x="1105" y="420" font-size="19" text-anchor="start" style="fill:#8a949e" font-weight="bold">4  GAIN</text>
+<text x="1105" y="444" font-size="16" text-anchor="start" style="fill:#253448">Leave untouched</text>
+<circle cx="1080" cy="481" r="10" fill="#8a949e"/>
+<text x="1105" y="487" font-size="19" text-anchor="start" style="fill:#8a949e" font-weight="bold">5  SD / SLEEP</text>
+<text x="1105" y="511" font-size="16" text-anchor="start" style="fill:#253448">Leave untouched / GPIO46</text>
+<circle cx="1080" cy="548" r="10" fill="#1760a0"/>
+<text x="1105" y="554" font-size="19" text-anchor="start" style="fill:#1760a0" font-weight="bold">6  GND</text>
+<text x="1105" y="578" font-size="16" text-anchor="start" style="fill:#253448">Common system ground</text>
+<circle cx="1080" cy="615" r="10" fill="#1760a0"/>
+<text x="1105" y="621" font-size="19" text-anchor="start" style="fill:#1760a0" font-weight="bold">7  VIN = +3V3</text>
+<text x="1105" y="645" font-size="16" text-anchor="start" style="fill:#253448">Power to all three devices</text>
+<text x="1065" y="697" font-size="17" text-anchor="start" style="fill:#253448">1 is above 7 in this rear view.</text>
+<rect x="40" y="750" width="1420" height="194" rx="6" fill="#fff6e9" stroke="#b7c6d6" stroke-width="2"/>
+<text x="65" y="789" font-size="21" text-anchor="start" style="fill:#253448" font-weight="bold">Solder to the existing J5 signal-row joints; amplifier stays connected directly as before.</text>
+<text x="65" y="828" font-size="18" text-anchor="start" style="fill:#253448">Confirm the pad by its amplifier label and continuity to the matching J5 net. Actual installed-module access varies.</text>
+<text x="65" y="866" font-size="18" text-anchor="start" style="fill:#a95b08">Speaker OUT− is NOT ground. Do not use battery B+/B−, USB 5V, or the amplifier SD/SLEEP pad for this circuit.</text>
+<text x="65" y="905" font-size="18" text-anchor="start" style="fill:#253448">Source: Lilka hardware/v2/main.kicad_pcb. Your board is marked 2.3; verify labels/net continuity before soldering.</text>
+</svg>

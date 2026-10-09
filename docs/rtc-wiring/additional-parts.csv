@@ -1,0 +1,14 @@
+Reference,Quantity required,Part,Package,Note
+U1,1,TS5A23157DGS,VSSOP-10 0.5 mm,Already owned; JBR marking; separate carrier
+RTC,1,DS3231SN module,Five labelled pins,Already owned; + D C NC minus
+U2,1,SN74LVC1G17DBVR,SOT-23-5 DBV,Buy; non-inverting Schmitt buffer; optional second spare
+D1,1,BAT43,Axial DO-35 SOD-27,Buy; Schottky diode; optional two spares
+Adapter U2,1,SOT-23-5 or SOT2310 breakout,0.95 mm to 2.54 mm,Pictured carrier should fit after dry-fit; separate from U1 carrier
+R1,1,1 kohm resistor,Existing stock,1 percent preferred
+R2,1,47 kohm resistor,Existing stock,1 percent preferred
+R3,1,100 kohm resistor,Existing stock,Selector pull-down
+Cenv,1,100 nF X7R ceramic,Existing stock,10 V or higher; envelope capacitor
+Cbuf,1,100 nF ceramic,Existing stock,10 V or higher; buffer supply decoupling
+Csw,1,100 nF ceramic,Existing stock,10 V or higher; switch supply decoupling
+Crtc,1,1 uF ceramic,Existing stock,10 V or higher; RTC supply decoupling
+RTC pull-ups,2 if absent,4.7 kohm resistor,Existing stock,Do not add if module pull-ups are already confirmed

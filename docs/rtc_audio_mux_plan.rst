@@ -1,348 +1,183 @@
 Battery-backed RTC over multiplexed audio pins
 ==============================================
 
-Status
-------
-
-This document records the hardware and firmware design for adding a
-battery-backed I2C real-time clock to Lilka v2 without consuming extension,
-UART, display, SD, or permanent audio GPIO capacity.  It is a design document;
-the feature is not implemented yet.
-
-Goals
------
-
-* Preserve all extension-header compatibility.
-* Preserve future MAX98357A I2S audio support.
-* Keep time while Lilka's mechanical power switch is off.
-* Read the RTC once during early boot before normal peripheral initialization.
-* Write the RTC only when the user explicitly sets time, or when a trusted NTP
-  synchronization discovers an uninitialized RTC.
-* Store UTC in the RTC and apply Keira's configured time zone only when
-  displaying local time.
-* Electrically isolate the RTC from high-speed I2S traffic whenever it is not
-  being accessed.
-
-Non-goals for the first version
--------------------------------
-
-* RTC alarms or wake-from-power-off support.
-* Using the RTC square-wave or 32 kHz outputs.
-* Replacing NTP as the preferred source of authoritative time.
-* Continuously polling the RTC while Keira is running.
-* Sharing the display/SD SPI bus through additional chip-select decoding.
-
-Why software-only pin reuse is unsafe
+Status and authoritative wiring guide
 -------------------------------------
 
-The unused-audio build can temporarily treat GPIO1 and GPIO2 as I2C, but the
-future audio configuration uses the same pins for high-speed I2S::
-
-    GPIO42  I2S BCLK
-    GPIO1   I2S LRCK
-    GPIO2   I2S data out
-
-Leaving an RTC connected directly to GPIO1/2 would expose its SDA/SCL pins to
-I2S traffic.  The RTC could interpret arbitrary audio transitions as I2C start,
-address, or write sequences.  Merely stopping ``Wire`` or powering down an RTC
-module in firmware does not guarantee electrical isolation and may allow
-back-powering through input-protection structures.
-
-The compact design therefore inserts a dual analog switch in only the RTC
-branch.  Audio remains connected directly to the ESP32 at all times.
-
-Compact hardware design
------------------------
-
-Primary components
-~~~~~~~~~~~~~~~~~~
-
-* one compact 3.3 V-compatible DS3231 I2C RTC module with backup cell;
-* one TS5A23157 dual SPDT analog switch in VSSOP-10;
-* one 1 Mohm resistor, 0603 or 0805;
-* one 100 nF ceramic capacitor, 0603 or 0805;
-* one 1 uF ceramic capacitor, 0603 or 0805;
-* two 4.7 kohm pull-up resistors only if the RTC module does not already
-  provide them.
-
-The exact RTC module pinout, installed pull-ups, backup-cell chemistry, and
-charging behavior must be verified before assembly.  The module is always
-powered from Lilka's 3.3 V rail, never 5 V.
-
-Signal topology
-~~~~~~~~~~~~~~~
-
-The MAX98357A audio signals remain directly connected::
-
-    GPIO42 ------------------------------ MAX98357A BCLK
-    GPIO1  ------------------------------ MAX98357A LRCK
-    GPIO2  ------------------------------ MAX98357A DIN
-
-The RTC branch passes through the two TS5A23157 channels::
-
-    GPIO1/LRCK -------- COM1
-                         |-- NC1 -------- RTC SCL
-                         `-- NO1 -------- not connected
-
-    GPIO2/DIN  -------- COM2
-                         |-- NC2 -------- RTC SDA
-                         `-- NO2 -------- not connected
-
-    GPIO46/SLEEP ------- IN1 + IN2
-
-For the standard TS5A23157 truth table, control LOW connects COM to NC and
-control HIGH connects COM to NO.  The selected supplier datasheet must be
-checked before layout or soldering.  If a compatible part uses the opposite
-truth table, swap the NC and NO assignments; never connect the unused throw to
-ground or power.
-
-Switch states
-~~~~~~~~~~~~~
-
-================  ====================  ================================
-GPIO46/SLEEP       RTC switch            Result
-================  ====================  ================================
-LOW               COM connected to NC   RTC connected to GPIO1/2
-HIGH              COM connected to NO   RTC isolated; I2S operates normally
-================  ====================  ================================
-
-Connect a 1 Mohm resistor from GPIO46 to ground.  It weakly selects the RTC
-path while GPIO46 is high-impedance during early reset without materially
-loading the ESP32-S3 strapping pin.  This assumption must be checked on the
-assembled board by verifying normal boot and download mode before relying on
-the modification.
-
-Power and decoupling
-~~~~~~~~~~~~~~~~~~~~
-
-::
-
-    TS5A23157 V+  -------- 3.3 V
-    TS5A23157 GND -------- GND
-    100 nF --------------- directly across switch V+ and GND
-
-    RTC VCC -------------- 3.3 V
-    RTC GND -------------- GND
-    1 uF ----------------- near RTC VCC and GND
-
-The RTC remains powered while Lilka is on.  The module's backup cell keeps its
-oscillator and registers alive when Lilka is switched off.
-
-I2C pull-ups belong on the RTC side of the switch::
-
-    RTC SDA ---- 4.7 kohm ---- 3.3 V
-    RTC SCL ---- 4.7 kohm ---- 3.3 V
-
-Most RTC modules already provide pull-ups.  Measure SDA-to-VCC and SCL-to-VCC
-with power disconnected; a reading in the approximate 4.7--10 kohm range means
-additional pull-ups are unnecessary.
-
-Backup-cell safety
-~~~~~~~~~~~~~~~~~~
-
-Cheap RTC modules vary.  Before installation:
-
-* identify the installed cell and whether it is rechargeable;
-* identify any charging diode/resistor on the module;
-* never allow a module to charge a non-rechargeable CR-series cell;
-* do not replace the included yellow cell until its chemistry and charging
-  circuit are understood.
-
-Firmware architecture
----------------------
-
-One service owns RTC transactions and the GPIO1/2 mode transition.  Other
-applications must not manipulate the switch or start I2C on these pins
-directly.
-
-Conceptual interface::
-
-    class RtcService {
-    public:
-        bool readEarlyUtc(time_t &utc);
-        bool writeUtc(time_t utc, RtcWriteReason reason);
-        bool isPresent() const;
-        bool isValid() const;
-    };
-
-``RtcWriteReason`` initially distinguishes explicit manual changes from the
-first trusted NTP initialization.  The first implementation does not rewrite
-the RTC on every NTP poll.
-
-Early boot sequence
--------------------
-
-RTC reading must happen before normal I2S initialization::
-
-    1. Drive GPIO46 LOW and allow the analog switch to settle.
-    2. Keep GPIO42 inactive and detach any I2S routing from GPIO1/2.
-    3. Configure GPIO2 as SDA and GPIO1 as SCL at 100 kHz.
-    4. Probe the RTC and inspect its oscillator-stop/validity status.
-    5. If valid, read UTC and initialize the ESP32 system clock.
-    6. Stop I2C and return GPIO1/2 to a safe high-impedance state.
-    7. Drive GPIO46 HIGH to isolate the RTC.
-    8. Continue normal board, display, and I2S initialization.
-
-RTC absence, invalid data, or an I2C timeout must never block boot.  Keira
-continues with its existing unsynchronized-clock behavior until manual or NTP
-time becomes available.
-
-Runtime write sequence
-----------------------
-
-RTC writes are rare and coordinated with audio and display ownership::
-
-    1. Acquire the RTC/audio transition mutex.
-    2. If audio is active, defer the write or stop it cleanly.
-    3. Disable and detach I2S from GPIO1/2/42.
-    4. Put GPIO1/2 in a safe high-impedance state.
-    5. Drive GPIO46 LOW; this isolates/mutes normal peripherals and connects
-       the RTC branch.
-    6. Wait briefly for switch and I2C levels to settle.
-    7. Start I2C on SDA GPIO2 and SCL GPIO1.
-    8. Write UTC and verify it by reading back.
-    9. Stop I2C and return GPIO1/2 to high impedance.
-    10. Drive GPIO46 HIGH to disconnect the RTC.
-    11. Restore display state and I2S routing/audio if needed.
-    12. Release the transition mutex.
-
-A short display blank during this rare operation is acceptable.  A write must
-not interrupt active audio unless the audio owner supports a clean pause and
-resume; otherwise it remains queued until audio becomes idle.
-
-GPIO46 and power-saving coordination
-------------------------------------
-
-GPIO46 currently controls Lilka's peripheral sleep behavior.  With this
-hardware modification, driving GPIO46 LOW also connects the RTC to GPIO1/2.
-Therefore every code path that enters power-saving mode must guarantee that
-I2S is stopped and GPIO1/2 are safe before changing GPIO46.
-
-The implementation must audit:
-
-* SDK startup audio initialization;
-* Keira audio player;
-* MadPlayer;
-* LilTracker;
-* any direct I2S use;
-* ``Board::enablePowerSavingMode()`` and ``disablePowerSavingMode()``.
-
-If this coordination requires generic SDK behavior changes, those changes
-belong in a matching SDK feature branch.  Keira and the modified SDK must then
-be treated as one integration unit; no SDK hardening fix should live only on a
-Keira staging branch.
-
-Time policy
------------
-
-The RTC stores UTC only.
-
-At boot
-    If RTC data is valid, initialize the system clock from it.  The configured
-    Keira POSIX time-zone rule converts UTC to local display time.
-
-After trusted NTP synchronization
-    If the RTC is absent or already valid, do not perform an unnecessary
-    write.  If the RTC is present but uninitialized/invalid, write the trusted
-    UTC time once and verify it.
-
-After a manual time change
-    Update the system clock and RTC UTC value, then verify the RTC readback.
-
-Periodic drift correction is deliberately deferred until real hardware drift
-has been measured.  It can later write only when the RTC differs from NTP by a
-meaningful threshold.
-
-RTC validity
-------------
-
-For DS3231, validity should use both:
-
-* the oscillator-stop flag (OSF); and
-* bounded calendar fields after BCD conversion.
-
-Do not decide validity solely from a plausible year.  Clear OSF only after a
-successful trusted-time write and readback.
-
-Implementation phases
----------------------
-
-Phase 0: bench hardware proof
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Assemble RTC, TS5A23157, pull-down, and decoupling on an adapter board.
-2. Verify the exact TS5A23157 truth table and module pull-ups.
-3. Confirm GPIO46 LOW connects both I2C lines.
-4. Confirm GPIO46 HIGH isolates both lines with a multimeter or logic analyzer.
-5. Verify normal boot and USB download mode with the 1 Mohm GPIO46 pull-down.
-6. Exercise I2S while monitoring the RTC side; no audio transitions may cross
-   the disabled switch.
-
-Acceptance: RTC I2C works at 100 kHz when selected, the isolated side remains
-quiet during I2S, and all normal Lilka boot modes still work.
-
-Phase 1: early read
-~~~~~~~~~~~~~~~~~~~
-
-1. Add the RTC transaction helper and DS3231 read/validity support.
-2. Read before audio initialization.
-3. Initialize the system UTC clock from a valid RTC.
-4. Fail open when the module is absent or invalid.
-
-Acceptance: after a hard power-off, Keira boots with correct UTC-derived local
-time without Wi-Fi and still boots normally when the RTC is unplugged.
-
-Phase 2: trusted writes
-~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Add manual-time write and readback.
-2. Initialize an invalid RTC after trusted NTP synchronization.
-3. Queue writes while audio is active.
-4. Expose concise logs/status for missing, invalid, read, and write states.
-
-Acceptance: manual and first-NTP writes survive hard power-off and do not
-corrupt audio, display, or I2C state.
-
-Phase 3: sleep/audio integration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Centralize GPIO46 transitions through the RTC/audio coordinator.
-2. Update every power-saving path to quiesce I2S first.
-3. Test all audio applications and repeated sleep/wake cycles.
-
-Acceptance: no switch connection occurs while GPIO1/2 carry I2S, and audio can
-resume cleanly after an RTC transaction or sleep cycle.
-
-Validation matrix
+Updated 2026-10-09: the selected hardware design uses a BCLK envelope detector
+and non-inverting Schmitt buffer to select the RTC branch. This replaces the
+original GPIO46/SLEEP selector, which conflicts with the modified board's PWM
+backlight. No firmware implementation or hardware qualification has happened.
+
+The complete parts list, pin-by-pin netlist, assembly checks and editable
+connection diagrams are in `RTC wiring guide <rtc-wiring/README.md>`_.
+A standalone browser document is available at
+`RTC wiring sheets <rtc-wiring/rtc-wiring.html>`_.
+
+.. image:: rtc-wiring/rtc-circuit.svg
+   :alt: RTC branch and BCLK peak-detector wiring, powered from 3.3 V
+
+.. image:: rtc-wiring/rtc-adapters.svg
+   :alt: Separate TS5A23157 and SN74LVC1G17 adapter pin placement
+
+.. image:: rtc-wiring/rtc-board-points.svg
+   :alt: PCB-derived rear Lilka view with the five amplifier J5 connection points
+
+Goals and scope
+---------------
+
+* Preserve every extension-header pin, UART, buttons, piezo buzzer, PWM
+  backlight, display, SD and direct MAX98357 I2S wiring.
+* Keep RTC time while the mechanical power switch is off.
+* Read valid RTC UTC during early boot before normal I2S initialization.
+* Write UTC after explicit manual time changes or trusted NTP initialization
+  of an invalid RTC; do not continuously poll or rewrite a valid RTC.
+* Apply the configured time zone only when displaying UTC-derived local time.
+* Electrically isolate RTC SDA/SCL from I2S traffic during audio playback.
+
+RTC alarms, power-off wake, square-wave/32 kHz outputs and periodic drift
+correction are out of scope for the first implementation.
+
+Selected hardware
 -----------------
 
-* cold boot from RTC with Wi-Fi unavailable;
-* boot with no RTC installed;
-* boot with invalid/stopped RTC oscillator;
-* first NTP synchronization initializes an invalid RTC;
-* subsequent NTP synchronization avoids unnecessary writes;
-* manual time setting writes and verifies RTC;
-* UTC remains unchanged when the configured time zone changes;
-* hard power-off for at least 24 hours preserves time;
-* twenty RTC transaction cycles do not hang I2C or I2S;
-* active audio defers rather than races an RTC write;
-* MAX98357 audio is clean while the RTC switch is open;
-* GPIO46 power-saving transitions remain safe;
-* normal boot and download modes remain available;
-* no measurable RTC pull-up loading remains on GPIO1/2 while isolated;
-* Keira and any companion SDK branch pass their exact format, static-analysis,
-  localization, and v2 build gates;
-* flash, static RAM, persistent heap, task stack, and boot-time deltas are
-  measured against a clean baseline.
+Use DS3231SN module, TS5A23157DGS dual SPDT switch, SN74LVC1G17DBVR
+non-inverting Schmitt buffer and BAT43 Schottky diode. Each IC needs its own
+physical adapter. A two-sided carrier is not two electrically separate boards.
+
+Five additional wires branch from amplifier connector J5:
+
+* pad 1 LRCK / GPIO1 to switch pin 10 COM1;
+* pad 2 BCK / GPIO42 to the detector's 1 kohm input resistor;
+* pad 3 DIN / GPIO2 to switch pin 6 COM2;
+* pad 6 GND to common circuit ground;
+* pad 7 VIN, which is +3V3 on Lilka, to circuit supply.
+
+Leave amplifier wiring direct and unchanged. Do not use speaker OUT- as ground.
+Do not connect this circuit to USB 5 V, battery pads, GPIO46/SLEEP, extension
+pins or the buzzer. Preserve the existing amplifier-SD isolation modification.
+
+Switch pin 9 NC1 connects to module C/SCL; pin 7 NC2 to module D/SDA.
+NO1 pin 2 and NO2 pin 4 are unused and left open. Switch pin 8 is +3V3;
+pin 3 is GND. IN1 pin 1 and IN2 pin 5 are tied to SELECT from buffer output.
+LOW selects NC/RTC; HIGH selects unused NO/RTC isolated.
+
+Module labels supplied by Anton are ``+ D C NC -``: 3.3 V, SDA, SCL,
+no connection, GND. Module NC does not mean a normally-closed switch contact.
+
+Detector topology::
+
+    GPIO42/BCK -- R1 1k -- BAT43 anode
+                             cathode/band -- ENV -- U2 pin 2 A
+                                               |-- R2 47k -- GND
+                                               `-- Cenv 100nF -- GND
+
+    U2 pin 4 Y -- SELECT -- U1 pins 1 + 5
+                    `-- R3 100k -- GND
+
+U2 is SN74LVC1G17DBVR: pin 1 NC open, pin 2 A input, pin 3 GND,
+pin 4 Y output, pin 5 VCC +3V3. Use a non-inverting buffer, not 1G14.
+BAT43's band faces ENV. Do not put R1 in series with the amplifier clock wire.
+
+Power decoupling uses three separate 100 nF capacitors: Cenv envelope,
+Cbuf across buffer pins 5/3, and Csw across switch pins 8/3. Add 1 uF near
+RTC +/-. Supply decoupling must sit close to each device. Keep SDA/SCL
+4.7 kohm pull-ups on the RTC side; add only if module pull-ups are absent.
+Verify the module's backup-cell chemistry and any external charging circuitry.
+
+Selection behavior
+------------------
+
+BCK deliberately held HIGH, or running a qualified continuous I2S clock,
+charges ENV and produces SELECT HIGH: RTC isolated. BCK held LOW allows ENV
+to discharge and produces SELECT LOW: RTC connected after settling.
+
+A plain RC average of a 50% clock is insufficient for the analog switch's
+HIGH threshold. The peak detector and Schmitt buffer are required.
+Nominal ENV is approximately 2.85 V under continuous clocks; nominal release
+time constant is 4.7 ms. These model values do not guarantee operation over
+voltage, temperature, capacitor tolerance, GPIO loading or leakage.
+
+Boot/reset/transition selection is not assumed safe automatically. Shared
+GPIO1/2 must remain quiet until the coordinator establishes the needed state.
+Existing firmware is not compatible with this hardware installation.
+
+Mandatory firmware ownership and sequencing
+------------------------------------------
+
+One coordinator owns RTC transactions, GPIO1/2/42 mode transitions and the
+shared RTC/audio mutex. Applications must not independently start I2C or I2S
+on these pins. Every SDK, Lilplayer, guest/direct-I2S, pause/resume, sleep/wake
+and error path must follow the contract.
+
+Before audio starts or resumes:
+
+1. Acquire ownership and finish/stop I2C.
+2. Stop/detach conflicting peripheral routing and keep GPIO1/2 quiet/safe.
+3. Drive GPIO42/BCK HIGH as GPIO.
+4. Wait provisionally 2 ms for isolation; bench measurements must qualify it.
+5. Start I2S without a LOW hand-off interval long enough to release SELECT.
+
+Before RTC access:
+
+1. Defer active-audio writes unless the audio owner supports coordinated stop.
+2. Stop/detach I2S; make GPIO1/2 safe/high-impedance.
+3. Drive GPIO42/BCK LOW as GPIO.
+4. Wait provisionally 20 ms for release and bus settling.
+5. Start 100 kHz I2C: SDA GPIO2, SCL GPIO1, address 0x68.
+6. Perform bounded read/write, stop I2C and return GPIO1/2 to safe state.
+7. Re-isolate with the HIGH sequence before restoring audio.
+
+First I2S clock edges are not sufficient pre-isolation. Audit GPIO42 reset,
+JTAG and peripheral default states. Quiet GPIO1/2 must include the effects of
+pull-up-driven level changes during switch reconnection. Verify no unintended
+RTC transactions and no audible clicks during all transitions.
+
+Time validity and policy
+------------------------
+
+DS3231 validity uses both oscillator-stop flag OSF and bounded calendar fields
+after BCD conversion. Clear OSF only after a successful trusted-time write and
+readback. A plausible year alone is insufficient.
+
+Read valid RTC UTC early and initialize the system clock. Missing RTC, invalid
+data or I2C timeout must not block boot: retain the existing unsynchronized
+behavior until manual/NTP time becomes available.
+
+Manual changes update system and RTC UTC, then verify readback. Trusted NTP
+initializes an invalid RTC once, not on every poll. Time-zone changes never
+rewrite RTC UTC. Periodic drift correction remains deferred.
+
+Qualification and implementation phases
+---------------------------------------
+
+Phase 0: prove hardware separately before installation. Verify exact carrier
+pin mappings, supply isolation, diode direction, pull-ups and switch truth
+table. Use a scope for ENV/BCK analog levels and loading; a logic analyzer
+alone cannot prove analog margin. Prove pre-isolation before the first audio
+edge, RTC-side quiet during I2S and selection settling before I2C.
+
+Phase 1: implement shared SDK/audio coordinator and bounded early RTC read.
+Missing/invalid RTC must fail open; all normal boot/download modes must work.
+
+Phase 2: implement manual and first-trusted-NTP writes with readback and
+coordinated deferral during audio. Preserve UTC through hard power-off.
+
+Phase 3: exercise every player/guest/direct-I2S path and startup, pause/resume,
+sleep/wake, driver error and reset. Verify clean audio and no unintended RTC
+traffic. Qualify settling waits across relevant clocks and supply conditions.
+
+Validation includes Wi-Fi-free cold boot, absent RTC, stopped oscillator,
+manual/NTP writes, no repeated valid-RTC writes, unchanged UTC after timezone
+change, at least 24 h backup retention, twenty transaction cycles, audio
+ownership/error recovery, no pin conflicts and no regressions to brightness,
+buzzer, extension header or USB download mode.
 
 Repository ownership
 --------------------
 
-Keira's RTC service, Clock/NTP integration, manual-time behavior, transaction
-coordination, and UI belong to ``feature/rtc-support``.
-
-Any generic change to ``lilka::begin()``, audio pin initialization,
-``Board::enablePowerSavingMode()``, or SDK-level I2S ownership belongs in a
-separate SDK feature branch.  The branches are merged into staging only after
-hardware proof and independent builds are clean.
-
+Keira RTC service, clock/NTP integration, manual-time policy and UI belong to
+``feature/rtc-support``. Generic SDK audio ownership and pin hand-offs belong
+in a companion SDK feature branch. Merge only after electrical proof and the
+appropriate implementation checks. Firmware builds and flashing are separate
+from this documentation-only task and require Anton's explicit request.

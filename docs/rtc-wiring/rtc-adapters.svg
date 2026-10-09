@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1040">
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#253448}.wire{fill:none;stroke-width:3;stroke-linejoin:round}</style>
+<rect width="1500" height="1040" fill="#ffffff"/>
+<text x="40" y="48" font-size="28" text-anchor="start" style="fill:#253448" font-weight="bold">Adapter placement • top/component-side views</text>
+<text x="40" y="82" font-size="17" text-anchor="start" style="fill:#253448">Two separate physical adapters • verify package fit and every lead-to-header connection before adding power</text>
+<rect x="40" y="115" width="680" height="570" rx="6" fill="#f1f5f9" stroke="#b7c6d6" stroke-width="2"/>
+<text x="65" y="153" font-size="23" text-anchor="start" style="fill:#253448" font-weight="bold">U1: TS5A23157DGS • 0.5mm side</text>
+<text x="65" y="184" font-size="18" text-anchor="start" style="fill:#253448">Pin-1 dot toward the adapter’s square pad 1</text>
+<rect x="245" y="220" width="260" height="380" rx="6" fill="#34475b" stroke="#34475b" stroke-width="2"/>
+<circle cx="270" cy="245" r="7" fill="#ffffff"/>
+<polyline class="wire" points="215,270 245,270" stroke="#253448"/>
+<polyline class="wire" points="505,270 535,270" stroke="#253448"/>
+<rect x="187" y="256" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<rect x="535" y="256" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="177" y="276" font-size="16" text-anchor="end" style="fill:#253448">1  IN1 / SELECT</text>
+<text x="573" y="276" font-size="16" text-anchor="start" style="fill:#253448">10  COM1 / LRCK</text>
+<polyline class="wire" points="215,340 245,340" stroke="#253448"/>
+<polyline class="wire" points="505,340 535,340" stroke="#253448"/>
+<rect x="187" y="326" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<rect x="535" y="326" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="177" y="346" font-size="16" text-anchor="end" style="fill:#253448">2  NO1 / OPEN</text>
+<text x="573" y="346" font-size="16" text-anchor="start" style="fill:#253448">9  NC1 / RTC C</text>
+<polyline class="wire" points="215,410 245,410" stroke="#253448"/>
+<polyline class="wire" points="505,410 535,410" stroke="#253448"/>
+<rect x="187" y="396" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<rect x="535" y="396" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="177" y="416" font-size="16" text-anchor="end" style="fill:#253448">3  GND</text>
+<text x="573" y="416" font-size="16" text-anchor="start" style="fill:#253448">8  V+ / 3.3 V</text>
+<polyline class="wire" points="215,480 245,480" stroke="#253448"/>
+<polyline class="wire" points="505,480 535,480" stroke="#253448"/>
+<rect x="187" y="466" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<rect x="535" y="466" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="177" y="486" font-size="16" text-anchor="end" style="fill:#253448">4  NO2 / OPEN</text>
+<text x="573" y="486" font-size="16" text-anchor="start" style="fill:#253448">7  NC2 / RTC D</text>
+<polyline class="wire" points="215,550 245,550" stroke="#253448"/>
+<polyline class="wire" points="505,550 535,550" stroke="#253448"/>
+<rect x="187" y="536" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<rect x="535" y="536" width="28" height="28" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="177" y="556" font-size="16" text-anchor="end" style="fill:#253448">5  IN2 / SELECT</text>
+<text x="573" y="556" font-size="16" text-anchor="start" style="fill:#253448">6  COM2 / DIN</text>
+<text x="65" y="647" font-size="17" text-anchor="start" style="fill:#253448">Numbers are IC pins and matching adapter header numbers.</text>
+<rect x="745" y="115" width="715" height="570" rx="6" fill="#f1f5f9" stroke="#b7c6d6" stroke-width="2"/>
+<text x="770" y="153" font-size="22" text-anchor="start" style="fill:#253448" font-weight="bold">U2: SN74LVC1G17DBVR • 0.95mm side</text>
+<text x="770" y="184" font-size="18" text-anchor="start" style="fill:#253448">Your SOT2310 carrier, oriented exactly as in your photo</text>
+<rect x="854" y="254" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="870" y="240" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">10</text>
+<rect x="854" y="524" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="870" y="588" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">1</text>
+<rect x="959" y="254" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="975" y="240" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">9</text>
+<rect x="959" y="524" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="975" y="588" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">2</text>
+<rect x="1064" y="254" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1080" y="240" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">8</text>
+<rect x="1064" y="524" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1080" y="588" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">3</text>
+<rect x="1169" y="254" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1185" y="240" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">7</text>
+<rect x="1169" y="524" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1185" y="588" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">4</text>
+<rect x="1274" y="254" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1290" y="240" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">6</text>
+<rect x="1274" y="524" width="32" height="32" rx="6" fill="#d9e5d9" stroke="#08796b" stroke-width="2"/>
+<text x="1290" y="588" font-size="21" text-anchor="middle" style="fill:#253448" font-weight="bold">5</text>
+<rect x="935" y="335" width="290" height="140" rx="6" fill="#34475b" stroke="#34475b" stroke-width="2"/>
+<circle cx="955" cy="453" r="7" fill="#ffffff"/>
+<polyline class="wire" points="975,286 975,335" stroke="#1760a0"/>
+<text x="975" y="321" font-size="17" text-anchor="middle" style="fill:#253448">IC 5</text>
+<text x="975" y="216" font-size="17" text-anchor="middle" style="fill:#253448">3.3 V</text>
+<polyline class="wire" points="1185,286 1185,335" stroke="#a95b08"/>
+<text x="1185" y="321" font-size="17" text-anchor="middle" style="fill:#253448">IC 4</text>
+<text x="1185" y="216" font-size="17" text-anchor="middle" style="fill:#253448">SELECT</text>
+<polyline class="wire" points="975,475 975,524" stroke="#1760a0"/>
+<text x="975" y="509" font-size="17" text-anchor="middle" style="fill:#253448">IC 1</text>
+<text x="975" y="625" font-size="17" text-anchor="middle" style="fill:#253448">NC/open</text>
+<polyline class="wire" points="1080,475 1080,524" stroke="#1760a0"/>
+<text x="1080" y="509" font-size="17" text-anchor="middle" style="fill:#253448">IC 2</text>
+<text x="1080" y="625" font-size="17" text-anchor="middle" style="fill:#253448">ENV</text>
+<polyline class="wire" points="1185,475 1185,524" stroke="#1760a0"/>
+<text x="1185" y="509" font-size="17" text-anchor="middle" style="fill:#253448">IC 3</text>
+<text x="1185" y="625" font-size="17" text-anchor="middle" style="fill:#253448">GND</text>
+<text x="770" y="657" font-size="17" text-anchor="start" style="fill:#253448">3-leg side faces down; middle three positions are used.</text>
+<rect x="40" y="710" width="1420" height="278" rx="6" fill="#fff6e9" stroke="#b7c6d6" stroke-width="2"/>
+<text x="65" y="749" font-size="23" text-anchor="start" style="fill:#253448" font-weight="bold">Buffer mapping: IC pin → carrier pad</text>
+<text x="65" y="790" font-size="20" text-anchor="start" style="fill:#253448">1 NC → 2 (leave open)     2 A → 3 (ENV)     3 GND → 4     4 Y → 7 (SELECT)     5 VCC → 9 (3.3 V)</text>
+<text x="65" y="832" font-size="18" text-anchor="start" style="fill:#253448">Carrier pads 1, 5, 6, 8, 10 stay unused. Dry-fit first: 0.95mm pitch alone does not guarantee row-spacing fit.</text>
+<text x="65" y="874" font-size="18" text-anchor="start" style="fill:#a95b08" font-weight="bold">Never mount the switch and buffer on opposite faces of ONE adapter: the shared header nets would short them.</text>
+<text x="65" y="916" font-size="18" text-anchor="start" style="fill:#253448">Cbuf sits close to buffer IC pins 5 and 3 (carrier pads 9 and 4); Csw close to switch pins 8 and 3.</text>
+<text x="65" y="955" font-size="18" text-anchor="start" style="fill:#253448">Read the actual pin-1 mark and carrier numbering. Views from the underside are mirrored.</text>
+</svg>
