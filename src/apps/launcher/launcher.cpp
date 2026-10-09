@@ -352,19 +352,6 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                         K_S_LAUNCHER_BATTERY_SETTINGS,
                         {
                             ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_SET_FULL,
-                                [this]() { this->calibrateBatteryFullLevel(); },
-                                nullptr,
-                                lilka::colors::White,
-                                [](void* item) {
-                                    lilka::MenuItem* menuItem = static_cast<lilka::MenuItem*>(item);
-                                    menuItem->postfix = lilka::battery.hasFullLevelCalibration() ? "[x]" : "[ ]";
-                                }
-                            ),
-                            ITEM::MENU(
-                                K_S_LAUNCHER_BATTERY_RESET_FULL, [this]() { this->resetBatteryFullLevelCalibration(); }
-                            ),
-                            ITEM::MENU(
                                 K_S_LAUNCHER_BATTERY_DISCHARGE_PROFILE,
                                 []() {
                                     auto profile = lilka::battery.getDischargeProfile();
@@ -1095,24 +1082,6 @@ void LauncherApp::setSpiSDSpeed() {
     NVS_UNLOCK;
 
     alert("", K_S_CHANGE_ON_NEXT_BOOT);
-}
-
-void LauncherApp::calibrateBatteryFullLevel() {
-    String description =
-        StringFormat(K_S_LAUNCHER_BATTERY_SET_FULL_CONFIRM, String(lilka::battery.readRawVoltage(), 2).c_str());
-    if (!confirm(K_S_LAUNCHER_BATTERY_SET_FULL, description)) {
-        return;
-    }
-
-    if (!lilka::battery.calibrateFullLevel()) {
-        alert(K_S_LAUNCHER_BATTERY_SET_FULL, K_S_LAUNCHER_BATTERY_SET_FULL_ERROR);
-    }
-}
-
-void LauncherApp::resetBatteryFullLevelCalibration() {
-    if (confirm(K_S_LAUNCHER_BATTERY_RESET_FULL, K_S_LAUNCHER_BATTERY_RESET_FULL_CONFIRM)) {
-        lilka::battery.resetFullLevelCalibration();
-    }
 }
 
 void LauncherApp::wifiToggle() {
