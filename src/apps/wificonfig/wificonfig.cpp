@@ -15,6 +15,7 @@
 #include "apps/icons/wifi_3.h"
 // Utils:
 #include "keira/utils/string.h"
+#include "keira/utils/defer.h"
 
 WiFiConfigApp::WiFiConfigApp() : App("WiFi") {
 }
@@ -186,9 +187,7 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
         showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
         return;
     }
-    defer {
-        Scan::release();
-    };
+    Defer releaseScan([] { Scan::release(); });
     int count = Scan::count();
     const uint32_t started = millis();
     while (count == WIFI_SCAN_RUNNING && uint32_t(millis() - started) < 15000) {
