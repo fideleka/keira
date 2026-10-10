@@ -151,6 +151,9 @@ public:
     void clearCallbacks();
     /////////////////////////////////////////////////////////////////////////
 protected:
+    // onStop() manager-thread hooks only: freeze the reader before freeing
+    // task-owned resources. No suspend callbacks/state transition on this path.
+    void quiesceForCleanup();
     //=======================================================================
     //  List of overridable methods ( Nested API )
     //=======================================================================

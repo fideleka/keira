@@ -230,6 +230,11 @@ void KeiraThread::resume() {
     KMTX_UNLOCK(ktLock);
 }
 //-----------------------------------------------------------------------------
+void KeiraThread::quiesceForCleanup() {
+    const TaskHandle_t task = getktTaskHandle();
+    if (task) vTaskSuspend(task);
+}
+
 void KeiraThread::stop() {
     KMTX_LOCK(ktLock);
 
