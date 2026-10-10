@@ -65,8 +65,13 @@ connection/storage support with a font fallback, **not emoji artwork support**.
 
 Automatic connection first tries the last-used saved network. If unavailable,
 it scans and tries other visible saved networks strongest first, with 10 seconds
-per network and a 5-second scan deadline. Keira waits 30 seconds before another
-round if all fail. Lilplayer uses the same selector and its existing stream retry
+per network, a 5-second scan polling deadline and a 35-second total round budget.
+No automatic scan runs without an untried saved candidate. Keira increases
+failed-round cooldowns from 30 seconds up to 15 minutes; success or a user
+connection request resets the cooldown. Automatic and explicit management scans
+retrieve at most 64 records on a temporary worker, bypassing Arduino's uncapped
+result-copy allocator. Cancellation drains the short blocking scan before a new
+scan can start. Lilplayer uses the same selector and its existing stream retry
 policy. Successful fallback updates the last-used selection without repeated NVS
 writes. A working connection is preserved, even if another network is stronger.
 Opening this management app pauses background selection so scans don't compete.
@@ -92,3 +97,8 @@ Real ESP32-S3 installed-header syntax and EN/UK localization checks passed. Chan
 C++ passes clang-format20; the full Keira format gate still fails on inherited
 unrelated files. cppcheck is unavailable locally. No firmware build or flash was
 performed. This feature is not claimed as a fix for the weak-signal reset.
+
+Same-SSID Connect with unchanged credentials preserves the working connection;
+edited passwords still require association. Explicit Disconnect calls the adapter
+once and disables recovery. Fitted menu labels are cached until SSID, state or
+available width changes (status is still observed at most once per second).
