@@ -43,7 +43,13 @@ int main() {
     service.connect("Open", "");
     WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
     assert(service.saveConnectedNetwork("Open"));
+    const unsigned sameAttempts = WiFi.attempts.size(), sameDisconnects = WiFi.disconnects;
     assert(service.connect("Open"));
+    assert(WiFi.attempts.size() == sameAttempts && WiFi.disconnects == sameDisconnects);
+    service.connect("Open", "edited password");
+    assert(WiFi.attempts.size() == sameAttempts + 1); // Changed password must be validated.
+    service.connect("Open", "");
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
     assert(WiFi.password.isEmpty());
     const unsigned disconnects = WiFi.disconnects;
     service.disconnectNetwork();
