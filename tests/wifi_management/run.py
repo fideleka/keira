@@ -66,6 +66,7 @@ with tempfile.TemporaryDirectory(prefix="keira-wifi-test-") as directory:
                 "-I" + str(sdk),
                 str(sdk / "lilka/wifi_credentials.cpp"),
                 str(sdk / "lilka/wifi_connection.cpp"),
+                str(sdk.parents[2] / "tests/wifi/scan_stub.cpp"),
                 str(root / "src/services/network/network.cpp"),
                 str(root / "tests/wifi_management/service.cpp"),
                 "-o",
