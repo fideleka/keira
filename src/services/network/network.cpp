@@ -23,6 +23,7 @@ void NetworkService::run() {
     // Loading settings from NVS
 
     bool enabled = getEnabled();
+    WiFi.persistent(false);
     NVS_LOCK;
     Preferences prefs;
     prefs.begin(getName(), true);
@@ -79,6 +80,7 @@ void NetworkService::run() {
                     pendingSSID = connectedSSID;
                     pendingPassword = lastPassword;
                     credentialSavePending = true;
+                    automaticConnection = true;
                 }
                 KMTX_UNLOCK(mtxNetwork);
                 break;
@@ -150,28 +152,92 @@ void NetworkService::run() {
                 WiFi.mode(WIFI_STA);
                 autoConnect();
             } else {
+                disconnectNetwork();
                 WiFi.disconnect(true, true);
                 WiFi.mode(WIFI_OFF);
             }
         }
 
+        serviceAutomaticConnection();
         persistCredentials();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
-void NetworkService::autoConnect() {
+void NetworkService::autoConnect(bool requested) {
     NVS_LOCK;
+    KMTX_LOCK(mtxNetwork);
+    if (!requested && (!automaticConnection || automaticPaused)) {
+        KMTX_UNLOCK(mtxNetwork);
+        NVS_UNLOCK;
+        return;
+    }
+    lilka::wifiConnection.cancel(false);
+    requestedSSID = lastPassword = "";
+    credentialSavePending = false;
+    automaticConnection = true;
+    retryPending = false;
     Preferences prefs;
-    String ssid;
+    bool loaded = false;
     if (prefs.begin(getName(), true)) {
-        ssid = prefs.getString("last_ssid", "");
+        loaded = lilka::wifiConnection.load(prefs);
         prefs.end();
     }
     NVS_UNLOCK;
-    if (ssid.length()) {
-        connect(ssid);
+    if (loaded && !automaticPaused) {
+        lilka::wifiConnection.start(millis());
+    } else {
+        retryPending = true;
+        retryStarted = millis();
     }
+    KMTX_UNLOCK(mtxNetwork);
+}
+
+void NetworkService::serviceAutomaticConnection() {
+    KMTX_LOCK(mtxNetwork);
+    if (!automaticConnection || automaticPaused) {
+        KMTX_UNLOCK(mtxNetwork);
+        return;
+    }
+    const uint32_t now = millis();
+    const auto state = lilka::wifiConnection.state();
+    if (state == lilka::WiFiConnection::State::Idle || retryPending) {
+        const bool retry = WiFi.status() != WL_CONNECTED && (!retryPending || uint32_t(now - retryStarted) >= 30000);
+        KMTX_UNLOCK(mtxNetwork);
+        if (retry) {
+            autoConnect(false);
+        }
+        return;
+    }
+    const auto result = lilka::wifiConnection.poll(now);
+    if (result == lilka::WiFiConnection::State::Connected) {
+        // Persist once after successful fallback, never from an event callback.
+        if (requestedSSID != lilka::wifiConnection.ssid() && lilka::wifiConnection.ssid().length()) {
+            requestedSSID = pendingSSID = lilka::wifiConnection.ssid();
+            lastPassword = pendingPassword = lilka::wifiConnection.password();
+            credentialSavePending = true;
+        }
+        networkState = NETWORK_STATE_ONLINE;
+    } else if (result == lilka::WiFiConnection::State::Failed ||
+               result == lilka::WiFiConnection::State::NoCredentials) {
+        requestedSSID = lastPassword = "";
+        retryPending = true;
+        retryStarted = now;
+        networkState = NETWORK_STATE_OFFLINE;
+    } else {
+        networkState = NETWORK_STATE_CONNECTING;
+    }
+    KMTX_UNLOCK(mtxNetwork);
+}
+
+void NetworkService::pauseAutomaticConnection(bool paused) {
+    KMTX_LOCK(mtxNetwork);
+    automaticPaused = paused;
+    if (paused) {
+        lilka::wifiConnection.cancel(false);
+        retryPending = false;
+    }
+    KMTX_UNLOCK(mtxNetwork);
 }
 
 bool NetworkService::connect(String ssid) {
@@ -185,11 +251,17 @@ bool NetworkService::connect(String ssid) {
 
 void NetworkService::connect(String ssid, String password) {
     KMTX_LOCK(mtxNetwork);
+    automaticConnection = false;
+    retryPending = false;
+    lilka::wifiConnection.cancel(false);
     requestedSSID = ssid;
     lastPassword = password;
     credentialSavePending = false;
     KMTX_UNLOCK(mtxNetwork);
     setnetworkState(NETWORK_STATE_CONNECTING);
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
     WiFi.setAutoReconnect(true);
     WiFi.disconnect();
     WiFi.begin(ssid.c_str(), password.c_str());
@@ -286,6 +358,9 @@ bool NetworkService::saveConnectedNetwork(const String& ssid) {
 bool NetworkService::forgetNetwork(const String& ssid) {
     NVS_LOCK;
     KMTX_LOCK(mtxNetwork);
+    // Invalidate the RAM snapshot too, including entries not currently selected.
+    lilka::wifiConnection.cancel(false);
+    retryPending = false;
     if (requestedSSID == ssid) {
         requestedSSID = "";
         lastPassword = "";
@@ -312,6 +387,9 @@ bool NetworkService::forgetNetwork(const String& ssid) {
 void NetworkService::disconnectNetwork() {
     NVS_LOCK;
     KMTX_LOCK(mtxNetwork);
+    automaticConnection = false;
+    retryPending = false;
+    lilka::wifiConnection.cancel(true);
     requestedSSID = "";
     lastPassword = pendingPassword = "";
     credentialSavePending = false;

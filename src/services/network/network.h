@@ -5,6 +5,7 @@
 
 #include "keira/mutex.h"
 #include <vector>
+#include <lilka/wifi_connection.h>
 
 enum NetworkState {
     NETWORK_STATE_DISABLED,
@@ -26,6 +27,7 @@ public:
     bool forgetNetwork(const String& ssid);
     bool saveConnectedNetwork(const String& ssid);
     void disconnectNetwork();
+    void pauseAutomaticConnection(bool paused);
     KMTX_GETER(NetworkState, networkState, mtxNetwork);
     KMTX_GETER(int8_t, signalStrength, mtxNetwork);
     KMTX_GETER(String, ipAddr, mtxNetwork);
@@ -33,8 +35,9 @@ public:
 private:
     // util
     void run() override;
-    void autoConnect();
+    void autoConnect(bool requested = true);
     void persistCredentials();
+    void serviceAutomaticConnection();
 
     KMTX_SETER(NetworkState, networkState, mtxNetwork);
     KMTX_SETER(int, disconnectReason, mtxNetwork);
@@ -52,5 +55,9 @@ private:
     String pendingSSID;
     String pendingPassword;
     bool credentialSavePending = false;
+    bool automaticConnection = false;
+    bool automaticPaused = false;
+    bool retryPending = false;
+    uint32_t retryStarted = 0;
     String ipAddr = "";
 };
