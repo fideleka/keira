@@ -228,9 +228,8 @@ void NetworkService::serviceAutomaticConnection() {
         }
         retryDelay = 30000;
         networkState = NETWORK_STATE_ONLINE;
-    } else if (
-        result == lilka::WiFiConnection::State::Failed || result == lilka::WiFiConnection::State::NoCredentials
-    ) {
+    } else if (result == lilka::WiFiConnection::State::Failed ||
+               result == lilka::WiFiConnection::State::NoCredentials) {
         requestedSSID = lastPassword = "";
         scheduleRetry(now);
         networkState = NETWORK_STATE_OFFLINE;
