@@ -69,8 +69,10 @@ per network, a 5-second scan polling deadline and a 35-second total round budget
 No automatic scan runs without an untried saved candidate. Keira increases
 failed-round cooldowns from 30 seconds up to 15 minutes; success or a user
 connection request resets the cooldown. Automatic and explicit management scans
-retrieve at most 64 records on a temporary worker, bypassing Arduino's uncapped
-result-copy allocator. Cancellation drains the short blocking scan before a new
+process at most 64 borrowed records on a temporary worker. Arduino owns scan
+completion and still allocates all discovered results; total scan memory is not
+capped. The former direct-IDF collector raced Arduino's result consumer and could
+show an empty network list. Cancellation drains the short blocking scan before a new
 scan can start. Lilplayer uses the same selector and its existing stream retry
 policy. Successful fallback updates the last-used selection without repeated NVS
 writes. A working connection is preserved, even if another network is stronger.
