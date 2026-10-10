@@ -19,7 +19,8 @@ typedef struct item_t {
 public:
     static item_t SUBMENU(
         const char* name, const std::vector<item_t>& submenu, const menu_icon_t* icon = NULL,
-        uint16_t color = lilka::colors::White, LauncherMenuKind kind = LauncherMenuKind::Static
+        uint16_t color = lilka::colors::White, LauncherMenuKind kind = LauncherMenuKind::Static,
+        std::function<void(void*)> update = nullptr
     ) {
         return item_t{
             name,
@@ -27,7 +28,7 @@ public:
             color,
             submenu,
             nullptr,
-            nullptr,
+            update,
             kind,
         };
     }
@@ -64,6 +65,10 @@ public:
 
 private:
     void run() override;
+    const String& wifiMenuStatus();
+    String wifiMenuStatus_;
+    uint32_t wifiMenuStatusUpdated_ = 0;
+    bool wifiMenuStatusValid_ = false;
     // Keep initializer-list construction frames off the retained launcher task frame.
     ITEM_LIST buildApplicationsMenu() __attribute__((noinline));
     item_t buildMainMenu(const ITEM_LIST& appsItems) __attribute__((noinline));

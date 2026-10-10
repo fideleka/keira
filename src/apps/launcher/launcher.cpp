@@ -275,6 +275,41 @@ ITEM_LIST LauncherApp::buildApplicationsMenu() {
     return appsItems;
 }
 
+const String& LauncherApp::wifiMenuStatus() {
+    const uint32_t now = millis();
+    if (wifiMenuStatusValid_ && uint32_t(now - wifiMenuStatusUpdated_) < 1000) {
+        return wifiMenuStatus_;
+    }
+    wifiMenuStatusValid_ = true;
+    wifiMenuStatusUpdated_ = now;
+    String label;
+    if (WiFi.getMode() == WIFI_OFF) {
+        label = K_S_LAUNCHER_WIFI_OFF;
+    } else if (WiFi.status() != WL_CONNECTED) {
+        label = K_S_LAUNCHER_WIFI_DISCONNECTED;
+    } else {
+        label = lilka::NetworkCredentials::displayName(WiFi.SSID());
+        if (!label.length()) {
+            label = K_S_LAUNCHER_WIFI_DISCONNECTED;
+        }
+    }
+    // Reserve the existing SDK menu's icon/title, gap and scrollbar columns.
+    const int available =
+        std::max(0, int(canvas->width()) - 32 - 4 - 12 - 4 - int(lilka::getTextWidth(FONT_10x20, K_S_LAUNCHER_WIFI)));
+    if (lilka::getTextWidth(FONT_10x20, label.c_str()) > available) {
+        while (label.length() && lilka::getTextWidth(FONT_10x20, (label + "...").c_str()) > available) {
+            unsigned end = label.length() - 1;
+            while (end && (uint8_t(label[end]) & 0xc0) == 0x80) {
+                --end;
+            }
+            label = label.substring(0, end);
+        }
+        label += "...";
+    }
+    wifiMenuStatus_ = label;
+    return wifiMenuStatus_;
+}
+
 item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
     return ITEM::SUBMENU(
         K_S_LAUNCHER_MAIN_MENU,
@@ -320,7 +355,11 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                             ),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_NETWORKS, [this]() { this->wifiManager(); }),
                             ITEM::MENU(K_S_LAUNCHER_WIFI_TX_POWER, [this]() { this->setWiFiTxPower(); }),
-                        }
+                        },
+                        nullptr,
+                        lilka::colors::White,
+                        LauncherMenuKind::Static,
+                        [this](void* item) { static_cast<lilka::MenuItem*>(item)->postfix = wifiMenuStatus(); }
                     ),
                     ITEM::MENU(
                         K_S_LAUNCHER_TIMEZONE,

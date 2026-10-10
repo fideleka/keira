@@ -97,6 +97,8 @@
 #define K_S_LAUNCHER_WIFI              "WiFi"
 #define K_S_LAUNCHER_WIFI_ADAPTER      "WiFi"
 #define K_S_LAUNCHER_WIFI_NETWORKS     "WiFi Networks"
+#define K_S_LAUNCHER_WIFI_OFF          "Off"
+#define K_S_LAUNCHER_WIFI_DISCONNECTED "Disconnected"
 #define K_S_LAUNCHER_WIFI_TX_POWER     "WiFi Power"
 #define K_S_LAUNCHER_TIMEZONE          "Time zone"
 #define K_S_LAUNCHER_TIMEZONE_UTC      "UTC"
