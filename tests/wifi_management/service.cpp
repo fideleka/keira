@@ -45,7 +45,9 @@ int main() {
     assert(service.saveConnectedNetwork("Open"));
     assert(service.connect("Open"));
     assert(WiFi.password.isEmpty());
+    const unsigned disconnects = WiFi.disconnects;
     service.disconnectNetwork();
+    assert(WiFi.disconnects == disconnects + 1);
     service.autoConnect();
     assert(WiFi.name == "Open" && WiFi.password.isEmpty());
     // A queued event after cancel/Forget cannot recreate the entry.
