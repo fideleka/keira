@@ -260,7 +260,21 @@ bool NetworkService::connect(String ssid) {
 }
 
 void NetworkService::connect(String ssid, String password) {
+    String savedPassword;
+    const bool sameAP = WiFi.status() == WL_CONNECTED && WiFi.SSID() == ssid;
+    const bool savedMatches = sameAP && getCredentials(ssid, savedPassword) && savedPassword == password;
     KMTX_LOCK(mtxNetwork);
+    const bool unchanged = sameAP && (requestedSSID == ssid ? lastPassword == password : savedMatches);
+    if (unchanged) {
+        requestedSSID = ssid;
+        lastPassword = password;
+        automaticConnection = true;
+        retryPending = false;
+        retryDelay = 30000;
+        networkState = NETWORK_STATE_ONLINE;
+        KMTX_UNLOCK(mtxNetwork);
+        return;
+    }
     automaticConnection = false;
     retryPending = false;
     retryDelay = 30000;
@@ -273,7 +287,7 @@ void NetworkService::connect(String ssid, String password) {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(false);
     WiFi.disconnect();
     WiFi.begin(ssid.c_str(), password.c_str());
 }
