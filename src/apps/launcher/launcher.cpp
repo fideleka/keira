@@ -282,20 +282,29 @@ const String& LauncherApp::wifiMenuStatus() {
     }
     wifiMenuStatusValid_ = true;
     wifiMenuStatusUpdated_ = now;
-    String label;
+    int state = 2;
+    String source;
     if (WiFi.getMode() == WIFI_OFF) {
-        label = K_S_LAUNCHER_WIFI_OFF;
+        state = 0;
+        source = K_S_LAUNCHER_WIFI_OFF;
     } else if (WiFi.status() != WL_CONNECTED) {
-        label = K_S_LAUNCHER_WIFI_DISCONNECTED;
+        state = 1;
+        source = K_S_LAUNCHER_WIFI_DISCONNECTED;
     } else {
-        label = lilka::NetworkCredentials::displayName(WiFi.SSID());
-        if (!label.length()) {
-            label = K_S_LAUNCHER_WIFI_DISCONNECTED;
+        source = WiFi.SSID();
+        if (!source.length()) {
+            state = 1;
+            source = K_S_LAUNCHER_WIFI_DISCONNECTED;
         }
     }
     // Reserve the existing SDK menu's icon/title, gap and scrollbar columns.
     const int available =
         std::max(0, int(canvas->width()) - 32 - 4 - 12 - 4 - int(lilka::getTextWidth(FONT_10x20, K_S_LAUNCHER_WIFI)));
+    if (source == wifiMenuSource_ && state == wifiMenuState_ && available == wifiMenuWidth_) return wifiMenuStatus_;
+    wifiMenuSource_ = source;
+    wifiMenuState_ = state;
+    wifiMenuWidth_ = available;
+    String label = state == 2 ? lilka::NetworkCredentials::displayName(source) : source;
     if (lilka::getTextWidth(FONT_10x20, label.c_str()) > available) {
         while (label.length() && lilka::getTextWidth(FONT_10x20, (label + "...").c_str()) > available) {
             unsigned end = label.length() - 1;

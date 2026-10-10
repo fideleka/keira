@@ -67,6 +67,9 @@ private:
     void run() override;
     const String& wifiMenuStatus();
     String wifiMenuStatus_;
+    String wifiMenuSource_;
+    int wifiMenuWidth_ = -1;
+    int wifiMenuState_ = -1;
     uint32_t wifiMenuStatusUpdated_ = 0;
     bool wifiMenuStatusValid_ = false;
     // Keep initializer-list construction frames off the retained launcher task frame.
