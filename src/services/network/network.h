@@ -59,5 +59,7 @@ private:
     bool automaticPaused = false;
     bool retryPending = false;
     uint32_t retryStarted = 0;
+    uint32_t retryDelay = 30000;
+    void scheduleRetry(uint32_t now);
     String ipAddr = "";
 };

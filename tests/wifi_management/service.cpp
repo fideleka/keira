@@ -117,6 +117,27 @@ int main() {
     assert(service.forgetNetwork("Backup"));
     service.serviceAutomaticConnection();
     assert(WiFi.name != "Backup" || WiFi.state == WL_DISCONNECTED);
+    service.disconnectNetwork();
+    service.autoConnect();
+    for (unsigned round = 0; round < 8; ++round) {
+        hostMillis() += lilka::WiFiConnection::RoundTimeoutMs;
+        service.serviceAutomaticConnection();
+        assert(service.retryPending);
+        const unsigned beforeRetry = WiFi.attempts.size();
+        hostMillis() += service.retryDelay - 1;
+        service.serviceAutomaticConnection();
+        assert(WiFi.attempts.size() == beforeRetry);
+        ++hostMillis();
+        service.serviceAutomaticConnection();
+        assert(WiFi.attempts.size() > beforeRetry);
+        assert(service.retryDelay <= 900000);
+    }
+    assert(service.retryDelay == 900000);
+    service.autoConnect(); // Explicit requests reset cooldown.
+    assert(service.retryDelay == 30000);
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    service.serviceAutomaticConnection();
+    assert(service.retryDelay == 30000);
     puts(
         "Production NetworkService: save after IP, no event NVS, pending-save/Forget, UTF-8, open and cancellation PASS"
     );

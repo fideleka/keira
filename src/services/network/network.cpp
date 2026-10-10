@@ -176,7 +176,11 @@ void NetworkService::autoConnect(bool requested) {
     requestedSSID = lastPassword = "";
     credentialSavePending = false;
     automaticConnection = true;
+    if (!requested && retryPending && retryDelay < 900000) {
+        retryDelay = retryDelay > 450000 ? 900000 : retryDelay * 2;
+    }
     retryPending = false;
+    if (requested) retryDelay = 30000;
     Preferences prefs;
     bool loaded = false;
     if (prefs.begin(getName(), true)) {
@@ -187,10 +191,14 @@ void NetworkService::autoConnect(bool requested) {
     if (loaded && !automaticPaused) {
         lilka::wifiConnection.start(millis());
     } else {
-        retryPending = true;
-        retryStarted = millis();
+        scheduleRetry(millis());
     }
     KMTX_UNLOCK(mtxNetwork);
+}
+
+void NetworkService::scheduleRetry(uint32_t now) {
+    retryPending = true;
+    retryStarted = now;
 }
 
 void NetworkService::serviceAutomaticConnection() {
@@ -202,7 +210,8 @@ void NetworkService::serviceAutomaticConnection() {
     const uint32_t now = millis();
     const auto state = lilka::wifiConnection.state();
     if (state == lilka::WiFiConnection::State::Idle || retryPending) {
-        const bool retry = WiFi.status() != WL_CONNECTED && (!retryPending || uint32_t(now - retryStarted) >= 30000);
+        const bool retry =
+            WiFi.status() != WL_CONNECTED && (!retryPending || uint32_t(now - retryStarted) >= retryDelay);
         KMTX_UNLOCK(mtxNetwork);
         if (retry) {
             autoConnect(false);
@@ -217,13 +226,13 @@ void NetworkService::serviceAutomaticConnection() {
             lastPassword = pendingPassword = lilka::wifiConnection.password();
             credentialSavePending = true;
         }
+        retryDelay = 30000;
         networkState = NETWORK_STATE_ONLINE;
     } else if (
         result == lilka::WiFiConnection::State::Failed || result == lilka::WiFiConnection::State::NoCredentials
     ) {
         requestedSSID = lastPassword = "";
-        retryPending = true;
-        retryStarted = now;
+        scheduleRetry(now);
         networkState = NETWORK_STATE_OFFLINE;
     } else {
         networkState = NETWORK_STATE_CONNECTING;
@@ -254,6 +263,7 @@ void NetworkService::connect(String ssid, String password) {
     KMTX_LOCK(mtxNetwork);
     automaticConnection = false;
     retryPending = false;
+    retryDelay = 30000;
     lilka::wifiConnection.cancel(false);
     requestedSSID = ssid;
     lastPassword = password;
