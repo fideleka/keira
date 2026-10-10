@@ -5,6 +5,7 @@
 #include <esp_wifi.h>
 #include "keira/ksystem.h"
 #include "network.h"
+#include "credentials.h"
 
 // Macro magic used to convert decimal constant to char[] constant
 #define STRX(x)               #x
@@ -46,34 +47,15 @@ void NetworkService::run() {
         switch (event) {
             case ARDUINO_EVENT_WIFI_STA_START: {
                 lilka::serial.log("NetworkService: got event: connecting to WiFi");
-                setnetworkState(NETWORK_STATE_CONNECTING);
+                KMTX_LOCK(mtxNetwork);
+                const bool requested = requestedSSID.length() > 0;
+                KMTX_UNLOCK(mtxNetwork);
+                setnetworkState(requested ? NETWORK_STATE_CONNECTING : NETWORK_STATE_OFFLINE);
                 break;
             }
             case ARDUINO_EVENT_WIFI_STA_CONNECTED: {
                 lilka::serial.log("NetworkService: got event: connected to WiFi");
-                setnetworkState(NETWORK_STATE_ONLINE);
-                Preferences prefs;
-                String connectedSSID = String(info.wifi_sta_connected.ssid, info.wifi_sta_connected.ssid_len);
-                NVS_LOCK;
-                prefs.begin(getName(), false);
-                if (!prefs.isKey("last_ssid") || !String(prefs.getString("last_ssid")).equals(connectedSSID)) {
-                    // Set current SSID as last connected
-                    prefs.putString("last_ssid", String(connectedSSID));
-                    lilka::serial.log("NetworkService: last SSID set to  %s", connectedSSID.c_str());
-                }
-                prefs.end();
-                NVS_UNLOCK;
-                String ssidHash = hash(connectedSSID);
-                String savedPassword = getPassword(connectedSSID);
-                NVS_LOCK;
-                prefs.begin(getName(), false);
-                if (savedPassword != lastPassword) {
-                    // Save password for the connected network
-                    prefs.putString(String(ssidHash + "_pw").c_str(), lastPassword);
-                    lilka::serial.log("NetworkService: password for %s saved", connectedSSID.c_str());
-                }
-                prefs.end();
-                NVS_UNLOCK;
+                setnetworkState(NETWORK_STATE_CONNECTING);
                 break;
             }
             case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
@@ -81,6 +63,7 @@ void NetworkService::run() {
                     "NetworkService: got event: disconnected from WiFi, reason: %d", info.wifi_sta_disconnected.reason
                 );
                 setnetworkState(NETWORK_STATE_OFFLINE);
+                setipAddr("");
                 setdisconnectReason(info.wifi_sta_disconnected.reason);
                 break;
             }
@@ -90,6 +73,14 @@ void NetworkService::run() {
                 setipAddr(ip.toString());
                 lilka::serial.log("NetworkService: got event: got IP address: %s", ip.toString().c_str());
                 setnetworkState(NETWORK_STATE_ONLINE);
+                const String connectedSSID = WiFi.SSID();
+                KMTX_LOCK(mtxNetwork);
+                if (connectedSSID == requestedSSID) {
+                    pendingSSID = connectedSSID;
+                    pendingPassword = lastPassword;
+                    credentialSavePending = true;
+                }
+                KMTX_UNLOCK(mtxNetwork);
                 break;
             }
             case ARDUINO_EVENT_WIFI_STA_LOST_IP: {
@@ -164,95 +155,170 @@ void NetworkService::run() {
             }
         }
 
+        persistCredentials();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
 void NetworkService::autoConnect() {
-    WiFi.mode(WIFI_STA);
-
     NVS_LOCK;
     Preferences prefs;
-    prefs.begin(getName(), true);
-    bool hasSSID = prefs.isKey("last_ssid");
-    String currentSSID = hasSSID ? prefs.getString("last_ssid") : "";
-    prefs.end();
+    String ssid;
+    if (prefs.begin(getName(), true)) {
+        ssid = prefs.getString("last_ssid", "");
+        prefs.end();
+    }
     NVS_UNLOCK;
-
-    if (!hasSSID) {
-        lilka::serial.log("NetworkService: no last SSID found, skipping auto connection");
-        return;
+    if (ssid.length()) {
+        connect(ssid);
     }
-
-    lilka::serial.log("NetworkService: last SSID found: %s", currentSSID.c_str());
-    String password = getPassword(currentSSID);
-
-    if (password == "") {
-        lilka::serial.log("NetworkService: no password found for last SSID, skipping auto connection");
-        return;
-    }
-
-    KMTX_LOCK(mtxNetwork);
-    lastPassword = password;
-    KMTX_UNLOCK(mtxNetwork);
-
-    connect(currentSSID, password);
 }
-// Attempt to connect to a given network.
-// If the network is not known (password is required), return false.
+
 bool NetworkService::connect(String ssid) {
-    String password = getPassword(ssid);
-    if (password == "") {
-        lilka::serial.log("NetworkService: no password found for SSID %s", ssid.c_str());
+    String password;
+    if (!getCredentials(ssid, password)) {
         return false;
     }
-    lilka::serial.log("NetworkService: found password for SSID ", ssid.c_str());
     connect(ssid, password);
     return true;
 }
 
-// Attempt to connect to a given network with a given password.
 void NetworkService::connect(String ssid, String password) {
-    lilka::serial.log("NetworkService: connecting to %s", ssid.c_str());
-
     KMTX_LOCK(mtxNetwork);
+    requestedSSID = ssid;
     lastPassword = password;
+    credentialSavePending = false;
     KMTX_UNLOCK(mtxNetwork);
-
+    setnetworkState(NETWORK_STATE_CONNECTING);
+    WiFi.setAutoReconnect(true);
     WiFi.disconnect();
     WiFi.begin(ssid.c_str(), password.c_str());
 }
 
-String NetworkService::getPassword(String ssid) {
-    KMTX_LOCK(mtxNetwork);
-
+bool NetworkService::getCredentials(const String& ssid, String& password) {
+    password = "";
     NVS_LOCK;
     Preferences prefs;
-    prefs.begin(getName(), true);
-    String ssidHash = hash(ssid);
-    String result;
-    if (!prefs.isKey(String(ssidHash + "_pw").c_str())) {
-        result = "";
-    } else {
-        result = prefs.getString(String(ssidHash + "_pw").c_str());
+    bool found = false;
+    if (prefs.begin(getName(), true)) {
+        found = NetworkCredentials::read(prefs, ssid, password);
+        prefs.end();
     }
-    prefs.end();
     NVS_UNLOCK;
-
-    KMTX_UNLOCK(mtxNetwork);
-
-    return result;
+    return found;
 }
 
-String NetworkService::hash(String input) {
-    // Calculate simple hash of the input and truncate it to 8 hex characters
+String NetworkService::getPassword(String ssid) {
+    String password;
+    getCredentials(ssid, password);
+    return password;
+}
 
-    uint64_t hash = 0;
-    for (int i = 0; i < input.length(); i++) {
-        hash = (hash << 5) - hash + input[i];
+bool NetworkService::learnKnownNetwork(const String& ssid) {
+    NVS_LOCK;
+    Preferences prefs;
+    String password;
+    bool learned = false;
+    if (prefs.begin(getName(), false)) {
+        learned =
+            NetworkCredentials::read(prefs, ssid, password) && NetworkCredentials::save(prefs, ssid, password, false);
+        prefs.end();
     }
+    NVS_UNLOCK;
+    return learned;
+}
 
-    char buffer[9];
-    snprintf(buffer, sizeof(buffer), "%08x", (unsigned int)hash);
-    return String(buffer);
+std::vector<String> NetworkService::knownNetworks() {
+    NVS_LOCK;
+    Preferences prefs;
+    std::vector<String> names;
+    if (prefs.begin(getName(), true)) {
+        names = NetworkCredentials::list(prefs);
+        prefs.end();
+    }
+    NVS_UNLOCK;
+    return names;
+}
+
+void NetworkService::persistCredentials() {
+    // NVS first: Forget and a deferred save cannot interleave or resurrect entries.
+    NVS_LOCK;
+    KMTX_LOCK(mtxNetwork);
+    if (!credentialSavePending) {
+        KMTX_UNLOCK(mtxNetwork);
+        NVS_UNLOCK;
+        return;
+    }
+    const String ssid = pendingSSID;
+    const String password = pendingPassword;
+    credentialSavePending = false;
+    pendingPassword = "";
+    KMTX_UNLOCK(mtxNetwork);
+    Preferences prefs;
+    bool saved = false;
+    if (prefs.begin(getName(), false)) {
+        saved = NetworkCredentials::save(prefs, ssid, password);
+        prefs.end();
+    }
+    NVS_UNLOCK;
+    if (!saved) {
+        lilka::serial.err("Could not save WiFi credentials");
+    }
+}
+
+bool NetworkService::saveConnectedNetwork(const String& ssid) {
+    NVS_LOCK;
+    KMTX_LOCK(mtxNetwork);
+    const bool matches = requestedSSID == ssid;
+    const String password = lastPassword;
+    KMTX_UNLOCK(mtxNetwork);
+    Preferences prefs;
+    bool saved = false;
+    if (matches && getnetworkState() == NETWORK_STATE_ONLINE && WiFi.status() == WL_CONNECTED && WiFi.SSID() == ssid &&
+        prefs.begin(getName(), false)) {
+        saved = NetworkCredentials::save(prefs, ssid, password);
+        prefs.end();
+    }
+    NVS_UNLOCK;
+    return saved;
+}
+
+bool NetworkService::forgetNetwork(const String& ssid) {
+    NVS_LOCK;
+    KMTX_LOCK(mtxNetwork);
+    if (requestedSSID == ssid) {
+        requestedSSID = "";
+        lastPassword = "";
+    }
+    if (pendingSSID == ssid) {
+        credentialSavePending = false;
+        pendingSSID = pendingPassword = "";
+    }
+    KMTX_UNLOCK(mtxNetwork);
+    Preferences prefs;
+    bool forgotten = false;
+    if (prefs.begin(getName(), false)) {
+        forgotten = NetworkCredentials::forget(prefs, ssid);
+        prefs.end();
+    }
+    NVS_UNLOCK;
+    if (WiFi.SSID() == ssid) {
+        WiFi.setAutoReconnect(false);
+        WiFi.disconnect();
+    }
+    return forgotten;
+}
+
+void NetworkService::disconnectNetwork() {
+    NVS_LOCK;
+    KMTX_LOCK(mtxNetwork);
+    requestedSSID = "";
+    lastPassword = pendingPassword = "";
+    credentialSavePending = false;
+    KMTX_UNLOCK(mtxNetwork);
+    NVS_UNLOCK;
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect();
+    setnetworkState(NETWORK_STATE_OFFLINE);
+    setipAddr("");
 }

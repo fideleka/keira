@@ -2,9 +2,11 @@
 #include "apps/wificonfig/wificonfig.h"
 // Libraries:
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include "keira/keira.h"
 // Services:
 #include "services/network/network.h"
+#include "services/network/credentials.h"
 // Icons:
 #include "apps/icons/wifi_0.h"
 #include "apps/icons/wifi_1.h"
@@ -40,173 +42,252 @@ String WiFiConfigApp::getEncryptionTypeStr(uint8_t encryptionType) {
     }
 }
 
-void WiFiConfigApp::run() {
-    lilka::Canvas buffer(canvas->width(), canvas->height());
-    buffer.begin();
-    buffer.fillScreen(0);
-
-    NetworkService* networkService = static_cast<NetworkService*>(ksystem.services["network"]);
-    // TODO: use dynamic_cast and assert networkService != nullptr
-
-    buffer.fillScreen(lilka::colors::Black);
-    buffer.setCursor(8, 24);
-    canvas->drawCanvas(&buffer);
-    queueDraw();
-
-    // This has to be done before scanning since WiFi is sometimes in invalid state and scanNetworks() returns -2 (WIFI_SCAN_FAILED)
-    // There's a better way to do this, but I don't have time to figure it out...
-    WiFi.disconnect();
-    if (WiFi.getMode() != WIFI_STA) {
-        WiFi.mode(WIFI_STA);
-    }
-    // WiFi.disconnect();
-
-    buffer.println(K_S_WIFI_CONFIG_SCANING_NETWORKS);
-    canvas->drawCanvas(&buffer);
-    queueDraw();
-
-    int16_t count = WiFi.scanNetworks(false);
-    if (count < 0) {
-        lilka::Alert alert(K_S_ERROR, StringFormat(K_S_WIFI_CONFIG_SCAN_ERROR_CODE_FMT, count));
+void WiFiConfigApp::showAlert(const String& title, const String& message) {
+    lilka::Alert alert(title, message);
+    while (!alert.isFinished()) {
+        alert.update();
         alert.draw(canvas);
         queueDraw();
-        while (!alert.isFinished()) {
-            alert.update();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void WiFiConfigApp::connectNetwork(NetworkService& service, const String& ssid, bool editPassword, bool open) {
+    String password;
+    const bool known = service.getCredentials(ssid, password);
+    if (editPassword || (!known && !open)) {
+        password = input(K_S_WIFI_CONFIG_ENTER_PASSWORD, "", true);
+    } else if (!known) {
+        lilka::Menu confirmation(K_S_ATTENTION);
+        confirmation.addItem(K_S_WIFI_CONFIG_CONNECT_OPEN);
+        confirmation.addItem(K_S_MENU_BACK);
+        confirmation.setCursor(1);
+        confirmation.addActivationButton(K_BTN_BACK);
+        while (!confirmation.isFinished()) {
+            confirmation.update();
+            confirmation.draw(canvas);
+            queueDraw();
+        }
+        if (confirmation.getButton() == K_BTN_BACK || confirmation.getCursor() != 0) {
+            return;
+        }
+    }
+    service.connect(ssid, password);
+    password = "";
+    const uint32_t started = millis();
+    bool cancelled = false;
+    while (uint32_t(millis() - started) < 15000 &&
+           (WiFi.status() != WL_CONNECTED || service.getnetworkState() != NETWORK_STATE_ONLINE)) {
+        const auto state = lilka::controller.getState();
+        if (state.b.justPressed) {
+            cancelled = true;
+            break;
+        }
+        canvas->fillScreen(lilka::colors::Black);
+        canvas->setCursor(8, 24);
+        canvas->println(K_S_WIFI_CONFIG_CONNECTING);
+        canvas->println(NetworkCredentials::displayName(ssid));
+        canvas->println(K_S_WIFI_CONFIG_CANCEL);
+        queueDraw();
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    const bool connected = !cancelled && WiFi.status() == WL_CONNECTED && WiFi.SSID() == ssid &&
+                           service.getnetworkState() == NETWORK_STATE_ONLINE;
+    if (!connected) {
+        service.disconnectNetwork();
+        if (!cancelled) {
+            showAlert(
+                K_S_ERROR,
+                StringFormat(K_S_WIFI_CONFIG_CANT_CONNECT_TO_NETWORK_FMT, NetworkCredentials::displayName(ssid).c_str())
+            );
         }
         return;
     }
-    // while (count == WIFI_SCAN_RUNNING) {
-    //     delay(250);
-    //     lilka::display.print(".");
-    //     count = WiFi.scanComplete();
-    // }
-    String networks[count];
-    for (int16_t i = 0; i < count; i++) {
-        networks[i] = WiFi.SSID(i);
-    }
+    const bool saved = service.saveConnectedNetwork(ssid);
+    showAlert(
+        saved ? K_S_SUCCESS : K_S_ERROR,
+        saved ? StringFormat(K_S_WIFI_CONFIG_CONNECTED_TO_NETWORK_FMT, NetworkCredentials::displayName(ssid).c_str())
+              : String(K_S_WIFI_CONFIG_SAVE_FAILED)
+    );
+}
 
-    lilka::Menu menu(K_S_WIFI_CONFIG_NETWORKS);
-    menu.addActivationButton(K_BTN_BACK); // Back
-    for (int16_t i = 0; i < count; i++) {
-        const int8_t rssi = WiFi.RSSI(i);
-        uint8_t signalStrength;
-        if (rssi == 0) {
-            signalStrength = 0;
-        } else {
-            const int8_t excellent = -50;
-            const int8_t good = -70;
-            const int8_t fair = -80;
-
-            if (rssi >= excellent) {
-                signalStrength = 3;
-            } else if (rssi >= good) {
-                signalStrength = 2;
-            } else if (rssi >= fair) {
-                signalStrength = 1;
-            } else {
-                signalStrength = 0;
-            }
+void WiFiConfigApp::showKnownNetworks(NetworkService& service) {
+    for (;;) {
+        const auto names = service.knownNetworks();
+        lilka::Menu menu(K_S_WIFI_CONFIG_KNOWN);
+        for (const String& name : names) {
+            menu.addItem(NetworkCredentials::displayName(name));
         }
-        menu_icon_t* icons[] = {&wifi_0_img, &wifi_1_img, &wifi_2_img, &wifi_3_img};
-        menu.addItem(
-            networks[i],
-            icons[signalStrength],
-            networkService->getPassword(networks[i]).length() ? lilka::colors::Green : lilka::colors::White
-        );
-    }
-    menu.addItem(K_S_MENU_BACK);
-    menu.addActivationButton(lilka::Button::C);
-    count++;
-    while (1) {
+        menu.addItem(K_S_MENU_BACK);
+        menu.addActivationButton(K_BTN_BACK);
         while (!menu.isFinished()) {
             menu.update();
             menu.draw(canvas);
             queueDraw();
         }
-        int cursor = menu.getCursor();
-        if (cursor == count - 1 || menu.getButton() == K_BTN_BACK) {
+        const unsigned selected = menu.getCursor();
+        if (menu.getButton() == K_BTN_BACK || selected >= names.size()) {
             return;
         }
-        if (menu.getButton() == lilka::Button::C) {
-            int16_t index = menu.getCursor();
-            String networkInfo = StringFormat(
-                K_S_WIFI_CONFIG_ABOUT_NETWORK_FMT,
-                WiFi.channel(index),
-                WiFi.RSSI(index),
-                WiFi.BSSIDstr(index).c_str(),
-                getEncryptionTypeStr(WiFi.encryptionType(index))
-            );
-
-            lilka::Alert info(networks[menu.getCursor()], networkInfo);
-            while (!info.isFinished()) {
-                info.update();
-                info.draw(canvas);
-                queueDraw();
-            }
+        const String ssid = names[selected];
+        lilka::Menu actions(NetworkCredentials::displayName(ssid));
+        actions.addItem(K_S_WIFI_CONFIG_CONNECT);
+        actions.addItem(K_S_WIFI_CONFIG_CHANGE_PASSWORD);
+        actions.addItem(K_S_WIFI_CONFIG_FORGET);
+        actions.addItem(K_S_MENU_BACK);
+        actions.addActivationButton(K_BTN_BACK);
+        while (!actions.isFinished()) {
+            actions.update();
+            actions.draw(canvas);
+            queueDraw();
+        }
+        if (actions.getButton() == K_BTN_BACK) {
             continue;
         }
-        String ssid = networks[cursor];
-
-        String password = "";
-        // Check if WiFi network is insecure
-        if (WiFi.encryptionType(cursor) == WIFI_AUTH_OPEN) {
-            lilka::Alert alert(
-                K_S_ATTENTION, StringFormat(K_S_WIFI_CONFIG_CONNECTING_TO_OPEN_INSECURE_NETWORK_FMT, ssid.c_str())
-            );
-            alert.addActivationButton(K_BTN_BACK);
-            alert.draw(canvas);
-            queueDraw();
-            while (!alert.isFinished()) {
-                alert.update();
+        const int action = actions.getCursor();
+        if (action == 0 || action == 1) {
+            connectNetwork(service, ssid, action == 1, false);
+        } else if (action == 2) {
+            lilka::Menu confirmation(K_S_WIFI_CONFIG_FORGET_CONFIRM);
+            confirmation.addItem(K_S_WIFI_CONFIG_FORGET);
+            confirmation.addItem(K_S_MENU_BACK);
+            confirmation.setCursor(1);
+            confirmation.addActivationButton(K_BTN_BACK);
+            while (!confirmation.isFinished()) {
+                confirmation.update();
+                confirmation.draw(canvas);
+                queueDraw();
             }
-            if (alert.getButton() == K_BTN_BACK) {
-                continue;
+            if (confirmation.getButton() != K_BTN_BACK && confirmation.getCursor() == 0) {
+                const bool forgotten = service.forgetNetwork(ssid);
+                showAlert(
+                    forgotten ? K_S_SUCCESS : K_S_ERROR,
+                    forgotten ? K_S_WIFI_CONFIG_FORGOTTEN : K_S_WIFI_CONFIG_SAVE_FAILED
+                );
             }
-        } else {
-            password = input(K_S_WIFI_CONFIG_ENTER_PASSWORD, "", true);
         }
-        networkService->connect(ssid, password);
+    }
+}
 
-        buffer.fillScreen(lilka::colors::Black);
-        buffer.setCursor(8, 24);
-        buffer.println(K_S_WIFI_CONFIG_CONNECTING);
-        canvas->drawCanvas(&buffer);
-        queueDraw();
-
-        // // Wait for the adapter to start connecting
-        // while (networkService->getnetworkState() != NETWORK_STATE_CONNECTING &&
-        //        networkService->getnetworkState() != NETWORK_STATE_ONLINE) {
-        //     taskYIELD();
-        // }
-        // // Wait for the adapter to finish connecting
-        // while (networkService->getnetworkState() == NETWORK_STATE_CONNECTING) {
-        //     taskYIELD();
-        // }
-        // Wait for the adapter to start connecting (it can briefly enter DISCONNECTED state)
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        // Wait for the adapter to finish connecting
-        while (networkService->getnetworkState() == NETWORK_STATE_CONNECTING) {
-            taskYIELD();
-        }
-
-        lilka::Alert alert("", "");
-        bool success = networkService->getnetworkState() == NETWORK_STATE_ONLINE;
-        if (success) {
-            alert.setTitle(K_S_SUCCESS);
-            alert.setMessage(StringFormat(K_S_WIFI_CONFIG_CONNECTED_TO_NETWORK_FMT, ssid.c_str()));
-        } else {
-            alert.setTitle(K_S_ERROR);
-            alert.setMessage(StringFormat(K_S_WIFI_CONFIG_CANT_CONNECT_TO_NETWORK_FMT, ssid.c_str()));
-        }
-
-        alert.draw(canvas);
-        queueDraw();
-        while (!alert.isFinished()) {
-            alert.update();
-        }
-
-        if (success) {
+void WiFiConfigApp::scanNetworks(NetworkService& service) {
+    if (!WiFi.mode(WIFI_STA)) {
+        showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
+        return;
+    }
+    WiFi.scanDelete();
+    int16_t count = WiFi.scanNetworks(true);
+    const uint32_t started = millis();
+    while (count == WIFI_SCAN_RUNNING && uint32_t(millis() - started) < 15000) {
+        if (lilka::controller.getState().b.justPressed) {
+            esp_wifi_scan_stop();
+            WiFi.scanDelete();
             return;
+        }
+        canvas->fillScreen(lilka::colors::Black);
+        canvas->setCursor(8, 24);
+        canvas->println(K_S_WIFI_CONFIG_SCANING_NETWORKS);
+        canvas->println(K_S_WIFI_CONFIG_CANCEL);
+        queueDraw();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        count = WiFi.scanComplete();
+    }
+    if (count < 0) {
+        esp_wifi_scan_stop();
+        WiFi.scanDelete();
+        showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
+        return;
+    }
+    std::vector<String> names;
+    std::vector<int16_t> indices;
+    lilka::Menu menu(K_S_WIFI_CONFIG_NETWORKS);
+    menu.addActivationButton(K_BTN_BACK);
+    menu.addActivationButton(lilka::Button::C);
+    for (int16_t i = 0; i < count && names.size() < 64; ++i) {
+        const String ssid = WiFi.SSID(i);
+        bool duplicate = false;
+        for (const String& name : names) {
+            duplicate |= name == ssid;
+        }
+        if (!ssid.length() || duplicate) {
+            continue;
+        }
+        names.push_back(ssid);
+        indices.push_back(i);
+        const int32_t rssi = WiFi.RSSI(i);
+        const unsigned strength = rssi >= -50 ? 3 : rssi >= -70 ? 2 : rssi >= -80 ? 1 : 0;
+        menu_icon_t* icons[] = {&wifi_0_img, &wifi_1_img, &wifi_2_img, &wifi_3_img};
+        String password;
+        const bool known = service.getCredentials(ssid, password);
+        password = "";
+        if (known) {
+            service.learnKnownNetwork(ssid);
+        }
+        menu.addItem(
+            NetworkCredentials::displayName(ssid), icons[strength], known ? lilka::colors::Green : lilka::colors::White
+        );
+    }
+    menu.addItem(K_S_MENU_BACK);
+    for (;;) {
+        while (!menu.isFinished()) {
+            menu.update();
+            menu.draw(canvas);
+            queueDraw();
+        }
+        const unsigned selected = menu.getCursor();
+        if (menu.getButton() == K_BTN_BACK || selected >= names.size()) {
+            break;
+        }
+        const int16_t index = indices[selected];
+        if (menu.getButton() == lilka::Button::C) {
+            showAlert(
+                NetworkCredentials::displayName(names[selected]),
+                StringFormat(
+                    K_S_WIFI_CONFIG_ABOUT_NETWORK_FMT,
+                    WiFi.channel(index),
+                    WiFi.RSSI(index),
+                    WiFi.BSSIDstr(index).c_str(),
+                    getEncryptionTypeStr(WiFi.encryptionType(index))
+                )
+            );
+            continue;
+        }
+        connectNetwork(service, names[selected], false, WiFi.encryptionType(index) == WIFI_AUTH_OPEN);
+        break;
+    }
+    WiFi.scanDelete();
+}
+
+void WiFiConfigApp::run() {
+    auto* service = static_cast<NetworkService*>(ksystem.services["network"]);
+    if (!service) {
+        showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
+        return;
+    }
+    for (;;) {
+        lilka::Menu menu("WiFi");
+        menu.addItem(K_S_WIFI_CONFIG_NETWORKS);
+        menu.addItem(K_S_WIFI_CONFIG_KNOWN);
+        menu.addItem(K_S_WIFI_CONFIG_DISCONNECT);
+        menu.addItem(K_S_MENU_BACK);
+        menu.addActivationButton(K_BTN_BACK);
+        while (!menu.isFinished()) {
+            menu.update();
+            menu.draw(canvas);
+            queueDraw();
+        }
+        if (menu.getButton() == K_BTN_BACK || menu.getCursor() == 3) {
+            return;
+        }
+        switch (menu.getCursor()) {
+            case 0:
+                scanNetworks(*service);
+                break;
+            case 1:
+                showKnownNetworks(*service);
+                break;
+            case 2:
+                service->disconnectNetwork();
+                break;
         }
     }
 }
