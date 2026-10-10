@@ -187,6 +187,18 @@
 #define K_S_LAUNCHER_FORMAT_SUCCESS_ALLERT "Форматування SD-карти завершено!\n\nСистему буде перезавантажено."
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define K_S_WIFI_CONFIG_KNOWN "Збережені мережі"
+#define K_S_WIFI_CONFIG_CONNECT "Підключити"
+#define K_S_WIFI_CONFIG_CHANGE_PASSWORD "Змінити пароль"
+#define K_S_WIFI_CONFIG_FORGET "Забути"
+#define K_S_WIFI_CONFIG_FORGET_CONFIRM "Забути цю мережу?"
+#define K_S_WIFI_CONFIG_FORGOTTEN "Мережу забуто"
+#define K_S_WIFI_CONFIG_SAVE_FAILED "Не вдалося зберегти налаштування"
+#define K_S_WIFI_CONFIG_CONNECT_OPEN "Підключити до відкритої мережі"
+#define K_S_WIFI_CONFIG_CANCEL "B: скасувати"
+#define K_S_WIFI_CONFIG_SCAN_FAILED "Помилка сканування WiFi"
+#define K_S_WIFI_CONFIG_DISCONNECT "Відключити"
+
 // apps/wifi_config.cpp ///////////////////////////////////////////////////////////////////////////////
 #define K_S_WIFI_CONFIG_SCANING_NETWORKS    "Скануємо мережі WiFi..."
 #define K_S_WIFI_CONFIG_SCAN_ERROR_CODE_FMT "Не вдалося сканувати мережі, код помилки: %d"
@@ -651,11 +663,11 @@
 // clang-format on
 
 // Display settings (shared SDK persistence).
-#define K_S_LAUNCHER_DISPLAY "Дисплей"
-#define K_S_DISPLAY_BRIGHTNESS "Яскравість"
-#define K_S_DISPLAY_TIMEOUT "Автовимкнення"
-#define K_S_DISPLAY_NEVER "Ніколи"
-#define K_S_DISPLAY_SECONDS "с"
+#define K_S_LAUNCHER_DISPLAY    "Дисплей"
+#define K_S_DISPLAY_BRIGHTNESS  "Яскравість"
+#define K_S_DISPLAY_TIMEOUT     "Автовимкнення"
+#define K_S_DISPLAY_NEVER       "Ніколи"
+#define K_S_DISPLAY_SECONDS     "с"
 #define K_S_DISPLAY_UNAVAILABLE "Недоступно"
-#define K_S_DISPLAY_MINUTES "хв"
-#define K_S_DISPLAY_DIM "Затемнення"
+#define K_S_DISPLAY_MINUTES     "хв"
+#define K_S_DISPLAY_DIM         "Затемнення"

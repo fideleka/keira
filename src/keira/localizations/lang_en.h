@@ -194,6 +194,18 @@
 #define K_S_LAUNCHER_FORMAT_SUCCESS_ALLERT  "SD card format success!\n\nSystem would reboot."
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define K_S_WIFI_CONFIG_KNOWN "Saved networks"
+#define K_S_WIFI_CONFIG_CONNECT "Connect"
+#define K_S_WIFI_CONFIG_CHANGE_PASSWORD "Change password"
+#define K_S_WIFI_CONFIG_FORGET "Forget"
+#define K_S_WIFI_CONFIG_FORGET_CONFIRM "Forget WiFi?"
+#define K_S_WIFI_CONFIG_FORGOTTEN "Network forgotten"
+#define K_S_WIFI_CONFIG_SAVE_FAILED "Could not save network settings"
+#define K_S_WIFI_CONFIG_CONNECT_OPEN "Connect to open network"
+#define K_S_WIFI_CONFIG_CANCEL "B: cancel"
+#define K_S_WIFI_CONFIG_SCAN_FAILED "WiFi scan failed"
+#define K_S_WIFI_CONFIG_DISCONNECT "Disconnect"
+
 // apps/wifi_config.cpp ///////////////////////////////////////////////////////////////////////////////
 #define K_S_WIFI_CONFIG_SCANING_NETWORKS    "Scanning WiFi networks..."
 #define K_S_WIFI_CONFIG_SCAN_ERROR_CODE_FMT "Can't scan networks, error code: %d"
@@ -659,11 +671,11 @@
 // clang-format on
 
 // Display settings (shared SDK persistence).
-#define K_S_LAUNCHER_DISPLAY "Display"
-#define K_S_DISPLAY_BRIGHTNESS "Brightness"
-#define K_S_DISPLAY_TIMEOUT "Auto-off"
-#define K_S_DISPLAY_NEVER "Never"
-#define K_S_DISPLAY_SECONDS "sec"
+#define K_S_LAUNCHER_DISPLAY    "Display"
+#define K_S_DISPLAY_BRIGHTNESS  "Brightness"
+#define K_S_DISPLAY_TIMEOUT     "Auto-off"
+#define K_S_DISPLAY_NEVER       "Never"
+#define K_S_DISPLAY_SECONDS     "sec"
 #define K_S_DISPLAY_UNAVAILABLE "N/A"
-#define K_S_DISPLAY_MINUTES "min"
-#define K_S_DISPLAY_DIM "Idle dim"
+#define K_S_DISPLAY_MINUTES     "min"
+#define K_S_DISPLAY_DIM         "Idle dim"
