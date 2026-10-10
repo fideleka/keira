@@ -139,6 +139,11 @@ int main() {
         assert(service.retryDelay <= 900000);
     }
     assert(service.retryDelay == 900000);
+    service.retryPending = true;
+    WiFi.state = WL_CONNECTED; // A connection established during cooldown also resets it.
+    service.serviceAutomaticConnection();
+    assert(!service.retryPending && service.retryDelay == 30000);
+    WiFi.state = WL_DISCONNECTED;
     service.autoConnect(); // Explicit requests reset cooldown.
     assert(service.retryDelay == 30000);
     WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
