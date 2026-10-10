@@ -210,8 +210,13 @@ void NetworkService::serviceAutomaticConnection() {
     const uint32_t now = millis();
     const auto state = lilka::wifiConnection.state();
     if (state == lilka::WiFiConnection::State::Idle || retryPending) {
-        const bool retry =
-            WiFi.status() != WL_CONNECTED && (!retryPending || uint32_t(now - retryStarted) >= retryDelay);
+        const bool connected = WiFi.status() == WL_CONNECTED;
+        if (connected) {
+            retryPending = false;
+            retryDelay = 30000;
+            networkState = NETWORK_STATE_ONLINE;
+        }
+        const bool retry = !connected && (!retryPending || uint32_t(now - retryStarted) >= retryDelay);
         KMTX_UNLOCK(mtxNetwork);
         if (retry) {
             autoConnect(false);
