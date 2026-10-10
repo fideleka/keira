@@ -96,6 +96,8 @@
 #define K_S_LAUNCHER_WIFI              "WiFi"
 #define K_S_LAUNCHER_WIFI_ADAPTER      "WiFi-адаптер"
 #define K_S_LAUNCHER_WIFI_NETWORKS     "Мережі WiFi"
+#define K_S_LAUNCHER_WIFI_OFF          "Вимкнено"
+#define K_S_LAUNCHER_WIFI_DISCONNECTED "Не підключено"
 #define K_S_LAUNCHER_WIFI_TX_POWER     "Потужність WiFi"
 #define K_S_LAUNCHER_TIMEZONE          "Часовий пояс"
 #define K_S_LAUNCHER_TIMEZONE_UTC      "UTC"

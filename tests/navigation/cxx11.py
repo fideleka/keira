@@ -25,6 +25,12 @@ int main() {
     assert(app.kind == LauncherMenuKind::Static);
     assert(ordinary.kind == LauncherMenuKind::Static);
     assert(recent.kind == LauncherMenuKind::NES);
+    int updates = 0;
+    auto dynamic = ITEM::SUBMENU("Dynamic", {action}, nullptr, 0, LauncherMenuKind::Static,
+                                 [&updates](void*) { ++updates; });
+    assert(!ordinary.update && dynamic.update);
+    dynamic.update(nullptr);
+    assert(updates == 1 && dynamic.submenu.size() == 1);
     String title = "Owned title";
     auto owned = ITEM::APP(title.c_str(), nullptr);
     title = "Changed";

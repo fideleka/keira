@@ -40,6 +40,7 @@ class Menu {
     String title;
     std::vector<MenuItem> items;
     bool done = false;
+    bool horizontalNavigationEnabled = true;
     int cursor = 0, scroll = 0, lastCursorMove = 0;
     Button button = Button::COUNT;
     std::vector<Button> activationButtons{Button::A};
