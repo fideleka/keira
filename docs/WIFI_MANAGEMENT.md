@@ -1,8 +1,8 @@
 # Wi-Fi management in Keira
 
-Management is in **Keira only**. Lilplayer continues using Keira's selected
-network and its saved password through the existing `network` NVS namespace.
-No Lilplayer or SDK source change is needed for this feature.
+Management is in **Keira only**. Keira and Lilplayer share SDK saved-network
+storage and automatic fallback through the existing `network` NVS namespace.
+Rebuild both apps against the updated matching SDK stage branches.
 
 ## Using it
 
@@ -15,7 +15,8 @@ Open **WiFi**:
   Choose one for **Connect**, **Change password**, or **Forget**.
 - **Forget** asks for confirmation and defaults to Back. It removes that network's
   saved credentials and selected-network reference; forgetting the current
-  network also disconnects it and disables automatic reconnection for this session.
+  network also disconnects it. Automatic recovery may try another saved network
+  after leaving the management UI; it cannot retry the forgotten credentials.
 - **Disconnect** stops the current connection without deleting credentials.
 
 Scanning and connection waits yield every 50 ms, allow B cancellation and have
@@ -62,9 +63,15 @@ connection/storage support with a font fallback, **not emoji artwork support**.
   pending-save flag once per second; callbacks only stage RAM values. Identical
   records/passwords/selected names cause no additional NVS writes.
 
-Keira reconnects to the selected last network on startup. This change does not
-add automatic strongest-known-network roaming to either Keira or Lilplayer.
-Select a different saved network in Keira when changing access points.
+Automatic connection first tries the last-used saved network. If unavailable,
+it scans and tries other visible saved networks strongest first, with 10 seconds
+per network and a 5-second scan deadline. Keira waits 30 seconds before another
+round if all fail. Lilplayer uses the same selector and its existing stream retry
+policy. Successful fallback updates the last-used selection without repeated NVS
+writes. A working connection is preserved, even if another network is stronger.
+Opening this management app pauses background selection so scans don't compete.
+Manual Connect tries the chosen network only; Disconnect disables automatic
+recovery for the session. See SDK `docs/WIFI_FALLBACK.md` for ownership and limits.
 
 ## Verification
 

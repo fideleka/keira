@@ -64,6 +64,57 @@ int main() {
     assert(!service.forgetNetwork("Open"));
     Preferences::failBegin = false;
     assert(service.getCredentials("Open", password));
+    service.connect("Backup", "backup123");
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    assert(service.saveConnectedNetwork("Backup"));
+    service.connect("Home", "home1234");
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    assert(service.saveConnectedNetwork("Home"));
+    WiFi.state = WL_DISCONNECTED;
+    WiFi.scanStart = 2;
+    WiFi.visible = {{"Open", -70}, {"Backup", -40}};
+    service.autoConnect();
+    assert(WiFi.name == "Home");
+    hostMillis() = 10000;
+    service.serviceAutomaticConnection();
+    assert(WiFi.name == "Backup");
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    service.serviceAutomaticConnection();
+    service.persistCredentials();
+    Preferences saved;
+    assert(saved.begin("network", true));
+    assert(saved.getString("last_ssid", "") == "Backup");
+    const unsigned afterFallback = Preferences::writes;
+    const unsigned attempts = WiFi.attempts.size();
+    service.serviceAutomaticConnection();
+    service.persistCredentials();
+    assert(WiFi.attempts.size() == attempts && Preferences::writes == afterFallback);
+    WiFi.state = WL_DISCONNECTED;
+    service.serviceAutomaticConnection();
+    hostMillis() += 29999;
+    service.serviceAutomaticConnection();
+    assert(WiFi.attempts.size() == attempts);
+    ++hostMillis();
+    service.serviceAutomaticConnection();
+    assert(WiFi.attempts.size() == attempts + 1 && WiFi.name == "Backup");
+    WiFi.event(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    service.serviceAutomaticConnection();
+    service.persistCredentials();
+    service.pauseAutomaticConnection(true);
+    assert(WiFi.state == WL_CONNECTED); // UI never disrupts a working connection.
+    service.pauseAutomaticConnection(false);
+    WiFi.state = WL_DISCONNECTED;
+    service.serviceAutomaticConnection();
+    assert(WiFi.name == "Backup");
+    service.disconnectNetwork();
+    hostMillis() += 60000;
+    service.serviceAutomaticConnection();
+    assert(WiFi.state == WL_DISCONNECTED); // Explicit Disconnect is respected.
+    // Forget invalidates the selector snapshot, not only the password mirror.
+    service.autoConnect();
+    assert(service.forgetNetwork("Backup"));
+    service.serviceAutomaticConnection();
+    assert(WiFi.name != "Backup" || WiFi.state == WL_DISCONNECTED);
     puts(
         "Production NetworkService: save after IP, no event NVS, pending-save/Forget, UTF-8, open and cancellation PASS"
     );

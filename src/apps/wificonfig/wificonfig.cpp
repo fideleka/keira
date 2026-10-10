@@ -257,12 +257,27 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
     WiFi.scanDelete();
 }
 
+void WiFiConfigApp::onStop() {
+    // Forced task deletion does not unwind run()'s scope guard.
+    auto* service = static_cast<NetworkService*>(ksystem.services["network"]);
+    if (service) {
+        service->pauseAutomaticConnection(false);
+    }
+}
+
 void WiFiConfigApp::run() {
     auto* service = static_cast<NetworkService*>(ksystem.services["network"]);
     if (!service) {
         showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
         return;
     }
+    service->pauseAutomaticConnection(true);
+    struct ResumeAutomaticConnection {
+        NetworkService& service;
+        ~ResumeAutomaticConnection() {
+            service.pauseAutomaticConnection(false);
+        }
+    } resume{*service};
     for (;;) {
         lilka::Menu menu("WiFi");
         menu.addItem(K_S_WIFI_CONFIG_NETWORKS);

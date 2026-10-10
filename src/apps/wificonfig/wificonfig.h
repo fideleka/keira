@@ -10,6 +10,7 @@ public:
 private:
     String getEncryptionTypeStr(uint8_t encryptionType);
     void run() override;
+    void onStop() override;
     void showAlert(const String& title, const String& message);
     void connectNetwork(NetworkService& service, const String& ssid, bool editPassword, bool open);
     void showKnownNetworks(NetworkService& service);

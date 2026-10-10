@@ -4,6 +4,24 @@
 #include <functional>
 #include <cassert>
 #include <cstdarg>
+#include <vector>
+#include <utility>
+inline uint32_t& hostMillis() {
+    static uint32_t value = 0;
+    return value;
+}
+inline uint32_t millis() {
+    return hostMillis();
+}
+constexpr int WIFI_STORAGE_RAM = 0, ESP_OK = 0;
+inline int esp_wifi_set_storage(int storage) {
+    assert(storage == WIFI_STORAGE_RAM);
+    return ESP_OK;
+}
+constexpr int WIFI_SCAN_RUNNING = -1, WIFI_SCAN_FAILED = -2;
+inline int esp_wifi_scan_stop() {
+    return 0;
+}
 using SemaphoreHandle_t = unsigned;
 inline unsigned& nextMutex() {
     static unsigned value = 1;
@@ -63,7 +81,29 @@ struct WifiHAL {
     String name, password;
     int state = WL_DISCONNECTED;
     bool reconnect = true;
+    int scanState = WIFI_SCAN_FAILED, scanStart = WIFI_SCAN_FAILED;
+    std::vector<std::pair<String, int32_t>> visible;
+    std::vector<String> attempts;
+    int scanComplete() {
+        return scanState;
+    }
+    int scanNetworks(bool) {
+        scanState = scanStart;
+        return scanState;
+    }
+    void scanDelete() {
+        scanState = WIFI_SCAN_FAILED;
+    }
+    String SSID(int index) {
+        return visible.at(index).first;
+    }
+    int32_t RSSI(int index) {
+        return visible.at(index).second;
+    }
     std::function<void(WiFiEvent_t, WiFiEventInfo_t)> callback;
+    void persistent(bool value) {
+        assert(!value);
+    }
     void setTxPower(int) {
     }
     void macAddress(uint8_t* bytes) {
@@ -85,6 +125,7 @@ struct WifiHAL {
         reconnect = value;
     }
     void begin(const char* ssid, const char* secret) {
+        attempts.push_back(ssid);
         name = ssid;
         password = secret;
         state = WL_DISCONNECTED;

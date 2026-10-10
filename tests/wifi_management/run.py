@@ -6,6 +6,7 @@ import tempfile
 import os
 
 root = Path(__file__).resolve().parents[2]
+sdk = Path(os.environ.get("LILKA_SDK_REPO", str(root.parent / "sdk"))) / "lib/lilka/src"
 with tempfile.TemporaryDirectory(prefix="keira-wifi-test-") as directory:
     out = Path(directory)
     shim = (
@@ -33,7 +34,8 @@ with tempfile.TemporaryDirectory(prefix="keira-wifi-test-") as directory:
                     "-I" + str(out),
                     "-I" + str(root / "tests/wifi_management"),
                     "-I" + str(root / "src"),
-                    str(root / "src/services/network/credentials.cpp"),
+                    "-I" + str(sdk),
+                    str(sdk / "lilka/wifi_credentials.cpp"),
                     str(root / "tests/wifi_management/host.cpp"),
                     "-o",
                     str(binary),
@@ -61,7 +63,9 @@ with tempfile.TemporaryDirectory(prefix="keira-wifi-test-") as directory:
                 "-I" + str(out),
                 "-I" + str(root / "tests/wifi_management"),
                 "-I" + str(root / "src"),
-                str(root / "src/services/network/credentials.cpp"),
+                "-I" + str(sdk),
+                str(sdk / "lilka/wifi_credentials.cpp"),
+                str(sdk / "lilka/wifi_connection.cpp"),
                 str(root / "src/services/network/network.cpp"),
                 str(root / "tests/wifi_management/service.cpp"),
                 "-o",
