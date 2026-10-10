@@ -3,6 +3,7 @@
 // Libraries:
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <lilka/wifi_scan.h>
 #include "keira/keira.h"
 // Services:
 #include "services/network/network.h"
@@ -174,13 +175,24 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
         showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
         return;
     }
-    WiFi.scanDelete();
-    int16_t count = WiFi.scanNetworks(true);
+    using Scan = lilka::detail::BoundedWiFiScan;
+    // A cancelled automatic blocking scan must drain before the UI owns a scan.
+    const uint32_t drainStarted = millis();
+    while (Scan::running() && uint32_t(millis() - drainStarted) < lilka::WiFiConnection::ScanTimeoutMs) {
+        if (lilka::controller.getState().b.justPressed) return;
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    if (!Scan::start()) {
+        showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
+        return;
+    }
+    defer {
+        Scan::release();
+    };
+    int count = Scan::count();
     const uint32_t started = millis();
     while (count == WIFI_SCAN_RUNNING && uint32_t(millis() - started) < 15000) {
         if (lilka::controller.getState().b.justPressed) {
-            esp_wifi_scan_stop();
-            WiFi.scanDelete();
             return;
         }
         canvas->fillScreen(lilka::colors::Black);
@@ -189,21 +201,20 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
         canvas->println(K_S_WIFI_CONFIG_CANCEL);
         queueDraw();
         vTaskDelay(pdMS_TO_TICKS(50));
-        count = WiFi.scanComplete();
+        count = Scan::count();
     }
     if (count < 0) {
-        esp_wifi_scan_stop();
-        WiFi.scanDelete();
         showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
         return;
     }
+    const wifi_ap_record_t* records = Scan::records();
     std::vector<String> names;
     std::vector<int16_t> indices;
     lilka::Menu menu(K_S_WIFI_CONFIG_NETWORKS);
     menu.addActivationButton(K_BTN_BACK);
     menu.addActivationButton(lilka::Button::C);
     for (int16_t i = 0; i < count && names.size() < 64; ++i) {
-        const String ssid = WiFi.SSID(i);
+        const String ssid(reinterpret_cast<const char*>(records[i].ssid));
         bool duplicate = false;
         for (const String& name : names) {
             duplicate |= name == ssid;
@@ -213,7 +224,7 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
         }
         names.push_back(ssid);
         indices.push_back(i);
-        const int32_t rssi = WiFi.RSSI(i);
+        const int32_t rssi = records[i].rssi;
         const unsigned strength = rssi >= -50 ? 3 : rssi >= -70 ? 2 : rssi >= -80 ? 1 : 0;
         menu_icon_t* icons[] = {&wifi_0_img, &wifi_1_img, &wifi_2_img, &wifi_3_img};
         String password;
@@ -243,18 +254,26 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
                 NetworkCredentials::displayName(names[selected]),
                 StringFormat(
                     K_S_WIFI_CONFIG_ABOUT_NETWORK_FMT,
-                    WiFi.channel(index),
-                    WiFi.RSSI(index),
-                    WiFi.BSSIDstr(index).c_str(),
-                    getEncryptionTypeStr(WiFi.encryptionType(index))
+                    records[index].primary,
+                    records[index].rssi,
+                    StringFormat(
+                        "%02X:%02X:%02X:%02X:%02X:%02X",
+                        records[index].bssid[0],
+                        records[index].bssid[1],
+                        records[index].bssid[2],
+                        records[index].bssid[3],
+                        records[index].bssid[4],
+                        records[index].bssid[5]
+                    )
+                        .c_str(),
+                    getEncryptionTypeStr(records[index].authmode)
                 )
             );
             continue;
         }
-        connectNetwork(service, names[selected], false, WiFi.encryptionType(index) == WIFI_AUTH_OPEN);
+        connectNetwork(service, names[selected], false, records[index].authmode == WIFI_AUTH_OPEN);
         break;
     }
-    WiFi.scanDelete();
 }
 
 void WiFiConfigApp::onStop() {
