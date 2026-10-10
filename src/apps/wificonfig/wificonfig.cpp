@@ -276,7 +276,10 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
 }
 
 void WiFiConfigApp::onStop() {
-    // Forced task deletion does not unwind run()'s scope guard.
+    // Stop the UI reader before freeing its bounded result. An exiting run()
+    // has already unwound; forced task deletion itself does not unwind guards.
+    suspend();
+    lilka::detail::BoundedWiFiScan::release();
     auto* service = static_cast<NetworkService*>(ksystem.services["network"]);
     if (service) {
         service->pauseAutomaticConnection(false);
