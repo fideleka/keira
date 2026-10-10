@@ -183,7 +183,7 @@ void WiFiConfigApp::scanNetworks(NetworkService& service) {
         if (lilka::controller.getState().b.justPressed) return;
         vTaskDelay(pdMS_TO_TICKS(50));
     }
-    if (!Scan::start()) {
+    if (!Scan::startDiscovery()) {
         showAlert(K_S_ERROR, K_S_WIFI_CONFIG_SCAN_FAILED);
         return;
     }
