@@ -81,6 +81,7 @@ struct WifiHAL {
     String name, password;
     int state = WL_DISCONNECTED;
     bool reconnect = true;
+    unsigned disconnects = 0;
     int scanState = WIFI_SCAN_FAILED, scanStart = WIFI_SCAN_FAILED;
     std::vector<std::pair<String, int32_t>> visible;
     std::vector<String> attempts;
@@ -119,6 +120,7 @@ struct WifiHAL {
     void mode(int) {
     }
     void disconnect(bool = false, bool = false) {
+        ++disconnects;
         state = WL_DISCONNECTED;
     }
     void setAutoReconnect(bool value) {

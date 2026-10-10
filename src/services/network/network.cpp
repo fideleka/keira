@@ -218,8 +218,9 @@ void NetworkService::serviceAutomaticConnection() {
             credentialSavePending = true;
         }
         networkState = NETWORK_STATE_ONLINE;
-    } else if (result == lilka::WiFiConnection::State::Failed ||
-               result == lilka::WiFiConnection::State::NoCredentials) {
+    } else if (
+        result == lilka::WiFiConnection::State::Failed || result == lilka::WiFiConnection::State::NoCredentials
+    ) {
         requestedSSID = lastPassword = "";
         retryPending = true;
         retryStarted = now;
@@ -395,8 +396,6 @@ void NetworkService::disconnectNetwork() {
     credentialSavePending = false;
     KMTX_UNLOCK(mtxNetwork);
     NVS_UNLOCK;
-    WiFi.setAutoReconnect(false);
-    WiFi.disconnect();
     setnetworkState(NETWORK_STATE_OFFLINE);
     setipAddr("");
 }
