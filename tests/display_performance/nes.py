@@ -72,12 +72,12 @@ with tempfile.TemporaryDirectory() as tmp:
     input_test=r'''
 #include <cassert>
 #include <cstdio>
-struct Clock{int reads=0;operator int(){return ++reads==1?0:3;}}nofrendo_ticks;
+struct Clock{int reads=0;operator int(){return ++reads<=4?0:3;}}nofrendo_ticks;
 struct{bool poweroff=false,pause=false,autoframeskip=true;int scanline_cycles,fiq_cycles;struct Apu{void(*process)(void*,int);}*apu;}nes;
 #define NES_FIQ_PERIOD 1
 int polls=0,skipped=0,shown=0,renders=0;bool quit=false;
 void osd_setsound(void(*)(void*,int)){}void gui_tick(int){}void gui_frame(bool){}
-void osd_getinput(){++polls;assert(polls==renders+1);if(quit)nes.poweroff=true;}
+void osd_getinput(){assert(nofrendo_ticks.reads>=5);++polls;assert(polls==renders+1);if(quit)nes.poweroff=true;}
 void vid_flush(){++shown;nes.poweroff=true;}
 void nes_renderframe(bool draw){++renders;assert(polls==renders);if(!draw)++skipped;}
 '''+method(core,'static void system_video(')+method(core,'void nes_emulate(')+r'''
