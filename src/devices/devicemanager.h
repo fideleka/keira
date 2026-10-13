@@ -1,5 +1,6 @@
 #pragma once
 #include "keira/service.h"
+#include "keira/frame_metrics.h"
 #include "../../drivers/driver_api.h"
 #include <lilka/dynloader.h>
 #include <driver/spi_master.h>
@@ -48,7 +49,7 @@ public:
     // Compositor task only, holding layer locks. Never blocks on driver transfers.
     bool capture(lilka::Canvas* panel, lilka::Canvas* app, const lilka::VolumeOverlaySnapshot& overlay, bool sleeping);
     // Same compositor task, with no canvas locks. Both LCDs read shared pixels.
-    void presentInternal();
+    bool presentInternal();
 
 private:
     struct Slot {
@@ -85,6 +86,7 @@ private:
     uint32_t dirtyRows[10] = {}, internalDirtyRows[10] = {};
     uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0;
     int presentPending(Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* rows);
+    FrameMetrics captureTiming;
     uint32_t captureCount = 0, transferCount = 0, captureUs = 0, transferUs = 0;
     spi_device_handle_t spi = nullptr;
     uint8_t* dma = nullptr;

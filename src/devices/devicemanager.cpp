@@ -686,11 +686,12 @@ bool DeviceManager::capture(
         ++captureCount;
         if (!changed) ++unchangedCaptures;
         captureUs = esp_timer_get_time() - start;
+        captureTiming.record(captureUs);
     } else good = false;
     KMTX_UNLOCK(frameMutex);
     return good;
 }
-void DeviceManager::presentInternal() {
+bool DeviceManager::presentInternal() {
     // Only the compositor calls capture/presentInternal, in sequence. Protect
     // lifetime against settings/rerouting, but release frameMutex before SPI so
     // the external worker can acquire/release its lease during internal DMA.
@@ -705,6 +706,7 @@ void DeviceManager::presentInternal() {
     memcpy(rows, internalDirtyRows, sizeof(rows));
     if (good) memset(internalDirtyRows, 0, sizeof(internalDirtyRows));
     KMTX_UNLOCK(frameMutex);
+    bool transferred = false;
     if (pixels) {
         for (unsigned y = 0; y < h;) {
             if (!(rows[y / 32] & (uint32_t(1) << (y % 32)))) {
@@ -715,9 +717,11 @@ void DeviceManager::presentInternal() {
             while (y < h && (rows[y / 32] & (uint32_t(1) << (y % 32))))
                 ++y;
             lilka::display.draw16bitRGBBitmap(0, first, pixels + first * w, w, y - first);
+            transferred = true;
         }
     }
     KMTX_UNLOCK(internalMutex);
+    return transferred;
 }
 int DeviceManager::presentPending(
     Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* dirty
@@ -759,6 +763,7 @@ void DeviceManager::run() {
     workerReady = true;
     ++generation;
     uint32_t previousLog = millis(), previousTransfer = 0, loggedTransfers = 0;
+    FrameMetrics transferTiming;
     while (true) {
         KMTX_LOCK(mutex);
         const uint32_t interval =
@@ -788,6 +793,7 @@ void DeviceManager::run() {
             externalReading = -1;
             KMTX_UNLOCK(frameMutex);
             transferUs = esp_timer_get_time() - start;
+            transferTiming.record(transferUs);
             ++transferCount;
             if (result) {
                 deactivate();
@@ -798,32 +804,51 @@ void DeviceManager::run() {
                 );
             }
         }
-        if (millis() - previousLog >= 10000 && active >= 0 && mode != Internal) {
+        if (millis() - previousLog >= 2000 && active >= 0 && mode != Internal) {
+            const uint32_t elapsed = millis() - previousLog;
+            const uint32_t externalFps = transferTiming.fpsX10(elapsed);
             KMTX_LOCK(frameMutex);
             const auto captured = captureCount, copiedUs = captureUs, unchanged = unchangedCaptures;
+            const auto copying = captureTiming;
+            captureTiming = FrameMetrics{};
             KMTX_UNLOCK(frameMutex);
+            // Keep each record below the SDK's 256-byte formatting buffer.
             lilka::serial.log(
-                "devices: captures=%u transfers=%u fps-x1000=%u capture=%uus transfer=%uus internal-free=%u largest=%u "
-                "min=%u "
-                "psram-free=%u stack=%u spi-hz=%u unchanged=%u full=%u bands=%u pixels=%u",
+                "perf-ext: window-ms=%u external-fps=%u.%u spi-hz=%u "
+                "capture-avg/max-us=%u/%u transfer-avg/max-us=%u/%u",
+                elapsed,
+                externalFps / 10,
+                externalFps % 10,
+                spiHz,
+                copying.averageUs(),
+                copying.maxUs,
+                transferTiming.averageUs(),
+                transferTiming.maxUs
+            );
+            lilka::serial.log(
+                "devices: captures=%u transfers=%u fps-x1000=%u capture=%uus transfer=%uus "
+                "unchanged=%u full=%u bands=%u pixels=%u",
                 captured,
                 transferCount,
-                static_cast<uint32_t>((uint64_t(transferCount - loggedTransfers) * 1000000) / (millis() - previousLog)),
+                static_cast<uint32_t>((uint64_t(transferCount - loggedTransfers) * 1000000) / elapsed),
                 copiedUs,
                 transferUs,
-                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-                heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-                uxTaskGetStackHighWaterMark(nullptr),
-                spiHz,
                 unchanged,
                 fullTransfers,
                 rowTransfers,
                 transferPixels
             );
+            lilka::serial.log(
+                "devices-memory: internal-free=%u largest=%u min=%u psram-free=%u stack=%u",
+                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                uxTaskGetStackHighWaterMark(nullptr)
+            );
             loggedTransfers = transferCount;
             previousLog = millis();
+            transferTiming = FrameMetrics{};
         }
         KMTX_UNLOCK(mutex);
         vTaskDelay(pdMS_TO_TICKS(routed ? 2 : 100));
