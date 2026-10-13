@@ -109,7 +109,8 @@ Measure capture/transfer time, effective FPS, frame drops, input latency, free
 internal/PSRAM heap, largest free blocks, minimum heap and worker stack watermark.
 20 MHz has about 54 ms raw wire time per 280x240 frame; remove the PoC's extra
 100 ms post-transfer delay. Faster SPI only after bench qualification. Dirty
-regions are deferred until complete-frame correctness is established.
+row updates were added after device-confirmed complete-frame presentation; see
+the performance correction below.
 
 Verify baseline versus driver-disabled, External and Both: launcher/menu
 transitions, overlays, cropped/fullscreen/interlaced applications, emulators,
@@ -285,3 +286,59 @@ unbounded transfer-completion wait, and no additional buffer/task is allocated.
 The host mock now rejects unsupported start waits: it reproduced the original
 activation failure before the source fix and passes the fixed production path.
 ABI/SD driver unchanged; firmware-only rebuild. Hardware retry remains pending.
+
+
+External presentation performance correction
+-------------------------------------------
+
+Anton measured about 10.9 FPS with 15-16 ms capture and 65 ms transfer and
+reported general slowdown and static-menu flicker. The worker previously ran
+at idle priority and polling DMA completion occupied a CPU throughout each
+transfer. Identical menu redraws unnecessarily sent whole frames.
+
+The worker now uses normal task priority and ESP-IDF queued DMA with blocking
+completion (100 ms submission/completion waits). Queue depth remains one, with
+one persistent transaction and 4096-byte staging buffer. Timeout or unexpected
+completion still quarantines the bus/DMA/pins until reboot; no in-flight buffer
+is reused or freed.
+
+Capture compares composed scanlines against the single retained PSRAM frame,
+uses full-width canvas rows directly, and copies only changed rows. A 640-byte
+stack scratch row handles clipped/overlapping layers and feedback; 40 bytes of
+dirty bits accumulate across captures until presentation. No second frame or
+per-frame heap allocation is added. Unchanged captures queue no transfer.
+Overlay visibility uses one capture timestamp for all rows.
+
+ABI 1 has an optional size-gated ``present_rows`` descriptor tail. Legacy short
+descriptors still register and fall back to full-frame presentation without
+reading the tail. ILI9341 1.1.0 supports contiguous changed-row windows, with
+full-frame fallback above eight bands or at least 75 percent changed rows.
+The driver retains complete clearing after geometry/rotation changes and
+rejects out-of-range row windows. UUIDs and stored settings are unchanged.
+New descriptors require the updated firmware; install firmware first.
+
+Diagnostics append ``spi-hz``, ``unchanged``, ``full``, ``bands`` and cumulative
+``pixels``. Idle FPS can now be zero by design. Compare interval counter deltas
+and transfer/capture times during animation, not idle FPS. At the unchanged
+20 MHz default a full 280x240 frame still needs about 54 ms of raw wire time;
+this cannot equal the internal display's full-screen animation rate. The
+existing 40 MHz setting remains experimental, not automatically selected.
+
+Rebuild/flash Keira and rebuild the SD driver with ``--drivers`` on
+``feature/sd-device-drivers``. Replace ``drivers/ili9341/driver.so`` and its
+manifest on the SD card with the freshly generated package, then restart.
+An old SD driver benefits from blocking DMA and unchanged-frame suppression,
+but does not support partial transfers.
+
+Source validation: ASan/UBSan production manager/driver tests cover unchanged
+traffic, one-row/banded/full fallback, accumulated dirty rows, overlay removal,
+negative clipping, truly short ABI descriptors, invalid row windows, queue
+submission errors, timeout/wrong-completion quarantine, NVS rollback and 20
+activation cycles. GPIO ownership and both-locale normal/ASan/UBSan compositor
+overlay regression checks pass. The freestanding Xtensa driver builds and
+passes production ELF preflight; firmware source checks use installed target
+headers. Changed-source clang-format 20.1.8, cppcheck 2.13 and localization gates
+pass. Repository-wide make gates still fail on unchanged statusbar formatting
+and existing host-fixture ODR conflicts (Acquire/FMEntry). No full firmware
+link or hardware timing/flicker/stack/audio/SD soak is claimed. Physical confirmation remains a follow-up after installing both
+components.

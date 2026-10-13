@@ -77,14 +77,18 @@ public:
  String getString(const char*k,const char*d){return nvm.count(k)?String((const char*)nvm[k].data()):String(d);}
  size_t putString(const char*k,const char*v){return putBytes(k,v,std::strlen(v)+1);}
 };
-class Service{public:Service(const char*){}virtual~Service(){}virtual void run(){}void setktStackSize(unsigned){}};
+enum {KT_PRIO_DEFAULT=1};
+class Service{public:void setktPriority(unsigned p){assert(p==KT_PRIO_DEFAULT);}Service(const char*){}virtual~Service(){}virtual void run(){}void setktStackSize(unsigned){}};
 namespace lilka {
 struct Serial{template<class...T>void log(const char*,T...){}template<class...T>void err(const char*,T...){}};
 inline Serial serial;
 struct Display{int w=280,h=240;int width(){return w;}int height(){return h;}};
 inline Display display;
 class Canvas{std::vector<uint16_t>data;int px,py,w,h;public:Canvas(int x,int y,int width,int height):data(width*height),px(x),py(y),w(width),h(height){}int width(){return w;}int height(){return h;}int x(){return px;}int y(){return py;}uint16_t*getFramebuffer(){return data.data();}};
-struct VolumeOverlaySnapshot{bool valid=false;};
+struct VolumeOverlaySnapshot{bool valid=false;bool visible(uint32_t)const{return valid;}};
+struct VolumeOverlayGeometry{int x,y,width,height;};
+inline VolumeOverlayGeometry volumeOverlayGeometry(int,int){return {100,100,40,20};}
+struct VolumeOverlayRow{uint16_t*pixels;int x,y,width;void fillRect(int l,int t,int w,int h,uint16_t c){if(y<t||y>=t+h)return;for(int i=std::max(x,l);i<std::min(x+width,l+w);++i)pixels[i-x]=c;}};
 template<class T>void drawVolumeOverlay(T&t,const VolumeOverlaySnapshot&s,int,int,uint32_t){if(s.valid)t.fillRect(100,100,40,20,0xffff);}
 }
 using gpio_num_t=int;
@@ -105,8 +109,9 @@ inline int spi_bus_initialize(int host,spi_bus_config_t*b,int){assert(host==2);a
 inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){if(deviceError)return deviceError;*p=(void*)1;return 0;}
 inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
-inline int spi_device_polling_start(void*,spi_transaction_t*t,unsigned wait){if(wait!=portMAX_DELAY)return ESP_ERR_INVALID_ARG;assert(!inFlight);inFlight=t;++starts;return 0;}
-inline int spi_device_polling_end(void*,unsigned){if(failTransfer)return -1;inFlight=nullptr;return 0;}
+inline int submitError=0;inline bool wrongCompletion=false;
+inline int spi_device_queue_trans(void*,spi_transaction_t*t,unsigned wait){assert(wait==100);if(submitError)return submitError;assert(!inFlight);inFlight=t;++starts;return 0;}
+inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
 inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
 inline int gpio_reset_pin(int){++resetCount;return 0;}
 struct System{};inline System ksystem;
@@ -168,6 +173,52 @@ int main(int argc,char**argv){
  assert(m.capture(nullptr,nullptr,none,true));assert(m.frame[40*280+20]==0);
  assert(m.capture(nullptr,&small,none,false));
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferCount==1&&!m.pending);
+ // Static captures queue no traffic; one changed scanline sends exactly one row.
+ const auto baselineTransfers=m.transferCount;
+ assert(m.capture(nullptr,&small,none,false)&&!m.pending);
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferCount==baselineTransfers);
+ small.getFramebuffer()[0]=0xabcd;
+ assert(m.capture(nullptr,&small,none,false)&&m.pending);
+ const auto pixelsBefore=m.transferPixels;
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==1&&m.frame[40*280+20]==0xabcd);
+ // Dirty bits accumulate until presented even if a change is reverted.
+ small.getFramebuffer()[40]=0xabcd;assert(m.capture(nullptr,&small,none,false));
+ small.getFramebuffer()[40]=0x5678;assert(m.capture(nullptr,&small,none,false));
+ assert(m.dirtyRows[41/32]&(uint32_t(1)<<(41%32)));
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ lilka::VolumeOverlaySnapshot shown;shown.valid=true;
+ assert(m.capture(nullptr,&small,shown,false)&&m.frame[100*280+100]==0xffff);
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ assert(m.capture(nullptr,&small,none,false)&&m.frame[100*280+100]==0);
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ // Clip a negative-position app while preserving the uncovered panel.
+ lilka::Canvas clipped(-10,-5,20,10);
+ std::fill(clipped.getFramebuffer(),clipped.getFramebuffer()+200,0x9876);
+ std::fill(panel.getFramebuffer(),panel.getFramebuffer()+280*24,0x3333);
+ assert(m.capture(&panel,&clipped,none,false));assert(m.frame[0]==0x9876&&m.frame[10]==0x3333);
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ // Fragmented/high-coverage changes use one full transfer rather than many windows.
+ assert(m.capture(&panel,&old,none,false));
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ for(int y=0;y<18;y+=2)old.getFramebuffer()[y*280]^=1;
+ assert(m.capture(&panel,&old,none,false));const auto fragmented=m.fullTransfers;
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.fullTransfers==fragmented+1);
+ std::fill(old.getFramebuffer(),old.getFramebuffer()+280*216,0x7777);
+ assert(m.capture(&panel,&old,none,false));const auto covered=m.fullTransfers;
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.fullTransfers==covered+1);
+ // ASan checks a truly short legacy descriptor: never access its optional tail.
+ const auto*current=m.slots[0].descriptor;
+ auto*legacy=static_cast<kd_device*>(std::malloc(offsetof(kd_device,present_rows)));
+ std::memcpy(legacy,current,offsetof(kd_device,present_rows));legacy->size=offsetof(kd_device,present_rows);
+ m.slots[0].descriptor=nullptr;assert(!DeviceManager::registerDevice(&m.slots[0],legacy));
+ clipped.getFramebuffer()[110]=0x1111;assert(m.capture(&panel,&clipped,none,false));
+ const auto legacyPixels=m.transferPixels;
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferPixels-legacyPixels==280*240);
+ m.slots[0].descriptor=current;std::free(legacy);
+ const auto previousStarts=starts;
+ assert(current->present_rows(&m.slots[0].host,m.slots[0].state,m.frame,280,240,240,1));
+ assert(current->present_rows(&m.slots[0].host,m.slots[0].state,m.frame,280,240,239,2));assert(starts==previousStarts);
  assert(m.setDisplayMode(DeviceManager::External));assert(!m.internalOutput());
  failNvs=true;assert(!m.setDisplayMode(DeviceManager::Internal));assert(m.displayMode()==DeviceManager::External);failNvs=false;
  assert(m.setDisplayMode(DeviceManager::Internal));assert(!m.frame&&m.internalOutput());
@@ -194,17 +245,28 @@ int main(int argc,char**argv){
  DeviceManager m;registered(m,0);m.workerReady=false;
  assert(!m.setEnabled(0,true)&&m.internalOutput()&&!m.externalOutput());m.workerReady=true;
  assert(m.setEnabled(0,true));assert(m.setDisplayMode(DeviceManager::Both));
+ const uint8_t rejected=0x2c;submitError=ESP_ERR_INVALID_ARG;
+ assert(DeviceManager::spiWrite(&m.slots[0],0,&rejected,1));assert(!m.spiFault&&!inFlight);
+ assert(strstr(m.slots[0].status,"SPI transfer submit: ESP_ERR_INVALID_ARG"));submitError=0;
  const unsigned claims=allocations.size();failTransfer=true;
  const uint8_t command=0x2c;assert(DeviceManager::spiWrite(&m.slots[0],0,&command,1));
  assert(m.spiFault&&inFlight==&m.transaction);
  m.deactivate();assert(m.internalOutput()&&!m.externalOutput()&&busBusy);
  assert(m.extensionPinOwned(12));assert(allocations.size()==1&&allocations.count(m.dma)); // Quarantined DMA is not freed in flight.
  assert(!m.setEnabled(0,true));assert(allocations.size()==1);
- failTransfer=false;assert(!spi_device_polling_end(m.spi,100)); // Simulate reboot/settlement only in fixture.
+ failTransfer=false;spi_transaction_t* settled=nullptr;assert(!spi_device_get_trans_result(m.spi,&settled,100)); // Simulate reboot/settlement only in fixture.
  m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);assert(allocations.empty()&&!busBusy);
  }
  assert(allocations.empty());
- puts("PASS: production SD driver/manager, NVS identity, bounded frames, stale-area clearing, rollback, 20 toggles and ELF bounds");
+ {
+ DeviceManager m;registered(m,0);assert(m.setEnabled(0,true));
+ wrongCompletion=true;const uint8_t command=0x2c;
+ assert(DeviceManager::spiWrite(&m.slots[0],0,&command,1));assert(m.spiFault);
+ m.deactivate();assert(busBusy&&allocations.count(m.dma)&&m.extensionPinOwned(12));
+ wrongCompletion=false;m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);
+ }
+ assert(allocations.empty());
+ puts("PASS: queued DMA/errors/quarantine, unchanged/row/full frames, legacy ABI, clipping/overlays, NVS, rollback, 20 toggles and ELF bounds");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='keira-device-host-') as tmp:

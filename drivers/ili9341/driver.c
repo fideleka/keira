@@ -100,12 +100,17 @@ static uint32_t interval(const void* api, void* memory) {
     const kd_host* host = api;
     return intervals[host->setting(host->context, 7)];
 }
-static int present(const void* api, void* memory, const uint16_t* pixels, uint16_t width, uint16_t height) {
+static int present_rows(
+    const void* api, void* memory, const uint16_t* pixels, uint16_t width, uint16_t height, uint16_t first_row,
+    uint16_t row_count
+) {
     const kd_host* host = api;
     State* state = memory;
     const uint8_t rotation = (width > height ? 1 : 0) + host->setting(host->context, 6) * 2;
     const unsigned panel_width = rotation & 1 ? 320 : 240, panel_height = rotation & 1 ? 240 : 320;
-    if (!state->opened || !pixels || !width || !height || width > panel_width || height > panel_height) return -1;
+    if (!state->opened || !pixels || !width || !height || width > panel_width || height > panel_height ||
+        first_row >= height || !row_count || row_count > height - first_row)
+        return -1;
     if (state->width != width || state->height != height || state->rotation != rotation) {
         static const uint8_t madctl[] = {0x48, 0x28, 0x88, 0xe8};
         if (command(host, 0x36, madctl + rotation, 1) || window(host, 0, 0, panel_width, panel_height)) return -1;
@@ -119,8 +124,11 @@ static int present(const void* api, void* memory, const uint16_t* pixels, uint16
         state->height = height;
         state->rotation = rotation;
     }
-    if (window(host, (panel_width - width) / 2, (panel_height - height) / 2, width, height)) return -1;
-    return host->spi_pixels(host->context, pixels, (uint32_t)width * height);
+    if (window(host, (panel_width - width) / 2, (panel_height - height) / 2 + first_row, width, row_count)) return -1;
+    return host->spi_pixels(host->context, pixels + (uint32_t)first_row * width, (uint32_t)width * row_count);
+}
+static int present(const void* api, void* memory, const uint16_t* pixels, uint16_t width, uint16_t height) {
+    return present_rows(api, memory, pixels, width, height, 0, height);
 }
 static const kd_device descriptor = {
     sizeof(kd_device),
@@ -129,7 +137,7 @@ static const kd_device descriptor = {
     "cfa4bc25-c2d6-4a18-ade9-16506b19acf1",
     "674db8e0-cd55-4bfb-90b0-1e521e97c1cd",
     "ILI9341 display",
-    "1.0.0",
+    "1.1.0",
     1,
     sizeof(settings) / sizeof(settings[0]),
     settings,
@@ -138,7 +146,8 @@ static const kd_device descriptor = {
     interval,
     enable,
     disable,
-    present
+    present,
+    present_rows
 };
 int main(int argc, char** argv) {
     if (argc != 1 || !argv || !argv[0]) return -1;

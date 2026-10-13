@@ -34,6 +34,11 @@ typedef struct {
     int32_t (*enable)(const void* host, void* state);
     void (*disable)(const void* host, void* state);
     int32_t (*present)(const void* host, void* state, const uint16_t* pixels, uint16_t width, uint16_t height);
+    // Optional ABI-1 tail. Older descriptors end before this member and remain valid.
+    int32_t (*present_rows)(
+        const void* host, void* state, const uint16_t* pixels, uint16_t width, uint16_t height, uint16_t first_row,
+        uint16_t row_count
+    );
 } kd_device;
 
 typedef struct {

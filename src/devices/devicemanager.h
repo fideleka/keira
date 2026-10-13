@@ -73,7 +73,10 @@ private:
     uint16_t* frame = nullptr;
     size_t frameCapacity = 0;
     uint16_t width = 0, height = 0;
-    bool pending = false, bootSkipped = false;
+    bool pending = false, bootSkipped = false, frameValid = false;
+    uint32_t dirtyRows[10] = {};
+    uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0;
+    int presentPending(Slot& slot);
     uint32_t captureCount = 0, transferCount = 0, captureUs = 0, transferUs = 0;
     spi_device_handle_t spi = nullptr;
     uint8_t* dma = nullptr;
