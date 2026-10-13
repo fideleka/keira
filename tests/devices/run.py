@@ -105,7 +105,7 @@ inline int spi_bus_initialize(int host,spi_bus_config_t*b,int){assert(host==2);a
 inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){if(deviceError)return deviceError;*p=(void*)1;return 0;}
 inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
-inline int spi_device_polling_start(void*,spi_transaction_t*t,unsigned){assert(!inFlight);inFlight=t;++starts;return 0;}
+inline int spi_device_polling_start(void*,spi_transaction_t*t,unsigned wait){if(wait!=portMAX_DELAY)return ESP_ERR_INVALID_ARG;assert(!inFlight);inFlight=t;++starts;return 0;}
 inline int spi_device_polling_end(void*,unsigned){if(failTransfer)return -1;inFlight=nullptr;return 0;}
 inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
 inline int gpio_reset_pin(int){++resetCount;return 0;}

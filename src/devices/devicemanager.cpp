@@ -788,7 +788,10 @@ int DeviceManager::transmit(uint32_t bits) {
     transaction = {};
     transaction.length = bits;
     transaction.tx_buffer = dma;
-    const esp_err_t startResult = spi_device_polling_start(spi, &transaction, pdMS_TO_TICKS(100));
+    // IDF 4.4 polling_start accepts only portMAX_DELAY. This host is exclusive,
+    // with one synchronous owner and no queued transactions; completion below
+    // still has the bounded hardware timeout and quarantines an unfinished DMA.
+    const esp_err_t startResult = spi_device_polling_start(spi, &transaction, portMAX_DELAY);
     if (startResult != ESP_OK) return fail(*spiOwner, "SPI transfer start", startResult);
     const esp_err_t endResult = spi_device_polling_end(spi, pdMS_TO_TICKS(100));
     if (endResult != ESP_OK) {
