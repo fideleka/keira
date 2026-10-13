@@ -50,6 +50,7 @@ private:
 
     // Basic pin operations
     void readPinData();
+    bool pinReserved(uint8_t pinIndex) const;
     bool isValidPin(uint8_t pinIndex) const {
         return pinIndex < PIN_COUNT;
     }

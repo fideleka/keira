@@ -1,12 +1,13 @@
 #include "gpiomanager.h"
 #include "apps/icons/input.h"
 #include "apps/icons/output.h"
+#include "devices/devicemanager.h"
 
 GPIOManagerApp::GPIOManagerApp() : App("GPIOManager") {
     menu.setTitle("GPIO");
     // Set default pin mode
     for (int i = 0; i < PIN_COUNT; i++) {
-        pinMode(pinNo[i], pinM[i]);
+        if (!pinReserved(i)) pinMode(pinNo[i], pinM[i]);
     }
     // Change pin mode (cycle through INPUT/OUTPUT/PWM)
     menu.addActivationButton(lilka::Button::D);
@@ -21,8 +22,12 @@ GPIOManagerApp::GPIOManagerApp() : App("GPIOManager") {
     //readSpeedCompare();
 }
 
+bool GPIOManagerApp::pinReserved(uint8_t pinIndex) const {
+    return isValidPin(pinIndex) && ksystem.devices && ksystem.devices->extensionPinOwned(pinNo[pinIndex]);
+}
+
 void GPIOManagerApp::updatePWM(uint8_t pinIndex) {
-    if (pinM[pinIndex] != PIN_MODE_PWM) return;
+    if (!isValidPin(pinIndex) || pinReserved(pinIndex) || pinM[pinIndex] != PIN_MODE_PWM) return;
 
     // Configure timer and channel for this pin
     uint32_t freq = ledcSetup(ledcConfigs[pinIndex].channel, pwmFrequency[pinIndex], LEDC_TIMER_RESOLUTION);
@@ -44,7 +49,7 @@ void GPIOManagerApp::updatePWM(uint8_t pinIndex) {
 }
 
 void GPIOManagerApp::startPWM(uint8_t pinIndex, uint8_t dutyCycle) {
-    if (pinIndex >= PIN_COUNT) return;
+    if (pinIndex >= PIN_COUNT || pinReserved(pinIndex)) return;
     if (lilka::brightness.isPWMChannelReserved(ledcConfigs[pinIndex].channel)) {
         lilka::serial.err("PWM timer reserved for backlight");
         return;
@@ -63,7 +68,7 @@ void GPIOManagerApp::startPWM(uint8_t pinIndex, uint8_t dutyCycle) {
 }
 
 void GPIOManagerApp::stopPWM(uint8_t pinIndex) {
-    if (pinIndex >= PIN_COUNT) return;
+    if (pinIndex >= PIN_COUNT || pinReserved(pinIndex)) return;
 
     ledcDetachPin(pinNo[pinIndex]);
     digitalWrite(pinNo[pinIndex], LOW);
@@ -81,7 +86,7 @@ void GPIOManagerApp::readPinData() {
     // lilka::serial.log("Pin data : %s %s", getStrBits(gpioValue).c_str(), getStrBits(gpio1Value).c_str());
 
     for (int i = 0; i < PIN_COUNT; i++) {
-        if (pinM[i] == INPUT) {
+        if (!pinReserved(i) && pinM[i] == INPUT) {
             // Only read input pins from GPIO registers
             if (pinNo[i] < 32) {
                 pinData[i] = GET_BIT(gpioValue, pinNo[i]);
@@ -104,6 +109,15 @@ void GPIOManagerApp::run() {
             readPinData();
 
             for (int i = 0; i < PIN_COUNT; i++) {
+                if (pinReserved(i)) {
+                    menu.addItem(
+                        String(pinNo[i]) + " [" + K_S_GPIO_DRIVER + "]",
+                        &output_img,
+                        lilka::colors::White,
+                        K_S_GPIO_RESERVED
+                    );
+                    continue;
+                }
                 String modeStr;
                 String valueStr;
 
@@ -145,6 +159,12 @@ void GPIOManagerApp::run() {
         if (curPos == PIN_COUNT) break;
 
         lilka::Button button = menu.getButton();
+        if (button == K_BTN_BACK) return;
+        if (curPos < 0 || curPos >= PIN_COUNT) return;
+        if (pinReserved(curPos)) {
+            alert(K_S_GPIO_DRIVER, K_S_GPIO_DRIVER_READ_ONLY);
+            continue;
+        }
         if (button == lilka::Button::A) {
             switch (pinM[curPos]) {
                 case INPUT:
