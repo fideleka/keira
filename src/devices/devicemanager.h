@@ -47,6 +47,10 @@ public:
     }
     // Caller holds compositor layer locks. Never blocks on driver transfers.
     bool capture(lilka::Canvas* panel, lilka::Canvas* app, const lilka::VolumeOverlaySnapshot& overlay, bool sleeping);
+    // Both mode mirrors at most 15 FPS; check before taking any canvas locks.
+    bool captureDue() const {
+        return displayMode() != Both || millis() - lastCaptureMs.load() >= 67;
+    }
 
 private:
     struct Slot {
@@ -69,6 +73,7 @@ private:
     std::atomic<bool> workerReady{false};
     std::atomic<uint32_t> ownedPins{0};
     std::atomic<uint32_t> generation{1};
+    std::atomic<uint32_t> lastCaptureMs{0};
     int active = -1;
     uint16_t* frame = nullptr;
     size_t frameCapacity = 0;

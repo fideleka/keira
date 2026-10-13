@@ -167,7 +167,9 @@ int main(int argc,char**argv){
  std::fill(old.getFramebuffer(),old.getFramebuffer()+280*216,0x1234);
  std::fill(small.getFramebuffer(),small.getFramebuffer()+40*30,0x5678);
  lilka::VolumeOverlaySnapshot none;
- assert(m.capture(&panel,&old,none,false));assert(m.frame[100*280+100]==0x1234);
+ assert(m.captureDue());assert(m.capture(&panel,&old,none,false));assert(m.frame[100*280+100]==0x1234);
+ assert(!m.captureDue());fakeTime+=66;assert(!m.captureDue());++fakeTime;assert(m.captureDue());
+ assert(m.setDisplayMode(DeviceManager::External));assert(m.captureDue());assert(m.setDisplayMode(DeviceManager::Both));
  assert(m.capture(&panel,&small,none,false));assert(m.frame[100*280+100]==0);assert(m.frame[40*280+20]==0x5678);
  assert(xSemaphoreTake(m.mutex,0));assert(!m.capture(&panel,&old,none,false));xSemaphoreGive(m.mutex);
  assert(m.capture(nullptr,nullptr,none,true));assert(m.frame[40*280+20]==0);

@@ -160,9 +160,10 @@ struct { bool sleeping=false; bool serviceIdle(bool){return false;} bool isSleep
 struct {void log(const char*){}} serial;
 }
 struct DeviceManager {
- bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
+ bool external=false,internal=true,busy=false,due=true;unsigned epoch=1,captures=0;
  std::vector<uint16_t> pixels;
  bool internalOutput(){return internal;}bool externalOutput(){return external;}unsigned invalidation(){return epoch;}
+ bool captureDue(){return due;}
  bool capture(lilka::Canvas* panel,lilka::Canvas* app,const lilka::VolumeOverlaySnapshot& overlay,bool sleeping){
   if(busy)return false;
   ++captures;
@@ -185,6 +186,9 @@ struct App {
 };
 struct ThreadManager {int lock=0;void threadsClean(){}};
 struct Stop {};
+using TickType_t=uint32_t;
+uint32_t xTaskGetTickCount(){return now;}
+void vTaskDelay(int){assert(lockDepth==0);throw Stop();}
 void vTaskDelayUntil(uint32_t*,int){assert(lockDepth==0);throw Stop();}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
@@ -195,7 +199,7 @@ struct AppManager:ThreadManager {
  int externalOverlayLevel=-1;
  struct {uint32_t endTime=0;} toast;
  void threadsRun(){}void renderToast(lilka::Canvas*){assert(false);}
- void run();void renderToCanvas(lilka::Canvas*);
+ void waitForFrame();void run();void renderToCanvas(lilka::Canvas*);
  void tick(){try{run();}catch(Stop&){}assert(lockDepth==0);}
 };
 '''
@@ -400,6 +404,7 @@ int main(){
  device.external=true;device.internal=false;++device.epoch;pixelWrites=0;routing.tick();
  assert(device.captures==1&&device.pixels[100*280+100]==0x2222);
  pixelWrites=0;const auto captures=device.captures;routing.tick();assert(pixelWrites==0&&device.captures==captures);
+ device.due=false;foreground.redraw=true;const auto paced=device.captures;routing.tick();assert(device.captures==paced&&routing.externalDirty);device.due=true;
  foreground.redraw=true;device.busy=true;routing.tick();assert(routing.externalDirty);
  routingApp.fillScreen(0x3333);device.busy=false;routing.tick();assert(!routing.externalDirty&&device.pixels[100*280+100]==0x3333);
  feedback.level=42;feedback.valid=true;feedback.adjustedAt=now;routing.tick();assert(pixelWrites==0);
@@ -442,7 +447,7 @@ for signature in ("void Display::presentCanvas(", "void Display::drawCanvas(", "
                   "bool Display::systemOverlayNeedsTransfer("):
     code += "\n" + function(sdk / "display.cpp", signature)
 code = "namespace lilka {\n" + code + "\n}\n"
-for signature in ("void AppManager::run()", "void AppManager::renderToCanvas("):
+for signature in ("void AppManager::waitForFrame()", "void AppManager::run()", "void AppManager::renderToCanvas("):
     code += "\n" + function(ROOT / "src/keira/appmanager.cpp", signature)
 # Verify the custom emulator paths submit canvases rather than bypass presentation.
 assert "app->queueDraw();" in (ROOT / "src/apps/nes/driver.cpp").read_text()
