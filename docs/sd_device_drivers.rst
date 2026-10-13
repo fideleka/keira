@@ -40,9 +40,11 @@ First-iteration scope
    Do not execute every ``.so`` found on the card automatically.
 3. Support one selected audio output and one selected display output at a time.
    Built-in outputs remain selectable and are the default/fallback.
-4. Provide one external I2S audio reference driver and one SPI TFT reference
-   driver. Choose exact tested peripheral models before implementation; do not
-   advertise arbitrary amplifier or display compatibility.
+4. Start with the :doc:`ESP32 Bluetooth audio bridge PoC <bluetooth_audio_poc>`
+   as the external I2S audio reference device. External SPI display support is
+   a subsequent milestone, not a prerequisite for the audio PoC. Choose its
+   exact reference panel before implementation; do not advertise arbitrary
+   amplifier or display compatibility.
 5. Add device selectors and a compact driver status/error view to settings.
    Load configuration after SD initialization, before ordinary applications
    start. Missing SD or invalid configuration must not prevent normal startup.
@@ -122,6 +124,10 @@ Fallback, persistence and power
 
 Acceptance criteria
 -------------------
+
+The Bluetooth audio milestone uses the audio-related criteria below plus the
+PoC's hardware checks. External display criteria apply to the subsequent
+display milestone, not completion of the initial audio PoC.
 
 * Reference drivers load from SD at startup, register once, and appear in settings.
 * Switching built-in/external audio works for every migrated in-tree PCM producer;
