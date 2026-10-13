@@ -33,6 +33,7 @@
 //#include <string.h>
 #include <lilka/display.h>
 #include <lilka/ui.h>
+#include "services/displaymirror/displaymirror.h"
 
 // Utils:
 #include "keira/utils/string.h"
@@ -196,6 +197,10 @@ void KeiraSystem::launchServices() {
     services.spawn(new FTPService());
     services.spawn(new WebService());
     services.spawn(new MDNSService());
+
+#if defined(KEIRA_ILI9341_MIRROR_POC) && KEIRA_ILI9341_MIRROR_POC
+    services.spawn(new DisplayMirrorService());
+#endif
 
     // GUIDELINE: To add a new service register it here
 
