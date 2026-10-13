@@ -689,3 +689,8 @@
 #define K_S_DISPLAY_BOTH          "Обидва"
 #define K_S_DISPLAY_FALLBACK      "Внутрішній: резерв"
 #define K_S_DISPLAY_NO_ACTIVE     "Немає активного зовнішнього дисплея"
+
+// Driver-owned GPIOs
+#define K_S_GPIO_DRIVER           "Драйвер"
+#define K_S_GPIO_RESERVED         "Зайнято"
+#define K_S_GPIO_DRIVER_READ_ONLY "Вимкніть пристрій перед зміною його пінів."

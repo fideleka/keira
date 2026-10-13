@@ -23,6 +23,7 @@ public:
     ~DeviceManager();
     void discover(bool skip);
     bool hasRegisteredDriver() const;
+    bool extensionPinOwned(int pin) const;
     unsigned count() const {
         return deviceCount;
     }
@@ -66,6 +67,7 @@ private:
     std::atomic<bool> internal{true};
     std::atomic<bool> routed{false};
     std::atomic<bool> workerReady{false};
+    std::atomic<uint32_t> ownedPins{0};
     std::atomic<uint32_t> generation{1};
     int active = -1;
     uint16_t* frame = nullptr;
@@ -79,6 +81,7 @@ private:
     bool spiFault = false;
     spi_transaction_t transaction = {};
     int transmit(uint32_t bits);
+    static int32_t fail(Slot& slot, const char* operation, int32_t error);
     int dcPin = -1, resetPin = -1, clkPin = -1, mosiPin = -1;
     void run() override;
     bool load(Slot& slot, const char* path);

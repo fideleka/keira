@@ -697,3 +697,8 @@
 #define K_S_DISPLAY_BOTH          "Both"
 #define K_S_DISPLAY_FALLBACK      "Internal fallback"
 #define K_S_DISPLAY_NO_ACTIVE     "No external display is active"
+
+// Driver-owned GPIOs
+#define K_S_GPIO_DRIVER           "Driver"
+#define K_S_GPIO_RESERVED         "Reserved"
+#define K_S_GPIO_DRIVER_READ_ONLY "Disable the owning device before changing its pins."

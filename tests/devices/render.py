@@ -27,6 +27,11 @@ blocks = [("Devices",list_block,"menu"), ("Device",page_block,"menu"),
           ("Device scrolled",page_block+"menu.setCursor(8);menu.update();", "menu"),
           ("Display",display_block+display_updates,"menu")]
 
+gpio_source = (root / "src/apps/gpiomanager/gpiomanager.cpp").read_text()
+gpio_block = construction(gpio_source, "            for (int i = 0; i < PIN_COUNT; i++)", "            menu.setCursor(lastPos)")
+blocks += [("GPIO protected", 'lilka::Menu menu("GPIO");'+gpio_block, "menu"),
+           ("GPIO free pins", 'lilka::Menu menu("GPIO");'+gpio_block+'menu.setCursor(5);menu.update();', "menu")]
+
 ui = (sdk / "lib/lilka/src/lilka/ui.h").read_text()
 menu = ui[ui.index("typedef void (*PMenuItemCallback)") : ui.index("/// Клас для відображення сповіщення.")]
 with tempfile.TemporaryDirectory(prefix="wifi-menu-render-") as directory:
@@ -51,6 +56,18 @@ with tempfile.TemporaryDirectory(prefix="wifi-menu-render-") as directory:
 #include "keira/localizations/lang_en.h"
 #define K_BTN_BACK lilka::Button::B
 #include "driver_api.h"
+#define PIN_COUNT 6
+#define INPUT 0
+#define OUTPUT 1
+#define HIGH 1
+#define PIN_INPUT INPUT
+#define PIN_OUTPUT OUTPUT
+#define PIN_MODE_PWM 5
+const menu_icon_t input_img={},output_img={};
+uint8_t pinNo[6]={12,13,14,21,47,48},pinM[6]={},pinData[6]={},pwmDutyCycle[6]={};
+unsigned pwmFrequency[6]={};
+bool pinReserved(unsigned i){return i<4;}
+
 struct DeviceManager {
  enum Mode {Internal,External,Both};
  struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=7;};
@@ -113,8 +130,8 @@ for line in output.splitlines():
     values = line.split("\t", 9)
     frames[-1].append((list(map(int, values[:9])), values[9]))
 svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="216" viewBox="0 0 1120 216">',
-    '<rect width="1120" height="216" fill="black"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="216" viewBox="0 0 1680 216">',
+    '<rect width="1680" height="216" fill="black"/>',
 ]
 for frame, draws in enumerate(frames):
     offset = frame * 280

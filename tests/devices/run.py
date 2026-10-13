@@ -29,10 +29,12 @@ mock = r'''
 #define SOC_IRAM_HIGH 0x403e0000
 inline std::map<void*,size_t> allocations;
 inline bool failFrame=false, failNvs=false, stopWorker=false, failTransfer=false, busBusy=false;
+inline bool failDma=false;
+inline int busError=0,deviceError=0;
 inline unsigned fakeTime=1000, resetCount=0, starts=0;
 inline const void* inFlight=nullptr;
 inline std::map<std::string,std::vector<uint8_t>> nvm;
-inline void* heap_caps_malloc(size_t n,int caps){if(failFrame && n>=134400)return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
+inline void* heap_caps_malloc(size_t n,int caps){if((failFrame && n>=134400)||(failDma&&n==4096))return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
 inline void* heap_caps_calloc(size_t n,size_t s,int caps){void*p=heap_caps_malloc(n*s,caps);if(p)std::memset(p,0,n*s);return p;}
 inline void heap_caps_free(void*p){if(!p)return;assert(allocations.erase(p));std::free(p);}
 inline void* heap_caps_realloc(void*p,size_t n,int caps){if(!p)return heap_caps_malloc(n,caps);assert(allocations.erase(p));p=std::realloc(p,n);if(p)allocations[p]=n;return p;}
@@ -88,14 +90,19 @@ template<class T>void drawVolumeOverlay(T&t,const VolumeOverlaySnapshot&s,int,in
 using gpio_num_t=int;
 #define GPIO_MODE_OUTPUT 1
 #define ESP_OK 0
+#define ESP_ERR_INVALID_ARG 0x102
+#define ESP_ERR_INVALID_STATE 0x103
+#define ESP_ERR_NO_MEM 0x101
+using esp_err_t=int;
+inline const char* esp_err_to_name(int error){return error==ESP_ERR_NO_MEM?"ESP_ERR_NO_MEM":error==ESP_ERR_INVALID_ARG?"ESP_ERR_INVALID_ARG":error==ESP_ERR_INVALID_STATE?"ESP_ERR_INVALID_STATE":"ESP_FAIL";}
 #define SPI2_HOST 2
 #define SPI_DMA_CH_AUTO 0
 using spi_device_handle_t=void*;
-struct spi_bus_config_t{int mosi_io_num,miso_io_num,sclk_io_num,quadwp_io_num,quadhd_io_num,max_transfer_sz;};
+struct spi_bus_config_t{int mosi_io_num,miso_io_num,sclk_io_num,quadwp_io_num,quadhd_io_num,data4_io_num,data5_io_num,data6_io_num,data7_io_num,max_transfer_sz;};
 struct spi_device_interface_config_t{int clock_speed_hz,spics_io_num,queue_size;};
 struct spi_transaction_t{unsigned length;const void*tx_buffer;};
-inline int spi_bus_initialize(int host,spi_bus_config_t*,int){assert(host==2);if(busBusy)return -1;busBusy=true;return 0;}
-inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){*p=(void*)1;return 0;}
+inline int spi_bus_initialize(int host,spi_bus_config_t*b,int){assert(host==2);assert(b->miso_io_num==-1&&b->quadwp_io_num==-1&&b->quadhd_io_num==-1&&b->data4_io_num==-1&&b->data5_io_num==-1&&b->data6_io_num==-1&&b->data7_io_num==-1);if(busError)return busError;if(busBusy)return -1;busBusy=true;return 0;}
+inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){if(deviceError)return deviceError;*p=(void*)1;return 0;}
 inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
 inline int spi_device_polling_start(void*,spi_transaction_t*t,unsigned){assert(!inFlight);inFlight=t;++starts;return 0;}
@@ -138,8 +145,17 @@ int main(int argc,char**argv){
   if(section.type==4){corrupt=elf;corrupt[section.offset+4]=0xff;assert(!validateDriverElf(corrupt.data(),corrupt.size()));}}
  {
  DeviceManager m;registered(m,0);
+ busError=ESP_ERR_INVALID_STATE;
+ assert(!m.setEnabled(0,true));assert(strstr(m.slots[0].status,"SPI bus init: ESP_ERR_INVALID_STATE"));assert(allocations.empty()&&!busBusy);
+ busError=0;deviceError=ESP_ERR_INVALID_ARG;
+ assert(!m.setEnabled(0,true));assert(strstr(m.slots[0].status,"SPI device setup: ESP_ERR_INVALID_ARG"));assert(allocations.empty()&&!busBusy);
+ deviceError=0;failDma=true;
+ assert(!m.setEnabled(0,true));assert(strstr(m.slots[0].status,"DMA buffer allocation: ESP_ERR_NO_MEM"));assert(allocations.empty()&&!busBusy);
+ failDma=false;
  assert(m.internalOutput()&&!m.externalOutput());assert(allocations.empty());
  assert(m.setEnabled(0,true));assert(m.slots[0].active&&m.internalOutput()&&!m.frame);
+ assert(m.extensionPinOwned(12)&&m.extensionPinOwned(13)&&m.extensionPinOwned(14)&&m.extensionPinOwned(21));
+ assert(!m.extensionPinOwned(47)&&!m.extensionPinOwned(48));
  assert(m.setDisplayMode(DeviceManager::Both));assert(m.externalOutput()&&m.internalOutput());
  assert(m.frame&&allocations[m.frame]==134400);
  lilka::Canvas panel(0,0,280,24),old(0,24,280,216),small(20,40,40,30);
@@ -155,7 +171,7 @@ int main(int argc,char**argv){
  assert(m.setDisplayMode(DeviceManager::External));assert(!m.internalOutput());
  failNvs=true;assert(!m.setDisplayMode(DeviceManager::Internal));assert(m.displayMode()==DeviceManager::External);failNvs=false;
  assert(m.setDisplayMode(DeviceManager::Internal));assert(!m.frame&&m.internalOutput());
- assert(m.setEnabled(0,false));assert(allocations.empty()&&!busBusy);assert(resetCount>=4);
+ assert(m.setEnabled(0,false));assert(allocations.empty()&&!busBusy);assert(resetCount>=4);assert(!m.extensionPinOwned(12));
  failFrame=true;assert(m.setDisplayMode(DeviceManager::Both));assert(!m.setEnabled(0,true));assert(m.internalOutput()&&!busBusy&&allocations.empty());failFrame=false;
  assert(m.setEnabled(0,true));const auto count=allocations.size();
  // Duplicate pins fail activation and restore the previous working setting.
@@ -182,7 +198,7 @@ int main(int argc,char**argv){
  const uint8_t command=0x2c;assert(DeviceManager::spiWrite(&m.slots[0],0,&command,1));
  assert(m.spiFault&&inFlight==&m.transaction);
  m.deactivate();assert(m.internalOutput()&&!m.externalOutput()&&busBusy);
- assert(allocations.size()==1&&allocations.count(m.dma)); // Quarantined DMA is not freed in flight.
+ assert(m.extensionPinOwned(12));assert(allocations.size()==1&&allocations.count(m.dma)); // Quarantined DMA is not freed in flight.
  assert(!m.setEnabled(0,true));assert(allocations.size()==1);
  failTransfer=false;assert(!spi_device_polling_end(m.spi,100)); // Simulate reboot/settlement only in fixture.
  m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);assert(allocations.empty()&&!busBusy);
@@ -195,7 +211,7 @@ with tempfile.TemporaryDirectory(prefix='keira-device-host-') as tmp:
     tmp = Path(tmp)
     (tmp / 'mock.h').write_text(mock)
     for name in ['keira/service.h','keira/ksystem.h','keira/utils/string.h','driver/spi_master.h',
-                 'driver/gpio.h','esp_heap_caps.h','esp_timer.h','soc/soc.h']:
+                 'driver/gpio.h','esp_err.h','esp_heap_caps.h','esp_timer.h','soc/soc.h']:
         p = tmp / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text('#pragma once\n#include "mock.h"\n')

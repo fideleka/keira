@@ -68,6 +68,12 @@ bool uuidValid(const char* uuid) {
     }
     return true;
 }
+uint32_t pinBit(int pin) {
+    const int pins[] = {12, 13, 14, 21, 47, 48};
+    for (unsigned i = 0; i < 6; ++i)
+        if (pins[i] == pin) return uint32_t(1) << i;
+    return 0;
+}
 bool pinAllowed(int pin) {
     return pin == 12 || pin == 13 || pin == 14 || pin == 21 || pin == 47 || pin == 48;
 }
@@ -385,6 +391,7 @@ bool DeviceManager::route() {
         }
     }
     if (external && !frame) {
+        strlcpy(slots[active].status, "PSRAM frame allocation failed", sizeof(slots[active].status));
         internal = true;
         routed = false;
         return false;
@@ -419,23 +426,35 @@ bool DeviceManager::activate(unsigned index) {
     if (!slot.descriptor || slot.readOnly || bootSkipped) return false;
     deactivate();
     slot.state = heap_caps_calloc(1, slot.descriptor->state_size ? slot.descriptor->state_size : 1, MALLOC_CAP_8BIT);
+    strlcpy(
+        slot.status,
+        slot.state ? "Driver enable callback failed" : "Driver state allocation failed",
+        sizeof(slot.status)
+    );
     if (!slot.state || slot.descriptor->enable(&slot.host, slot.state)) {
+        char error[80];
+        strlcpy(error, slot.status, sizeof(error));
         if (slot.state) slot.descriptor->disable(&slot.host, slot.state);
         spiClose(&slot);
         heap_caps_free(slot.state);
         slot.state = nullptr;
-        strlcpy(slot.status, "Activation failed: pins/SPI/memory", sizeof(slot.status));
+        strlcpy(slot.status, error, sizeof(slot.status));
         return false;
     }
     slot.active = true;
     active = index;
     if (!route()) {
+        char error[80];
+        strlcpy(error, slot.status, sizeof(error));
         deactivate();
-        strlcpy(slot.status, "PSRAM frame allocation failed", sizeof(slot.status));
+        strlcpy(slot.status, error, sizeof(slot.status));
         return false;
     }
     strlcpy(slot.status, "Active", sizeof(slot.status));
     return true;
+}
+bool DeviceManager::extensionPinOwned(int pin) const {
+    return (ownedPins.load() & pinBit(pin)) != 0;
 }
 bool DeviceManager::hasRegisteredDriver() const {
     for (unsigned i = 0; i < deviceCount; ++i)
@@ -504,7 +523,12 @@ bool DeviceManager::setEnabled(unsigned index, bool enabled) {
             NVS_UNLOCK;
         }
     }
-    if (!good && previous >= 0 && active != previous) activate(previous);
+    if (!good && previous >= 0 && active != previous) {
+        char error[80];
+        strlcpy(error, slot.status, sizeof(error));
+        activate(previous);
+        strlcpy(slot.status, error, sizeof(slot.status));
+    }
     ++generation;
     KMTX_UNLOCK(mutex);
     return good;
@@ -662,19 +686,29 @@ void DeviceManager::run() {
 int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t dc, int32_t reset, uint32_t hz) {
     auto& slot = *static_cast<Slot*>(context);
     auto& manager = *slot.owner;
-    if (!slot.state || manager.spiOwner || !pinAllowed(clk) || !pinAllowed(mosi) || !pinAllowed(dc) ||
-        !pinAllowed(reset) || clk == mosi || clk == dc || clk == reset || mosi == dc || mosi == reset || dc == reset ||
-        hz < 1000000 || hz > 40000000)
-        return -1;
+    if (!slot.state) return fail(slot, "SPI before activation", ESP_ERR_INVALID_STATE);
+    if (manager.spiOwner)
+        return fail(slot, manager.spiFault ? "SPI needs restart" : "SPI already owned", ESP_ERR_INVALID_STATE);
+    if (!pinAllowed(clk) || !pinAllowed(mosi) || !pinAllowed(dc) || !pinAllowed(reset) || clk == mosi || clk == dc ||
+        clk == reset || mosi == dc || mosi == reset || dc == reset)
+        return fail(slot, "Invalid/conflicting GPIO pins", ESP_ERR_INVALID_ARG);
+    if (hz < 1000000 || hz > 40000000) return fail(slot, "Invalid SPI speed", ESP_ERR_INVALID_ARG);
     spi_bus_config_t bus = {};
     bus.mosi_io_num = mosi;
     bus.miso_io_num = -1;
     bus.sclk_io_num = clk;
     bus.quadwp_io_num = -1;
     bus.quadhd_io_num = -1;
+    // ESP32-S3 has four additional octal data pins. Zero means GPIO0, not unused.
+    bus.data4_io_num = -1;
+    bus.data5_io_num = -1;
+    bus.data6_io_num = -1;
+    bus.data7_io_num = -1;
     bus.max_transfer_sz = 4096;
-    if (spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK) return -1;
+    const esp_err_t busResult = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
+    if (busResult != ESP_OK) return fail(slot, "SPI bus init", busResult);
     manager.spiOwner = &slot;
+    manager.ownedPins = pinBit(clk) | pinBit(mosi) | pinBit(dc) | pinBit(reset);
     manager.clkPin = clk;
     manager.mosiPin = mosi;
     manager.dcPin = dc;
@@ -684,18 +718,33 @@ int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t
     device.clock_speed_hz = hz;
     device.spics_io_num = -1;
     device.queue_size = 1;
-    if (!manager.dma || spi_bus_add_device(SPI2_HOST, &device, &manager.spi) != ESP_OK) {
+    if (!manager.dma) {
+        fail(slot, "DMA buffer allocation", ESP_ERR_NO_MEM);
         spiClose(context);
         return -1;
     }
-    gpio_set_direction(static_cast<gpio_num_t>(dc), GPIO_MODE_OUTPUT);
-    gpio_set_direction(static_cast<gpio_num_t>(reset), GPIO_MODE_OUTPUT);
+    const esp_err_t deviceResult = spi_bus_add_device(SPI2_HOST, &device, &manager.spi);
+    if (deviceResult != ESP_OK) {
+        fail(slot, "SPI device setup", deviceResult);
+        spiClose(context);
+        return -1;
+    }
+    const esp_err_t dcResult = gpio_set_direction(static_cast<gpio_num_t>(dc), GPIO_MODE_OUTPUT);
+    const esp_err_t resetResult = gpio_set_direction(static_cast<gpio_num_t>(reset), GPIO_MODE_OUTPUT);
+    if (dcResult != ESP_OK || resetResult != ESP_OK) {
+        fail(slot, "GPIO output setup", dcResult != ESP_OK ? dcResult : resetResult);
+        spiClose(context);
+        return -1;
+    }
     return 0;
 }
 int32_t DeviceManager::gpioWrite(void* context, int32_t pin, int32_t level) {
-    const auto& manager = *static_cast<Slot*>(context)->owner;
-    if (manager.spiOwner != context || (pin != manager.dcPin && pin != manager.resetPin)) return -1;
-    return gpio_set_level(static_cast<gpio_num_t>(pin), !!level) == ESP_OK ? 0 : -1;
+    auto& slot = *static_cast<Slot*>(context);
+    const auto& manager = *slot.owner;
+    if (manager.spiOwner != context || (pin != manager.dcPin && pin != manager.resetPin))
+        return fail(slot, "GPIO claim invalid", ESP_ERR_INVALID_STATE);
+    const esp_err_t result = gpio_set_level(static_cast<gpio_num_t>(pin), !!level);
+    return result == ESP_OK ? 0 : fail(slot, "GPIO write", result);
 }
 int32_t DeviceManager::spiWrite(void* context, int32_t data, const uint8_t* bytes, uint32_t size) {
     auto& manager = *static_cast<Slot*>(context)->owner;
@@ -731,6 +780,7 @@ void DeviceManager::spiClose(void* context) {
     manager.dma = nullptr;
     manager.spi = nullptr;
     manager.spiOwner = nullptr;
+    manager.ownedPins = 0;
     manager.clkPin = manager.mosiPin = manager.dcPin = manager.resetPin = -1;
 }
 
@@ -738,12 +788,21 @@ int DeviceManager::transmit(uint32_t bits) {
     transaction = {};
     transaction.length = bits;
     transaction.tx_buffer = dma;
-    if (spi_device_polling_start(spi, &transaction, pdMS_TO_TICKS(100)) != ESP_OK) return -1;
-    if (spi_device_polling_end(spi, pdMS_TO_TICKS(100)) != ESP_OK) {
+    const esp_err_t startResult = spi_device_polling_start(spi, &transaction, pdMS_TO_TICKS(100));
+    if (startResult != ESP_OK) return fail(*spiOwner, "SPI transfer start", startResult);
+    const esp_err_t endResult = spi_device_polling_end(spi, pdMS_TO_TICKS(100));
+    if (endResult != ESP_OK) {
         // Retain transaction/DMA/bus until reboot; never free an in-flight buffer.
         spiFault = true;
-        return -1;
+        return fail(*spiOwner, "SPI transfer finish", endResult);
     }
     return 0;
+}
+int32_t DeviceManager::fail(Slot& slot, const char* operation, int32_t error) {
+    const String message =
+        StringFormat("%s: %s (0x%x)", operation, esp_err_to_name(error), static_cast<unsigned>(error));
+    strlcpy(slot.status, message.c_str(), sizeof(slot.status));
+    lilka::serial.log("devices [%s]: %s", slot.name, slot.status);
+    return -1;
 }
 #endif

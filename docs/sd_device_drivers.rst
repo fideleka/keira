@@ -242,3 +242,32 @@ The standalone driver compiler uses --no-relax and -Bsymbolic: the installed
 Xtensa linker otherwise fails while merging literal/GOT relocation metadata.
 It emits no SDK/libc imports and records SHA256 hashes for both package files.
 Changing ABI layout/version requires rebuilding matching firmware and drivers.
+
+Activation diagnostics and GPIO ownership correction
+--------------------------------------------------
+
+After the first physical activation attempt Anton reported the generic
+"Activation failed: pins/SPI/memory" message. That message did not distinguish
+host failures. ESP32-S3's unused data4..data7 fields had incorrectly remained
+zero (GPIO0), while the host mock omitted these fields. They now explicitly use
+-1 along with MISO/WP/HD; the mock models and checks every unused line. This
+configuration correction is not yet proof of the reported hardware root cause.
+SPI bus/device setup, DMA allocation, GPIO and transfer errors now retain their
+exact ESP-IDF name/code through activation cleanup and appear in Devices status
+and serial logs. Native callback and state allocation failures remain distinct.
+
+GPIO Manager was not a passive readout: its constructor set all six expansion
+pins to INPUT, and IN/OUT labels came from its own cached mode table. Opening it
+could therefore disrupt an active display. Driver claims are now exposed through
+a small atomic pin mask. GPIO Manager skips claimed pins during initialization,
+marks them Driver/Reserved and blocks manual mode/value/PWM edits. A DMA timeout
+keeps those claims reserved until restart. Free pins retain their previous
+behavior. This does not intercept arbitrary legacy Lua/raw GPIO code.
+
+Failure-injection tests now verify exact bus/device/DMA errors, claim rollback,
+and protected GPIO initialization/PWM operations; sanitizer checks pass. Target
+C++11 syntax checks and localization/focused format gates pass. The driver ABI,
+settings schema and SD binary are unchanged: rebuild/flash Keira only for this
+fix. The actual SDK GPIO menu construction was host-rendered and inspected,
+including reserved pins and free-pin rows. Physical activation remains pending;
+if it still fails, the new exact status identifies the next diagnostic step.
