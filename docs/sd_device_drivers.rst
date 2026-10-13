@@ -1,153 +1,153 @@
-SD-loaded device drivers: first-iteration requirements
-=====================================================
+SD-loaded device drivers: display iteration
+=========================================
 
-Status: proposed implementation requirements, not an implemented feature.
-Target: Lilka v2 / ESP32-S3. Language: English.
+Target: Lilka v2 / ESP32-S3. Implementation branch: feature/sd-device-drivers.
+The working poc/ili9341-screen-mirror is retained as a hardware reference;
+Anton confirmed image, orientation and colors on 2026-10-13, with BLK floating.
+He also reported stale previous-menu content and slow refresh. Those are defects
+requiring verification, not an accepted limitation of the new implementation.
 
-Goal
-----
+Architecture and discovery
+--------------------------
 
-Allow separately compiled native drivers on the SD card to register external
-audio outputs and displays connected through the extension header. Keira loads
-configured drivers at startup and lets users select the output devices without
-rebuilding firmware for every supported peripheral.
+Keira scans /sd/drivers/<package>/manifest.json on startup after SD/VFS setup.
+A package contains manifest.json and driver.so. Bounded manifests identify ABI,
+driver UUID, device UUID, name and type. The first supported type is display;
+audio/Bluetooth remains a later milestone. Reuse the SDK ELF relocation loader,
+not a second loader. Compatible native modules execute a registration entry
+which calls the host registration callback with a versioned C descriptor,
+settings schema and lifecycle/presentation callbacks. Registration must not
+claim pins, start transfers or create tasks. Activation follows saved enabled
+state. Modules remain loaded while registered callbacks/settings are referenced.
 
-Existing foundations
+Drivers are trusted native code, not isolated plugins. Scan only the dedicated
+drivers directory; malformed/unsupported packages produce status, not normal
+boot failure. Hold Select at startup to skip execution of external modules.
+Missing card/packages preserve NVM preferences. Existing DynApp symbols and
+lifetime must remain unchanged. Driver entry uses the loader's main(argc,argv)
+shim, with argc=1 and argv[0] an opaque pointer to the versioned host API, not a
+command-line string. ABI negotiation is required before registration.
+
+Devices and settings
 --------------------
 
-* Reuse the SDK's ``lilka::DynLoader`` and ELF relocation/symbol-resolution code.
-  Do not introduce a second loader or treat drivers as ordinary foreground apps.
-* Current ``DynApp`` loads a ``.so``, runs its entry point, then unloads it.
-  Drivers require a separate persistent lifetime and a dedicated host API.
-* Current exported DynApp APIs do not provide device registration or bus access.
-* Audio applications currently configure/write I2S directly; the SDK's
-  ``Audio`` class is not yet a selectable output abstraction.
-* The SDK display is tied to ST7789. Existing canvases can be reused, but output
-  presentation must be separated from that specific panel.
-* Existing project extension documentation exposes 3.3 V, ground, six GPIOs
-  (12, 13, 14, 21, 47, 48) and TX/RX on a 12-contact header. Verify the actual
-  board revision and resource conflicts before assigning pins.
+Devices is a top-level Keira menu, listing registered/failed packages and
+requested enabled versus active/error status. Device pages contain generic
+Enable, Status, driver identity/version, Reset and driver-declared settings.
+No display/panel-specific logic belongs in these pages. The initial schema
+supports bounded integer/boolean/choice fields with stable field IDs, labels,
+defaults, limits and step/choice metadata. Pins/rotation/SPI/refresh are schema
+fields of the SD ILI9341 driver, not Keira UI special cases. Settings edits are
+validated, explicitly persisted and safely re-activate enabled devices. Failed
+edits restore the previous settings/output. NVS errors must be surfaced.
 
-First-iteration scope
----------------------
+Stable driver UUID identifies an implementation; stable device UUID identifies
+one configured instance. Neither changes with package path, list order or driver
+version. Duplicate UUIDs are rejected. NVS uses a short numbered key registry
+because namespace/key names allow only 15 characters. Records contain complete
+UUIDs, schema version, enabled preference and field-ID/value pairs, avoiding
+hash collisions and enumeration-index persistence. Unknown/future versions are
+not silently overwritten. Persist only user edits, not frames/polling. Missing
+packages retain their records. Reset clears only that device's settings.
 
-1. One driver manager in Keira, following the existing Service/KeiraThread
-   architecture when a background task is necessary. No independent task
-   hierarchy and no mandatory polling task per driver.
-2. Explicit startup configuration under ``/sd/drivers/``: enabled driver paths,
-   per-device pin/configuration values and stable preferred device IDs.
-   Configuration format is an implementation choice to document before coding.
-   Do not execute every ``.so`` found on the card automatically.
-3. Support one selected audio output and one selected display output at a time.
-   Built-in outputs remain selectable and are the default/fallback.
-4. Start with the :doc:`ESP32 Bluetooth audio bridge PoC <bluetooth_audio_poc>`
-   as the external I2S audio reference device. External SPI display support is
-   a subsequent milestone, not a prerequisite for the audio PoC. Choose its
-   exact reference panel before implementation; do not advertise arbitrary
-   amplifier or display compatibility.
-5. Add device selectors and a compact driver status/error view to settings.
-   Load configuration after SD initialization, before ordinary applications
-   start. Missing SD or invalid configuration must not prevent normal startup.
+Display routing
+---------------
 
-Driver contract and lifetime
-----------------------------
+Display settings cycles Internal, External, Both. Mode is persisted globally,
+separate from whether a driver is enabled. Internal avoids external captures
+and transfers. External uses the currently active display driver; Both presents
+the same logical image internally and externally. Only one external display
+is active; enabling another performs a serialized handover. Failed activation
+or reported transfer failure falls back internally without erasing the chosen
+mode or enabled preference. Physical presence cannot be detected by write-only
+SPI. Built-in controls must remain reachable.
 
-* Use a versioned C ABI with fixed-width types, structure sizes, driver/device
-  IDs, capabilities and explicit error results. Do not pass C++ SDK objects,
-  STL types or compiler-specific class layouts across the boundary.
-* A defined exported entry point receives a bounded host-function table and
-  returns a driver descriptor. Reject unsupported ABI versions before init.
-* Define init, enable, disable and shutdown operations, plus audio submission
-  or display presentation as appropriate. Initialization must not take over an
-  output until registration and resource validation succeed.
-* Keep the loaded module and its state alive while any callback can execute.
-  Quiesce callbacks/transfers, disable hardware, release resources and then
-  unload. Never retain function pointers into freed module code.
-* Provide managed GPIO/I2C/SPI/I2S operations needed by reference drivers.
-  Reserve resources before driving pins; reject conflicting claims and roll
-  back partial initialization. Do not expose unrestricted SDK internals as ABI.
-* Specify buffer ownership, supported formats, timeouts and callback threading.
-  No SD reads, allocation or initialization in real-time transfer callbacks.
-  Bound file sizes, enabled-driver count, buffers and transfer waits; publish
-  concrete budgets after the reference devices are selected.
-* Drivers are trusted native code, not sandboxed plugins. A buggy driver can
-  crash Keira; error fallback is not a promise to recover from memory corruption.
-  Provide a boot-time way to skip external drivers, independent of SD config.
+The compositor owns capture at a coherent frame boundary, under its existing
+thread/layer locks. Clear the entire external composition before copying retained
+layers to prevent stale uncovered pixels. Include status bar, fullscreen behavior,
+toasts and system volume/brightness feedback. No independent screenshot poller,
+no source-canvas mutation for external overlays and no queued historical frames.
+Use one PSRAM capture buffer, with nonblocking producer acquisition and an
+asynchronous service consuming complete frames outside compositor locks. If a
+transfer owns the buffer, skip capture and retry newest content, never enqueue.
+Re-capture transitions, overlay expiry, orientation and wake. Audit raw/direct
+and interlaced application paths; do not claim arbitrary direct writes are
+mirrored without proof. Before first application presentation, boot cards remain
+internal. Internal-only behavior retains its existing compositor fast path.
 
-Audio requirements
-------------------
+ILI9341 reference driver
+------------------------
 
-* Introduce a common PCM output interface for built-in and external outputs.
-  Migrate all in-tree PCM producers, including startup audio, emulators and
-  Liltracker. Apps must not silently restore hardcoded built-in pins.
-* Preserve volume behavior and explicitly negotiate sample rate, bit depth and
-  channel count. Support formats used by migrated apps or return a clear error.
-* One owner controls each I2S peripheral. Switching must mute/stop or drain the
-  producer safely, reconfigure the output, then resume without concurrent
-  driver install/uninstall or writes. If live switching is not supported by a
-  producer, stop playback explicitly rather than race its audio task.
-* Keep MCLK disabled unless required and explicitly assigned. Never let an
-  Arduino default implicitly claim GPIO0 or another internal pin.
-* Use available extension GPIOs for external I2S signals; stock internal audio
-  pins are not directly exposed on the extension connector.
-* An analog PAM8302 alone is not a PCM output: it requires a DAC. The FM tuner's
-  analog audio path is separate and is not automatically routable Keira audio.
+Blue 2.8-inch, 240x320, eight-pin, no touch/CS. CLK=12, MOSI=13, RES=14, DC=21;
+MISO unused. VCC=3.3 V and GND from extension, BLK disconnected as device-tested.
+No brightness capability advertised. Dedicated external SPI (not display/SD bus),
+managed GPIO whitelist/resource ownership and rollback. Only host handles cross
+the C ABI; no Arduino/C++ objects or unrestricted SDK internals.
 
-Display requirements
---------------------
+Preserve 1:1 logical dimensions: 280x240 on 320x240, 20-pixel black side margins;
+portrait uses appropriate rotation and centred margins. Default 20 MHz initially,
+with driver-defined selectable speed and refresh cap. Use bulk bounded DMA-capable
+SPI transfers and a small internal staging buffer, no per-pixel SPI calls and no
+extra display framebuffer. Frame pixels are host-order RGB565; host transport
+performs wire byte ordering. Clear margins on dimension changes. Disable sends
+display-off where possible but does not promise electrical backlight shutdown.
 
-* Add a presentation backend that accepts RGB565 frames/regions independently
-  of ST7789. Preserve the existing logical UI dimensions and orientation.
-* Route the compositor's final image, including status bars and system overlays,
-  to the selected output. Audit direct display drawing and special/interlaced
-  paths so apps cannot bypass output selection.
-* For the first reference panel, document an explicit fit policy (1:1,
-  letterbox or supported scaling). No arbitrary-resolution UI reflow in v1.
-* Manage external SPI separately from the internal display/SD bus where possible;
-  retain bus locking, bounded transfers and safe buffer lifetime.
-* A failed external display must restore built-in presentation. Settings must
-  remain reachable; brightness/sleep control must respect each device's
-  capabilities and must not PWM unrelated extension or amplifier pins.
+Memory/performance budgets and regression gates
+----------------------------------------------
 
-Fallback, persistence and power
+Initial explicit ceilings: four discovered modules, eight fields per device,
+4 KiB manifest, 64 KiB ELF, 8 KiB executable text and 32 KiB data per module,
+32 persisted device records. Release raw ELF file bytes after relocation.
+Frame cap 76800 pixels/153600 bytes in PSRAM, allocated only for routed external
+output; typical landscape 134400 bytes. One reusable 4096-byte internal DMA
+staging buffer only while a display owns SPI. Worker stack 6144 bytes; no task
+per driver, no per-frame allocations, no growing queues. Do not silently fall
+back to a large internal-RAM framebuffer or unsafe PSRAM executable fallback.
+Driver-disabled code/metadata overhead remains bounded and must be measured.
+
+Measure capture/transfer time, effective FPS, frame drops, input latency, free
+internal/PSRAM heap, largest free blocks, minimum heap and worker stack watermark.
+20 MHz has about 54 ms raw wire time per 280x240 frame; remove the PoC's extra
+100 ms post-transfer delay. Faster SPI only after bench qualification. Dirty
+regions are deferred until complete-frame correctness is established.
+
+Verify baseline versus driver-disabled, External and Both: launcher/menu
+transitions, overlays, cropped/fullscreen/interlaced applications, emulators,
+SD operations, audio, sleep/wake and rotation. Repeated enable/disable and failed
+activation must release state/SPI/frame resources with no stale callbacks or
+heap growth. Failure paths include missing SD/file, malformed ELF/imports,
+unsupported ABI, duplicate UUID, invalid persisted values, resource conflicts,
+out-of-memory and reported transfer failure. Native memory corruption cannot be
+contained by ordinary fallback. No firmware size/runtime claims from host mocks.
+
+Windows build-all and packaging
 ------------------------------
 
-* Missing files, malformed ELF, unresolved imports, ABI mismatch, resource
-  conflict and reported init/transfer failures must produce actionable status
-  and preserve or restore a working built-in output.
-* Persist stable IDs, not enumeration indices. A missing preferred device falls
-  back without erasing the preference; failed initialization must release claims.
-* Disable external amps/backlights when their outputs are inactive if hardware
-  supports it. Document electrical default states and shutdown behavior.
-* Extension power is 3.3 V, not a guaranteed high-power amplifier supply. Verify
-  peripheral current budget, logic levels and any separate supply/backfeed path.
+Add a driver compilation function/option to the existing Windows runner. Use the
+selected Keira tree's ABI header and driver sources, the installed matching
+ESP32-S3 toolchain and explicit freestanding linker layout compatible with the
+SDK loader. Build result includes driver.so, manifest.json and hashes under
+sd/drivers/<package>/, separate from firmware flash files. No driver compile
+in check-only mode. Report driver build errors/results separately; selected
+firmware/app and SDK SHAs remain recorded. Never silently deploy packages.
+Interactive Keira builds offer driver compilation; explicit CLI selection supports
+unattended runs. Update runner docs/tests/Windows archive. ABI versions are
+recorded so packaging cannot accidentally imply arbitrary cross-version support.
 
-Acceptance criteria
--------------------
+Implementation and acceptance sequence
+--------------------------------------
 
-The Bluetooth audio milestone uses the audio-related criteria below plus the
-PoC's hardware checks. External display criteria apply to the subsequent
-display milestone, not completion of the initial audio PoC.
+1. Document requirements/ABI/discovery/persistence; inspect current loader.
+2. Implement bounded manager, UUID records and generic Devices UI.
+3. Add mode cycling and coherent asynchronous presentation.
+4. Build freestanding SD ILI9341 driver and Windows packaging.
+5. Run applicable localization/format/static checks and meaningful host tests
+   for ELF validation, settings identity, lifecycle/ownership and routing.
+6. Physical validation by Anton: SD-only driver, ordinary firmware profile,
+   persistent enable/mode/settings, stale-menu-free updates, measured refresh,
+   repeated toggles, missing card/invalid driver fallback and regressions.
 
-* Reference drivers load from SD at startup, register once, and appear in settings.
-* Switching built-in/external audio works for every migrated in-tree PCM producer;
-  volume, format changes and repeated start/stop remain correct.
-* Launcher, menus, representative apps, overlays and display sleep/wake work on
-  both outputs using the documented fit policy.
-* Missing SD/driver, invalid ABI/ELF/imports, conflicting pins, initialization
-  failure and reported transfer failure leave built-in controls/output usable.
-* Repeated activation/deactivation releases resources without stale callbacks or
-  growing allocations. Module unload occurs only after all users are quiescent.
-* Physical reference-device tests verify pin mapping, power, sound, display
-  orientation and useful performance. Host/source checks alone are insufficient.
-* Existing DynApp applications and stock built-in behavior remain compatible.
-
-Out of scope for iteration one
-------------------------------
-
-Hot-plug detection, arbitrary-device autodetection, driver downloads, a plugin
-marketplace, kernel isolation, binary compatibility with arbitrary ESP-IDF/C++
-libraries, display mirroring, simultaneous audio outputs, arbitrary-resolution
-UI layouts, Lilka v1 and automatic integration with independently flashed guest
-firmware. SDK changes will need a coordinated implementation branch; this
-requirements-only branch does not change SDK or firmware behavior.
+Do not merge into staging until source checks and requested device acceptance
+are complete. Driver binaries need rebuilding when the ABI breaks. Dynamic apps,
+Lilka v1, audio producer migration, hotplug/autodetection, downloads/marketplace,
+arbitrary UI scaling and concurrent external displays are outside this iteration.
