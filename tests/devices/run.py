@@ -37,7 +37,7 @@ inline int busError=0,deviceError=0;
 inline unsigned fakeTime=1000, resetCount=0, starts=0;
 inline const void* inFlight=nullptr;
 inline std::map<std::string,std::vector<uint8_t>> nvm;
-inline void* heap_caps_malloc(size_t n,int caps){if(n>=134400 && ++frameAllocations==failFrameAllocation)return nullptr;if((failFrame && n>=134400)||(failDma&&n==4096))return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
+inline void* heap_caps_malloc(size_t n,int caps){if(n>=134400 && ++frameAllocations==failFrameAllocation)return nullptr;if((failFrame && n>=134400)||(failDma&&n==8192))return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
 inline void* heap_caps_calloc(size_t n,size_t s,int caps){void*p=heap_caps_malloc(n*s,caps);if(p)std::memset(p,0,n*s);return p;}
 inline void heap_caps_free(void*p){if(!p)return;assert(allocations.erase(p));std::free(p);}
 inline void* heap_caps_realloc(void*p,size_t n,int caps){if(!p)return heap_caps_malloc(n,caps);assert(allocations.erase(p));p=std::realloc(p,n);if(p)allocations[p]=n;return p;}
@@ -122,8 +122,10 @@ inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_hand
 inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
 inline int submitError=0;inline bool wrongCompletion=false;
-inline int spi_device_queue_trans(void*,spi_transaction_t*t,unsigned wait){assert(wait==100);if(submitError)return submitError;assert(!inFlight);inFlight=t;++starts;return 0;}
-inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;if(duringDma && ((spi_transaction_t*)inFlight)->length>=4096*8){auto callback=std::move(duringDma);duringDma=nullptr;callback();}*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
+inline std::vector<uint8_t> queuedBytes, wireBytes;
+inline int failSubmissionAt=0;
+inline int spi_device_queue_trans(void*,spi_transaction_t*t,unsigned wait){assert(wait==100);if(submitError)return submitError;if(failSubmissionAt && starts+1==failSubmissionAt)return -1;assert(!inFlight);inFlight=t;queuedBytes.assign((const uint8_t*)t->tx_buffer,(const uint8_t*)t->tx_buffer+(t->length+7)/8);++starts;return 0;}
+inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;assert(!memcmp(((spi_transaction_t*)inFlight)->tx_buffer,queuedBytes.data(),queuedBytes.size()));wireBytes.insert(wireBytes.end(),queuedBytes.begin(),queuedBytes.end());if(duringDma && ((spi_transaction_t*)inFlight)->length>=4096*8){auto callback=std::move(duringDma);duringDma=nullptr;callback();}*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
 inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
 inline int gpio_reset_pin(int){++resetCount;return 0;}
 struct System{};inline System ksystem;
@@ -306,6 +308,17 @@ int main(int argc,char**argv){
  wrongCompletion=false;m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);
  }
  assert(allocations.empty());
+ {
+ DeviceManager m;registered(m,0);assert(m.setEnabled(0,true));
+ std::vector<uint16_t> pixels(67201);for(unsigned i=0;i<pixels.size();++i)pixels[i]=i*997;
+ for(unsigned offset:{0u,1u})for(unsigned length:{0u,1u,63u,2047u,2048u,2049u,4095u,67200u}){
+  wireBytes.clear();assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data()+offset,length));assert(!inFlight);
+  assert(wireBytes.size()==length*2);for(unsigned i=0;i<length;++i){assert(wireBytes[2*i]==(pixels[offset+i]>>8));assert(wireBytes[2*i+1]==(pixels[offset+i]&255));}
+ }
+ failSubmissionAt=starts+2;assert(DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));assert(!inFlight&&!m.spiFault);failSubmissionAt=0;
+ assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));
+ m.deactivate();assert(allocations.empty()&&!busBusy);
+ }
  puts("PASS: shared frames/20 in-flight updates/latest-wins, 40 MHz persistence, queued DMA/quarantine, partial/full frames, legacy ABI, overlays, allocation rollback, 20 toggles and ELF bounds");
 }
 '''
@@ -323,6 +336,7 @@ with tempfile.TemporaryDirectory(prefix='keira-device-host-') as tmp:
         raise RuntimeError('Sibling SDK header required')
     (tmp / 'lilka').mkdir()
     (tmp / 'lilka/dynloader.h').write_text(loader.read_text())
+    (tmp / 'lilka/rgb565_pack.h').write_text((loader.parent / 'rgb565_pack.h').read_text())
     (tmp / 'test.cpp').write_text(harness)
     subprocess.run(['gcc','-std=c11','-Dmain=kd_driver_entry','-Dmemset=kd_module_memset',
                     '-c',str(root/'drivers/ili9341/driver.c'),'-o',str(tmp/'driver.o')],check=True)

@@ -1,3 +1,4 @@
+#include <lilka/rgb565_pack.h>
 #include "devicemanager.h"
 #include "frame_row.h"
 #if LILKA_VERSION != 1
@@ -885,7 +886,7 @@ int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t
     manager.mosiPin = mosi;
     manager.dcPin = dc;
     manager.resetPin = reset;
-    manager.dma = static_cast<uint8_t*>(heap_caps_malloc(4096, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    manager.dma = static_cast<uint8_t*>(heap_caps_malloc(8192, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
     spi_device_interface_config_t device = {};
     device.clock_speed_hz = hz;
     device.spics_io_num = -1;
@@ -929,16 +930,24 @@ int32_t DeviceManager::spiPixels(void* context, const uint16_t* pixels, uint32_t
     auto& manager = *static_cast<Slot*>(context)->owner;
     if (manager.spiFault || manager.spiOwner != context || !manager.spi || !pixels || count > FramePixels) return -1;
     gpio_set_level(static_cast<gpio_num_t>(manager.dcPin), 1);
+    spi_transaction_t* inFlight = nullptr;
+    unsigned buffer = 0;
     while (count) {
         const uint32_t length = count < 2048 ? count : 2048;
-        for (unsigned i = 0; i < length; ++i) {
-            manager.dma[i * 2] = pixels[i] >> 8;
-            manager.dma[i * 2 + 1] = pixels[i] & 255;
-        }
-        if (manager.transmit(length * 16)) return -1;
+        uint8_t* staging = manager.dma + buffer * 4096;
+        lilka::packRGB565(staging, pixels, length);
+        // Pack the other staging buffer while the preceding chunk shifts out.
+        // Only one transaction is outstanding: no descriptor/buffer is reused
+        // until completion, and DC cannot change until this function returns.
+        if (inFlight && manager.finish(*inFlight)) return -1;
+        auto& transfer = buffer ? manager.pixelTransaction : manager.transaction;
+        if (manager.submit(transfer, staging, length * 16)) return -1;
+        inFlight = &transfer;
+        buffer ^= 1;
         pixels += length;
         count -= length;
     }
+    if (inFlight && manager.finish(*inFlight)) return -1;
     return 0;
 }
 void DeviceManager::spiClose(void* context) {
@@ -956,22 +965,28 @@ void DeviceManager::spiClose(void* context) {
     manager.clkPin = manager.mosiPin = manager.dcPin = manager.resetPin = -1;
 }
 
-int DeviceManager::transmit(uint32_t bits) {
-    transaction = {};
-    transaction.length = bits;
-    transaction.tx_buffer = dma;
-    // Queue depth one, one persistent descriptor/DMA buffer. Block on completion
-    // instead of burning a core in a polling loop; both waits are IDF-supported.
-    const esp_err_t startResult = spi_device_queue_trans(spi, &transaction, pdMS_TO_TICKS(100));
-    if (startResult != ESP_OK) return fail(*spiOwner, "SPI transfer submit", startResult);
+int DeviceManager::submit(spi_transaction_t& transfer, const uint8_t* bytes, uint32_t bits) {
+    transfer = {};
+    transfer.length = bits;
+    transfer.tx_buffer = bytes;
+    const esp_err_t result = spi_device_queue_trans(spi, &transfer, pdMS_TO_TICKS(100));
+    return result == ESP_OK ? 0 : fail(*spiOwner, "SPI transfer submit", result);
+}
+
+int DeviceManager::finish(const spi_transaction_t& transfer) {
     spi_transaction_t* completed = nullptr;
-    const esp_err_t endResult = spi_device_get_trans_result(spi, &completed, pdMS_TO_TICKS(100));
-    if (endResult != ESP_OK || completed != &transaction) {
-        // Retain descriptor/DMA/bus on uncertain completion, including timeout.
+    const esp_err_t result = spi_device_get_trans_result(spi, &completed, pdMS_TO_TICKS(100));
+    if (result != ESP_OK || completed != &transfer) {
+        // Retain BOTH staging buffers/descriptors/bus on uncertain completion.
         spiFault = true;
-        return fail(*spiOwner, "SPI transfer finish", endResult != ESP_OK ? endResult : ESP_ERR_INVALID_STATE);
+        return fail(*spiOwner, "SPI transfer finish", result != ESP_OK ? result : ESP_ERR_INVALID_STATE);
     }
     return 0;
+}
+
+int DeviceManager::transmit(uint32_t bits) {
+    if (submit(transaction, dma, bits)) return -1;
+    return finish(transaction);
 }
 int32_t DeviceManager::fail(Slot& slot, const char* operation, int32_t error) {
     const String message =
