@@ -19,31 +19,12 @@ int Driver::init(int width, int height) {
     h = app->canvas->height();
     rotation = app->canvas->getRotation();
     nofrendo_log_printf("display w: %d, h: %d\n", w, h);
-    if (w < 480) // assume only 240x240 or 320x240
-    {
-        if (w > NES_SCREEN_WIDTH) {
-            frame_x = (w - NES_SCREEN_WIDTH) / 2;
-            frame_x_offset = 0;
-            frame_width = NES_SCREEN_WIDTH;
-            frame_height = NES_SCREEN_HEIGHT;
-            frame_line_pixels = frame_width;
-        } else {
-            frame_x = 0;
-            frame_x_offset = (NES_SCREEN_WIDTH - w) / 2;
-            frame_width = w;
-            frame_height = NES_SCREEN_HEIGHT;
-            frame_line_pixels = frame_width;
-        }
-        frame_y = (app->canvas->height() - NES_SCREEN_HEIGHT) / 2;
-    } else // assume 480x320
-    {
-        frame_x = 0;
-        frame_y = 0;
-        frame_x_offset = 8;
-        frame_width = w;
-        frame_height = h;
-        frame_line_pixels = frame_width / 2;
-    }
+    frame_width = w < NES_SCREEN_WIDTH ? w : NES_SCREEN_WIDTH;
+    frame_height = h < NES_SCREEN_HEIGHT ? h : NES_SCREEN_HEIGHT;
+    frame_x = (w - frame_width) / 2;
+    frame_y = (h - frame_height) / 2;
+    frame_x_offset = (NES_SCREEN_WIDTH - frame_width) / 2;
+    frame_line_pixels = frame_width;
 
     return 0;
 }
@@ -78,79 +59,43 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
 #endif
 
     lilka::Canvas* canvas = app->canvas;
-    canvas->fillScreen(lilka::colors::Black);
-
-#ifdef INTERLACED
-    for (int y = 0; y < frame_height; ++y) {
-        const uint8_t* line = bmp->line[y];
-        int dst_y = y + frame_y;
-        int dst_x = frame_x;
-        for (int x = 0; x < frame_width; x++) {
-            canvas->writePixelPreclipped(dst_x + x, dst_y, nesPalette[line[x]]);
-            // app->canvas->drawPixel(dst_x + x, dst_y, nesPalette[line[x]]);
-        }
-    }
-#else
-    // can't move framebuffer ptr outside, cause we dealing with different canvas
-    // unfortunatelly we can't reuse dirtyRects due to doublebuffering
-    // maybe it doesn't worth it
+    // Restore only the uncovered margins on every alternate app buffer. The
+    // compositor may have stamped a toast there since this buffer's last use.
+    canvas->fillRect(0, 0, w, frame_y, lilka::colors::Black);
+    canvas->fillRect(0, frame_y + frame_height, w, h - frame_y - frame_height, lilka::colors::Black);
+    canvas->fillRect(0, frame_y, frame_x, frame_height, lilka::colors::Black);
+    canvas->fillRect(frame_x + frame_width, frame_y, w - frame_x - frame_width, frame_height, lilka::colors::Black);
 
     auto fb = canvas->getFramebuffer();
-
-    switch (rotation) {
-        case 0: // no rotation
-            for (int y = 0; y < frame_height; y++) {
-                const uint8_t* src = bmp->line[y];
-                uint16_t* dst = fb + (frame_y + y) * w + frame_x;
-                for (int x = 0; x < frame_width; x++) {
-                    dst[x] = nesPalette[src[x]];
-                }
-            }
-            break;
-
-        case 1: // 90° clockwise
-            for (int y = 0; y < frame_height; y++) {
-                const uint8_t* src = bmp->line[y];
-                uint16_t* dst = fb + (h - 1 - (frame_y + y));
-                for (int x = 0; x < frame_width; x++) {
-                    *dst = nesPalette[src[x]];
-                    dst += w;
-                }
-            }
-            break;
-
-        case 2: // 180°
-            for (int y = 0; y < frame_height; y++) {
-                const uint8_t* src = bmp->line[y];
-                uint16_t* dst = fb + (h - 1 - (frame_y + y)) * w + (w - frame_width - frame_x);
-                for (int x = 0; x < frame_width; x++) {
-                    dst[x] = nesPalette[src[frame_width - 1 - x]];
-                }
-            }
-            break;
-
-        case 3: // 270° clockwise
-            for (int y = 0; y < frame_height; y++) {
-                const uint8_t* src = bmp->line[y];
-                uint16_t* dst = fb + (frame_x + y);
-                for (int x = 0; x < frame_width; x++) {
-                    *dst = nesPalette[src[frame_width - 1 - x]];
-                    dst += w;
-                }
-            }
-            break;
+    const int stride = (rotation & 1) ? h : w;
+    const int sourceY = (NES_SCREEN_HEIGHT - frame_height) / 2;
+    for (int y = 0; y < frame_height; ++y) {
+        const uint8_t* src = bmp->line[sourceY + y] + frame_x_offset;
+        const int dy = frame_y + y;
+        uint16_t* dst;
+        int step;
+        switch (rotation) {
+            case 1:
+                dst = fb + frame_x * stride + h - 1 - dy;
+                step = stride;
+                break;
+            case 2:
+                dst = fb + (h - 1 - dy) * stride + w - 1 - frame_x;
+                step = -1;
+                break;
+            case 3:
+                dst = fb + (w - 1 - frame_x) * stride + dy;
+                step = -stride;
+                break;
+            default:
+                dst = fb + dy * stride + frame_x;
+                step = 1;
+                break;
+        }
+        for (int x = 0; x < frame_width; ++x) {
+            dst[x * step] = nesPalette[src[x]];
+        }
     }
-
-        // for (int y = 0; y < frame_height; y++) {
-        //     const uint8_t* line = bmp->line[y];
-        //     int dst_y = y + frame_y;
-        //     int dst_x = frame_x;
-        //     for (int x = 0; x < frame_width; x++) {
-        //         canvas->writePixelPreclipped(dst_x + x, dst_y, nesPalette[line[x]]);
-        //         // app->canvas->drawPixel(dst_x + x, dst_y, nesPalette[line[x]]);
-        //     }
-        // }
-#endif
 
     // Serial.println("Draw 1 took " + String(micros() - last_render) + "us");
 #ifdef NES_FPS_COUNTER
