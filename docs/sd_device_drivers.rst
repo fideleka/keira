@@ -96,10 +96,10 @@ Memory/performance budgets and regression gates
 ----------------------------------------------
 
 Initial explicit ceilings: four discovered modules, eight fields per device,
-4 KiB manifest, 64 KiB ELF, 8 KiB executable text and 32 KiB data per module,
+4 KiB manifest (8 KiB capped JSON allocator), 64 KiB ELF, 8 KiB executable text and 32 KiB data per module,
 32 persisted device records. Release raw ELF file bytes after relocation.
-Frame cap 76800 pixels/153600 bytes in PSRAM, allocated only for routed external
-output; typical landscape 134400 bytes. One reusable 4096-byte internal DMA
+Frame cap 76800 pixels/153600 bytes in PSRAM, allocated to the actual logical
+size only for routed external output; current landscape and portrait 134400 bytes. One reusable 4096-byte internal DMA
 staging buffer only while a display owns SPI. Worker stack 6144 bytes; no task
 per driver, no per-frame allocations, no growing queues. Do not silently fall
 back to a large internal-RAM framebuffer or unsafe PSRAM executable fallback.
@@ -151,3 +151,94 @@ Do not merge into staging until source checks and requested device acceptance
 are complete. Driver binaries need rebuilding when the ABI breaks. Dynamic apps,
 Lilka v1, audio producer migration, hotplug/autodetection, downloads/marketplace,
 arbitrary UI scaling and concurrent external displays are outside this iteration.
+
+First source iteration: delivered behavior and validation
+-------------------------------------------------------
+
+Startup registration/discovery, generic Devices settings, UUID NVS records,
+Internal/External/Both routing, the freestanding ILI9341 module and Windows
+compiler packaging are implemented. Drivers default disabled; mode defaults
+Internal. Registered module code/schema stay resident even when disabled, so
+Devices can show their settings without re-executing native code. Disable frees
+instance state/SPI/DMA/frame, not the registered code. Restart re-scans packages.
+Only one external display is active; other enabled preferences remain intact,
+and the saved active-display UUID determines the preferred startup instance.
+
+The external bus is ESP-IDF SPI2_HOST, matching Lilka's user SPI2/Arduino FSPI;
+SPI3_HOST is the internal display/SD bus and must not be claimed. Managed driver
+claims do not intercept legacy Lua/raw GPIO/SPI code: do not concurrently run
+extension GPIO tests or scripts touching driver-owned pins. Driver registration
+cannot open SPI before an instance state exists. Internal mode calls the driver's
+output-off callback and avoids external captures; the backlight itself is not
+controlled. No display brightness setting is declared for this board.
+
+Compositor capture clears uncovered pixels, includes final retained layers and
+current overlay, and retries newest content after busy-buffer drops. Static
+scenes without redraw/feedback changes produce no new transfer. External-only
+keeps internal fallback until the service has actually started; a failed task
+allocation cannot turn off the only working UI. The worker has no historical
+frame queue and no extra 100 ms post-transfer sleep. Normal disable releases
+claims; a 100 ms SPI polling-end timeout quarantines the in-flight transaction,
+DMA buffer and bus until reboot, rather than freeing hardware-owned memory.
+This exceptional 4 KiB retention is intentional and bounded, not a retry leak.
+
+Serial diagnostics every ten seconds during external routing report captures,
+transfers, FPS x1000, latest capture/transfer microseconds, free/largest/minimum
+internal heap, free PSRAM and worker stack watermark. Runtime FPS/headroom and
+physical regressions are not measured here. Loader admission retains a 32 KiB
+internal free-heap floor and requires an 8 KiB executable block; unsafe PSRAM
+code fallback is rejected. Budgeted native code in the reference module is
+about 1 KiB, not an Arduino display library embedded in every driver.
+
+Validation performed:
+
+* Native ESP32-S3 .so compilation and production ELF preflight acceptance.
+* Actual changed firmware translation units compile as C++11 with the installed
+  Xtensa/Arduino headers (source/object checks, no firmware linking).
+* ASan/UBSan production manager/reference-driver tests: NVS field-ID matching,
+  unsupported saved schema/reset, complete/cropped frame clearing, busy capture,
+  sleep blanking, failed pin-change rollback, frame allocation failure,
+  worker-unavailable fallback, DMA timeout quarantine and twenty toggles without
+  retained normal-path allocations.
+* Existing navigation normal/sanitized, emulator menu and NES double-buffer
+  render checks pass. Current SDK/Keira overlay harness passes both locales in
+  normal, ASan and UBSan modes, including new output modes, busy capture retry,
+  unchanged scenes, overlay expiry and sleep/wake.
+* The actual SDK menu construction/layout was host-rendered at 280x216 and
+  visually inspected for Devices, populated settings/scrolled fields and Display
+  mode. This uses an approximate recording font, not a physical screenshot.
+* Windows runner's 56 existing tests and four new package/cleanup checks pass.
+* Localization check and focused clang-format-20/new-code cppcheck pass.
+  Repository-wide make checks were run; pre-existing formatting failures in
+  unrelated sections and source/host-fixture ODR conflicts prevent a blanket
+  green result. They are not silently treated as passing.
+
+The cached Arduino/IDF4 headers exposed an existing missing pdTICKS_TO_MS macro
+in Launcher/Lua. An additive fallback in thread.h preserves newer FreeRTOS
+implementations while allowing these source checks with the installed toolchain.
+SDK sources, stock pin defaults and staging refs are unchanged. Full firmware
+linking/size comparisons, target boot, physical stale-menu/refresh tests, live
+heap/stack measurements and hardware audio/SD/emulator regression acceptance
+remain pending. Do not interpret host tests as device qualification.
+
+Build/test instructions
+-----------------------
+
+Use the updated Windows build-all runner with --interactive --branch-ask
+--drivers, select Keira and feature/sd-device-drivers, and keep your ordinary
+hardware profile/SDK features/stage. Copy the resulting sd folder contents to
+the SD root before restarting. Enable ILI9341 in Devices, then cycle Display
+mode to Both. Missing package or disabled driver keeps internal fallback.
+
+Direct driver-only compilation::
+
+    python tools/build_drivers.py --toolchain <PlatformIO-core>/packages/toolchain-xtensa-esp32s3/bin --output <SD-staging-root>
+
+Host lifecycle/ELF check (existing sibling SDK and cached ArduinoJson required)::
+
+    python tests/devices/run.py <SD-staging-root>/drivers/ili9341/driver.so
+
+The standalone driver compiler uses --no-relax and -Bsymbolic: the installed
+Xtensa linker otherwise fails while merging literal/GOT relocation metadata.
+It emits no SDK/libc imports and records SHA256 hashes for both package files.
+Changing ABI layout/version requires rebuilding matching firmware and drivers.

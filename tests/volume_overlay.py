@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--sdk", type=Path, default=ROOT.parent / "sdk-system-shortcuts")
+parser.add_argument("--sdk", type=Path, default=ROOT.parent / "sdk")
 parser.add_argument(
     "--u8g2", type=Path,
     default=Path(os.environ.get("U8G2_CLIB", ROOT.parent / "lilka-sdk/lib/lilka/.pio/libdeps/v2/U8g2/src/clib")),
@@ -155,14 +155,31 @@ struct Display:Surface,GFX<Display> {
 struct Audio {static VolumeOverlaySnapshot getVolumeOverlay();} audio;
 VolumeOverlaySnapshot feedback;
 VolumeOverlaySnapshot Audio::getVolumeOverlay(){return feedback;}
+struct { VolumeOverlaySnapshot getOverlay(){return VolumeOverlaySnapshot();} } brightness;
+struct { bool sleeping=false; bool serviceIdle(bool){return false;} bool isSleeping(){return sleeping;} } displaySettings;
 struct {void log(const char*){}} serial;
 }
+struct DeviceManager {
+ bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
+ std::vector<uint16_t> pixels;
+ bool internalOutput(){return internal;}bool externalOutput(){return external;}unsigned invalidation(){return epoch;}
+ bool capture(lilka::Canvas* panel,lilka::Canvas* app,const lilka::VolumeOverlaySnapshot& overlay,bool sleeping){
+  if(busy)return false;
+  ++captures;
+  lilka::Surface target(lilka::display.width(),lilka::display.height());
+  if(!sleeping){for(auto* layer:{panel,app})if(layer)target.draw16bitRGBBitmap(layer->x(),layer->y(),layer->getFramebuffer(),layer->width(),layer->height());
+   lilka::drawVolumeOverlay(target,overlay,target.width(),target.height(),now);}
+  pixels=target.pixels;return true;
+ }
+};
+struct {DeviceManager* devices=nullptr;} ksystem;
 namespace AppFlags {constexpr int APP_FLAG_FULLSCREEN=1,APP_FLAG_INTERLACED=2;}
 struct App {
  lilka::Canvas* backCanvas;
  explicit App(lilka::Canvas* c):backCanvas(c){static int next=10;canvasMutex=next++;}
  int flags=0,frame=0,canvasMutex=0,state=0;
  bool backgroundDirty=false,redraw=true;
+ const char* getName(){return "Launcher";}
  int getState(){return state;}void resume(){state=0;}
  int getFlags(){return flags;}bool getRedraw(){return redraw;}void setRedraw(bool r){redraw=r;}
 };
@@ -172,6 +189,10 @@ void vTaskDelayUntil(uint32_t*,int){assert(lockDepth==0);throw Stop();}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
  App* panel;App* lastPresentedApp=nullptr;int panelMtx=1;uint32_t lastFrameTick=0;
+ bool externalDirty=true,externalSleeping=false,lastInternal=true;
+ uint32_t externalGeneration=0,externalOverlayAt=0;
+ bool externalOverlayVisible=false,externalOverlayBrightness=false;
+ int externalOverlayLevel=-1;
  struct {uint32_t endTime=0;} toast;
  void threadsRun(){}void renderToast(lilka::Canvas*){assert(false);}
  void run();void renderToCanvas(lilka::Canvas*);
@@ -242,22 +263,23 @@ int main(){
     font.draw_color=1;u8g2_SetFont(&font,u8g2_font_10x20_t_cyrillic);
     u8g2_SetFontMode(&font,1);u8g2_SetFontPosBaseline(&font);
     char label[32];
-    if(bounded)snprintf(label,sizeof(label),"%d%%",bounded);else strcpy(label,K_S_VOLUME_MUTE);
+    if(iconOverlay || bounded)snprintf(label,sizeof(label),"%d%%",bounded);else strcpy(label,K_S_VOLUME_MUTE);
     std::vector<uint16_t> glyphs;
-    if(bounded)for(const char* c=label;*c;++c)glyphs.push_back(*c);
+    if(iconOverlay || bounded)for(const char* c=label;*c;++c)glyphs.push_back(*c);
     else if(std::string(K_S_VOLUME_MUTE)=="Mute")glyphs={'M','u','t','e'};
     else glyphs={0x411,0x435,0x437,0x20,0x437,0x432,0x443,0x43a,0x443}; // Без звуку
     int advance=0;
     for(auto glyph:glyphs){assert(u8g2_GetGlyphWidth(&font,glyph)==10);advance+=u8g2_GetGlyphWidth(&font,glyph);}
-    int labelX=g.x+(g.width-advance)/2;
+    const int labelStart=iconOverlay?g.x+(g.width-advance-26)/2+26:g.x+(g.width-advance)/2;
+    int labelX=labelStart;
     for(auto glyph:glyphs) labelX+=u8g2_DrawGlyph(&font,labelX,g.y+32,glyph);
     int ink=0;
-    for(int y=g.y+12;y<g.y+32;++y)for(int x=g.x+2;x<g.x+g.width-2;++x){
+    for(int y=g.y+12;y<g.y+32;++y)for(int x=iconOverlay?labelStart:g.x+2;x<g.x+g.width-2;++x){
      assert(display.pixels[y*w+x]==reference.pixels[y*w+x]);
      ink+=reference.pixels[y*w+x]!=0;
     }
     assert(ink>0);
-    if(level==0 && std::string(K_S_VOLUME_MUTE)=="Mute"){
+    if(!iconOverlay && level==0 && std::string(K_S_VOLUME_MUTE)=="Mute"){
      // Pinned real FONT_10x20 M bitmap: 1px raster, not the old scaled block M.
      const char* rows[]={"..........","..........","..........","..........","..........",
                          "..........","..........",".##....##.",".##....##.",".###..###.",
@@ -350,7 +372,7 @@ int main(){
  display.drawCanvas(&labels);
  const auto lg=protectedRegion;
  for(int y=lg.y;y<lg.y+lg.height;++y)for(int x=lg.x;x<lg.x+lg.width;++x)assert(touched[y*280+x]==1);
- assert(display.pixels!=english && display.overlayState.adjustedAt==stamp);
+ assert((iconOverlay?display.pixels==english:display.pixels!=english) && display.overlayState.adjustedAt==stamp);
  const auto ukrainian=display.pixels;
  pixelWrites=0;touched.assign(280*240,0);display.drawCanvas(&labels);for(auto n:touched)assert(n==0);
  assert(display.pixels==ukrainian);
@@ -368,6 +390,26 @@ int main(){
  Surface tiny(95,79);feedback.adjustedAt=now;
  drawVolumeOverlay(tiny,feedback,95,79,now);for(auto p:tiny.pixels)assert(p==0);
  uint16_t guarded[212]={};
+ // New routing must not change the legacy internal pixel contract above.
+ protectedRegion={};feedback.valid=false;display=Display();
+ Canvas routingPanel(0,0,280,24),routingApp(0,24,280,216);
+ routingPanel.fillScreen(0x1111);routingApp.fillScreen(0x2222);
+ App panelApp(&routingPanel),foreground(&routingApp);AppManager routing;
+ routing.panel=&panelApp;routing.threads.push_back(&foreground);
+ DeviceManager device;ksystem.devices=&device;routing.tick();
+ device.external=true;device.internal=false;++device.epoch;pixelWrites=0;routing.tick();
+ assert(device.captures==1&&device.pixels[100*280+100]==0x2222);
+ pixelWrites=0;const auto captures=device.captures;routing.tick();assert(pixelWrites==0&&device.captures==captures);
+ foreground.redraw=true;device.busy=true;routing.tick();assert(routing.externalDirty);
+ routingApp.fillScreen(0x3333);device.busy=false;routing.tick();assert(!routing.externalDirty&&device.pixels[100*280+100]==0x3333);
+ feedback.level=42;feedback.valid=true;feedback.adjustedAt=now;routing.tick();assert(pixelWrites==0);
+ const auto overlayCapture=device.captures;now+=1200;routing.tick();assert(device.captures==overlayCapture+1);
+ device.internal=true;++device.epoch;routing.tick();assert(display.pixels==device.pixels);
+ lilka::displaySettings.sleeping=true;routing.tick();assert(device.pixels==std::vector<uint16_t>(280*240,0));
+ const auto sleepingCapture=device.captures;routing.tick();assert(device.captures==sleepingCapture);
+ lilka::displaySettings.sleeping=false;routing.tick();assert(device.pixels[100*280+100]==0x3333);
+ device.external=false;++device.epoch;foreground.redraw=true;routing.tick();assert(display.pixels[100*280+100]==0x3333);
+ ksystem.devices=nullptr;protectedRegion={};
  const auto benchStart=std::chrono::steady_clock::now();
  for(int frame=0;frame<1000;++frame){
   VolumeOverlaySnapshot state;state.valid=true;state.level=frame%101;
@@ -384,6 +426,8 @@ int main(){
  puts("Every LCD write: SDK + Keira static/menu/statusbar/NES/GB/GBC/interlace, expiry/switch/rotation/immutable sources PASS");
 }
 '''
+icon_overlay = "Centre a compact icon" in (sdk / "volume_overlay.h").read_text()
+prelude = "constexpr bool iconOverlay=" + ("true" if icon_overlay else "false") + ";\n" + prelude
 display_header = (sdk / "display.h").read_text()
 state = display_header[display_header.index("    static constexpr int overlayRowWidth"):
                        display_header.index("    const void* splash;")]

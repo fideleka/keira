@@ -88,6 +88,11 @@ typedef enum { KT_PRIO_IDLE, KT_PRIO_DEFAULT, KT_PRIO_MAX } KeiraThreadPriority;
 // Thread name type
 typedef const char* threadNameType_t;
 
+// IDF 4.x lacks the reverse tick conversion supplied by newer FreeRTOS.
+#ifndef pdTICKS_TO_MS
+#    define pdTICKS_TO_MS(ticks) ((ticks) * portTICK_PERIOD_MS)
+#endif
+
 class KeiraThread {
     friend ThreadManager;
     friend AppManager;

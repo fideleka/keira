@@ -46,6 +46,10 @@ private:
     // TopPanel (StatusBarApp)
     App* panel = NULL;
     SemaphoreHandle_t panelMtx = xSemaphoreCreateMutex();
+    bool externalDirty = true, externalSleeping = false, lastInternal = true;
+    uint32_t externalGeneration = 0, externalOverlayAt = 0;
+    bool externalOverlayVisible = false, externalOverlayBrightness = false;
+    int externalOverlayLevel = -1;
     App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
     // Used for capping framerate to A
     TickType_t lastFrameTick = xTaskGetTickCount();

@@ -16,6 +16,8 @@
 #include "services/web/web.h"
 #include "services/mdns/mdns.h"
 #include "services/script/script.h"
+#include "devices/devicemanager.h"
+#include <new>
 
 // Apps:
 #include "apps/statusbar/statusbar.h"
@@ -198,6 +200,15 @@ void KeiraSystem::launchServices() {
     services.spawn(new MDNSService());
 
     // GUIDELINE: To add a new service register it here
+
+    // Discover before apps/scripts start; Select bypasses native module execution.
+#if LILKA_VERSION != 1
+    devices = new (std::nothrow) DeviceManager();
+    if (devices) {
+        devices->discover(lilka::controller.peekState().selectHeld);
+        if (devices->hasRegisteredDriver()) services.spawn(devices);
+    }
+#endif
 
     // User scripts go last, so they can rely on system services
     ScriptService::autorun();
