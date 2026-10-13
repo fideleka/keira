@@ -271,3 +271,17 @@ settings schema and SD binary are unchanged: rebuild/flash Keira only for this
 fix. The actual SDK GPIO menu construction was host-rendered and inspected,
 including reserved pins and free-pin rows. Physical activation remains pending;
 if it still fails, the new exact status identifies the next diagnostic step.
+
+Polling-start compatibility correction
+--------------------------------------
+
+Anton then reported "SPI transfer start: ESP_ERR_INVALID_ARG (0x102)". The
+installed IDF4.4 spi_master.h explicitly documents that polling_start accepts
+only portMAX_DELAY; the previous 100 ms start argument was invalid. The start
+now uses the supported argument. This manager exclusively owns the bus/device,
+serializes calls and queues no asynchronous transactions. Polling completion
+retains its 100 ms timeout and safe DMA quarantine. This is not a switch to an
+unbounded transfer-completion wait, and no additional buffer/task is allocated.
+The host mock now rejects unsupported start waits: it reproduced the original
+activation failure before the source fix and passes the fixed production path.
+ABI/SD driver unchanged; firmware-only rebuild. Hardware retry remains pending.
