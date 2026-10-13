@@ -481,3 +481,44 @@ The monitor does not prove improved performance until logs are collected on
 hardware. Both-locale compositor tests execute the real monitor with 75 synthetic
 submissions/s and 25 compositor updates/s and verify unlocked serial reporting;
 interval arithmetic covers idle/reset, long-frame totals and clock wrap.
+
+
+Fused exact row comparison/copy
+------------------------------
+
+After Anton's Felix the Cat demo logs showed 10.8--12.3 ms composition, 13--19 ms
+internal presentation and 30--41 ms external presentation at 40 MHz (18--22
+submissions/internal updates per second), optimize the host's RGB565 row kernel.
+The prior path used memcmp followed by memcpy of the entire changed row, or
+copied an unchanged row when changing presentation buffers. The new path compares
+aligned two-pixel words, copy-writes matched prefixes only when the destination
+is a different buffer, and bulk-copies only the suffix after the first difference.
+When reusing the retained frame, an unchanged prefix is neither copied nor
+reread by the copy. Once a row is dirty, stop comparing: continuously changing
+rows must not incur a complete extra previous-frame scan. Geometry invalidation
+retains the ordinary bulk-copy path.
+
+Comparisons remain exact, not hash-based. GNU may_alias word access deliberately
+supports strict aliasing; every pointer must be word-aligned to enter that path.
+Odd widths and halfword-aligned/clipped source rows use a bounded halfword path,
+with no overread beyond logical pixels. Source pixels and the external frame
+lease remain immutable; dirty-row accumulation and the existing final-frame
+pair, overlay composition, driver ABI, refresh settings and 40 MHz selection
+are unchanged. No extra framebuffer, allocation, task, pacing cap or persistent
+setting is introduced. This remains copied/composed presentation, not zero-copy
+app rendering.
+
+The serial monitor is unchanged. Rebuild/flash Keira only, retain SD driver 1.1.0,
+and compare the same moving demo against c376e1d in Both mode: capture-avg/max-us,
+submit/internal/external FPS, work/interval maxima and subjective responsiveness.
+This kernel is a source-verified performance candidate; no numeric hardware
+speedup or host-to-device timing equivalence is claimed before a matched rerun.
+
+Validation includes 15360 differential RGB565 row cases against exact comparison
+at every width 1--320, word/halfword alignment, first/last/sparse/all/no changes,
+forced copy, reused/separate output, guards and immutable source/previous lease.
+Tests run optimized with strict aliasing and ASan/UBSan. The production manager
+suite retains in-flight publications, overlay/clipping, accumulated rows,
+partial/full/legacy transfers, allocation rollback and timeout-quarantine checks.
+Xtensa C++11 source checks and optimized assembly prove word loads/stores,
+halfword fallback and bulk suffix memcpy; this is not a full firmware build.
