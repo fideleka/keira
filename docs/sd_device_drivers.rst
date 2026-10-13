@@ -187,7 +187,7 @@ claims; a 100 ms SPI polling-end timeout quarantines the in-flight transaction,
 DMA buffer and bus until reboot, rather than freeing hardware-owned memory.
 This exceptional 4 KiB retention is intentional and bounded, not a retry leak.
 
-Serial diagnostics every ten seconds during external routing report captures,
+Serial diagnostics every two seconds during external routing report captures,
 transfers, FPS x1000, latest capture/transfer microseconds, free/largest/minimum
 internal heap, free PSRAM and worker stack watermark. Runtime FPS/headroom and
 physical regressions are not measured here. Loader admission retains a 32 KiB
@@ -428,3 +428,56 @@ rows, dirty accumulation, mode transitions, overlays, sleep/wake, timeout
 quarantine, settings persistence and repeated activation remain covered.
 Hardware FPS/input latency, PSRAM contention, heap/stack watermarks, audio/SD
 soak and full firmware linking/size remain unverified by these source checks.
+
+
+Live serial FPS/timing monitor
+-----------------------------
+
+Always-on, firmware-only diagnostics emit about every two seconds while playing;
+no UI toggle, NVS writes, per-frame logging, heap allocation or extra framebuffer.
+The compositor ``perf:`` and ``perf-time:`` lines work in Internal, External and Both mode:
+
+* ``app`` / ``mode`` / ``window-ms`` identify the foreground application, effective
+  output route (including internal fallback) and measured averaging interval.
+* ``submit-fps`` counts foreground ``queueDraw`` submissions, including submissions
+  superseded before display. This is rendered/submitted FPS, NOT emulated CPU
+  simulation FPS and not a direct input-latency measurement.
+* ``internal-fps`` counts compositor iterations that actually updated the internal
+  LCD; a multi-band/layer update counts once, not once per SPI call. Unchanged
+  scenes and External-only can correctly show zero.
+* ``compositor-fps`` counts awake presentation-loop iterations, not game frames.
+* ``interval-avg/max-us`` measures compositor start-to-start intervals including
+  pacing, stalls and diagnostic output. ``work-avg/max-us`` measures active
+  iteration time including lock waits, composition and internal transfers,
+  excluding deliberate pacing and the serial report itself.
+* ``internal-avg/max-us`` measures time spent in internal presentation calls per
+  updating iteration, not the total game frame time. Shared mode includes its
+  lifetime/metadata lock waits; legacy mode sums layer/overlay calls.
+* ``overruns`` counts iterations whose work reaches the nominal 16 ms compositor
+  budget. Window statistics reset after each report, app/route change and wake;
+  app frame counters are sampled under the existing canvas mutex. Diagnostic
+  text is copied under the thread-list lock and printed after all those locks
+  are released. USB/serial output still has some overhead, visible in intervals.
+
+The ``devices:`` and ``devices-memory:`` lines retain existing counters and
+heap diagnostics. The ``perf-ext:`` line adds:
+
+* ``external-fps``: actual external presentation attempts per elapsed window;
+  reported successful routing normally excludes failures because a failure
+  immediately switches to internal fallback. The legacy ``devices: fps-x1000`` field
+  remains for comparison with older logs (divide it by 1000).
+* ``capture-avg/max-us``: average/worst successful compare/composition operation,
+  including unchanged comparisons.
+* ``transfer-avg/max-us``: average/worst complete external driver presentation,
+  including DMA waits and command/staging overhead, not just raw SPI wire time.
+
+Reports are split to fit the SDK's 256-byte log formatter without truncation.
+All durations are microseconds: divide by 1000 for milliseconds. Compare the
+same game/scene in Internal, External and Both at the same SPI/refresh settings.
+Submit FPS much higher than LCD FPS means displayed submissions are being
+skipped; high work/interval maxima reveal stalls that averages can hide. Low
+external FPS in a static menu is expected and is not a performance regression.
+The monitor does not prove improved performance until logs are collected on
+hardware. Both-locale compositor tests execute the real monitor with 75 synthetic
+submissions/s and 25 compositor updates/s and verify unlocked serial reporting;
+interval arithmetic covers idle/reset, long-frame totals and clock wrap.

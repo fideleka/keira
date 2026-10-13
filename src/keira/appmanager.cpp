@@ -1,6 +1,8 @@
 // Libraries
 #include <lilka/controller.h>
 #include <cstring>
+#include <esp_timer.h>
+#include "keira/frame_metrics.h"
 
 #include "keira/appmanager.h"
 #include "keira/thread.h"
@@ -54,7 +56,14 @@ void AppManager::threadsRun() {
 /// Performs Apps Run/Stop/Suspend/Draw if necessary
 void AppManager::run() {
     K_AMG_DBG lilka::serial.log("Starting apps update loop");
+    FrameMetrics work, intervals, internalTimes, submitted;
+    uint32_t windowAt = millis(), previousAppFrame = 0, overruns = 0;
+    int64_t previousStart = 0;
+    App* monitored = nullptr;
     while (1) {
+        const int64_t iterationStart = esp_timer_get_time();
+        bool internalPresented = false;
+        uint32_t internalUs = 0;
         threadsRun();
 
         ThreadManager::threadsClean();
@@ -97,6 +106,7 @@ void AppManager::run() {
         lastShared = sharedOutput;
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
         if (lilka::displaySettings.isSleeping()) {
+            monitored = nullptr;
             if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {
                 lilka::VolumeOverlaySnapshot none;
                 if (devices->capture(nullptr, nullptr, none, true)) {
@@ -123,10 +133,27 @@ void AppManager::run() {
         memcpy(volumeOverlay.muteLabel, K_S_VOLUME_MUTE, sizeof(K_S_VOLUME_MUTE));
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
+        if (monitored != topApp || routeChanged) {
+            monitored = topApp;
+            previousAppFrame = topApp->frame;
+            windowAt = millis();
+            work = intervals = internalTimes = submitted = FrameMetrics{};
+            overruns = 0;
+            previousStart = 0;
+        }
+        submitted.count += topApp->frame - previousAppFrame;
+        previousAppFrame = topApp->frame;
+        if (previousStart) intervals.record(iterationStart - previousStart);
+        previousStart = iterationStart;
         const bool repaintLayers =
             wokeDisplay || routeChanged || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
         if (repaintLayers) {
-            if (legacyInternal) lilka::display.clearOutsideOverlay(lilka::colors::Black);
+            if (legacyInternal) {
+                const int64_t start = esp_timer_get_time();
+                lilka::display.clearOutsideOverlay(lilka::colors::Black);
+                internalUs += esp_timer_get_time() - start;
+                internalPresented = true;
+            }
             topApp->backgroundDirty = false;
         }
         KMTX_UNLOCK(topApp->canvasMutex);
@@ -155,7 +182,12 @@ void AppManager::run() {
             if (app->getRedraw() || repaintLayers) {
                 const int parity = (app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers ? app->frame % 2 : -1;
                 externalDirty = true;
-                if (legacyInternal) lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
+                if (legacyInternal) {
+                    const int64_t start = esp_timer_get_time();
+                    lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
+                    internalUs += esp_timer_get_time() - start;
+                    internalPresented = true;
+                }
                 app->setRedraw(false);
             }
             /// UNLOCK APP CANVAS
@@ -188,7 +220,10 @@ void AppManager::run() {
             lilka::Canvas* layers[] = {
                 (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas, topApp->backCanvas
             };
+            const int64_t start = esp_timer_get_time();
             lilka::display.finishSystemOverlay(layers, 2);
+            internalUs += esp_timer_get_time() - start;
+            internalPresented = true;
             KMTX_UNLOCK(topApp->canvasMutex);
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
@@ -210,11 +245,55 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
         // App canvases are no longer locked during either LCD transfer in shared mode.
-        if (sharedOutput) devices->presentInternal();
+        if (sharedOutput) {
+            const int64_t start = esp_timer_get_time();
+            internalPresented = devices->presentInternal();
+            if (internalPresented) internalUs = esp_timer_get_time() - start;
+        }
+        if (internalPresented) internalTimes.record(internalUs);
+        const uint32_t workUs = esp_timer_get_time() - iterationStart;
+        work.record(workUs);
+        if (workUs >= (1000 / MAX_FPS) * 1000) ++overruns;
+        const uint32_t elapsed = millis() - windowAt;
+        const bool report = elapsed >= 2000;
+        char appName[48] = {};
+        if (report) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
         lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
+        if (report) {
+            const uint32_t appFps = submitted.fpsX10(elapsed), lcdFps = internalTimes.fpsX10(elapsed);
+            const uint32_t compositorFps = work.fpsX10(elapsed);
+            lilka::serial.log(
+                "perf: app=%s mode=%s window-ms=%u submit-fps=%u.%u internal-fps=%u.%u "
+                "compositor-fps=%u.%u",
+                appName,
+                sharedOutput ? (internalOutput ? "Both" : "External") : "Internal",
+                elapsed,
+                appFps / 10,
+                appFps % 10,
+                lcdFps / 10,
+                lcdFps % 10,
+                compositorFps / 10,
+                compositorFps % 10
+            );
+            lilka::serial.log(
+                "perf-time: window-ms=%u interval-avg/max-us=%u/%u work-avg/max-us=%u/%u "
+                "internal-avg/max-us=%u/%u overruns=%u",
+                elapsed,
+                intervals.averageUs(),
+                intervals.maxUs,
+                work.averageUs(),
+                work.maxUs,
+                internalTimes.averageUs(),
+                internalTimes.maxUs,
+                overruns
+            );
+            windowAt = millis();
+            work = intervals = internalTimes = submitted = FrameMetrics{};
+            overruns = 0;
+        }
         waitForFrame();
         //K_AMG_DBG lilka::serial.log("Last frame tick = %d", lastFrameTick);
     }

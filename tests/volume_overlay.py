@@ -56,10 +56,13 @@ prelude = r'''
 #include <cstring>
 #include <string>
 #include <chrono>
+#include <functional>
 using std::min;using std::max;
 #include "volume_overlay.h"
+#include "keira/frame_metrics.h"
 uint32_t now = 100;
 uint32_t millis() {return now;}
+int64_t esp_timer_get_time(){return int64_t(now)*1000;}
 int lockDepth=0;
 std::vector<uint16_t> expected;
 std::vector<int> touched;
@@ -157,15 +160,18 @@ VolumeOverlaySnapshot feedback;
 VolumeOverlaySnapshot Audio::getVolumeOverlay(){return feedback;}
 struct { VolumeOverlaySnapshot getOverlay(){return VolumeOverlaySnapshot();} } brightness;
 struct { bool sleeping=false; bool serviceIdle(bool){return false;} bool isSleeping(){return sleeping;} } displaySettings;
-struct {void log(const char*){}} serial;
+std::vector<std::string> performanceLogs;
+struct {void log(const char*){} template<class... T>void log(const char* format,T... args) {
+ if(strncmp(format,"perf",4)==0){assert(held.empty());char text[640];assert(snprintf(text,sizeof(text),format,args...)<256);performanceLogs.push_back(text);}
+}} serial;
 }
 struct DeviceManager {
  bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
  bool dirty=false;
  std::vector<uint16_t> pixels;
- void presentInternal(){
+ bool presentInternal(){
   assert(held.size()==1 && held[0]==0); // Neither canvas nor panel mutex spans SPI.
-  if(external&&internal&&dirty){lilka::display.draw16bitRGBBitmap(0,0,pixels.data(),lilka::display.width(),lilka::display.height());dirty=false;}
+  if(external&&internal&&dirty){lilka::display.draw16bitRGBBitmap(0,0,pixels.data(),lilka::display.width(),lilka::display.height());dirty=false;return true;}return false;
  }
  bool internalOutput(){return internal;}bool externalOutput(){return external;}unsigned invalidation(){return epoch;}
  bool capture(lilka::Canvas* panel,lilka::Canvas* app,const lilka::VolumeOverlaySnapshot& overlay,bool sleeping){
@@ -192,8 +198,10 @@ struct ThreadManager {int lock=0;void threadsClean(){}};
 struct Stop {};
 using TickType_t=uint32_t;
 uint32_t xTaskGetTickCount(){return now;}
-void vTaskDelay(int){assert(lockDepth==0);throw Stop();}
-void vTaskDelayUntil(uint32_t*,int){assert(lockDepth==0);throw Stop();}
+unsigned remainingTicks=0;
+std::function<void()> onTick;
+void vTaskDelay(int){assert(lockDepth==0);if(remainingTicks){--remainingTicks;now+=40;onTick();return;}throw Stop();}
+void vTaskDelayUntil(uint32_t*,int){vTaskDelay(1);}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
  App* panel;App* lastPresentedApp=nullptr;int panelMtx=1;uint32_t lastFrameTick=0;
@@ -418,6 +426,16 @@ int main(){
  const auto sleepingCapture=device.captures;routing.tick();assert(device.captures==sleepingCapture);
  lilka::displaySettings.sleeping=false;routing.tick();assert(device.pixels[100*280+100]==0x3333);
  device.external=false;++device.epoch;foreground.redraw=true;routing.tick();assert(display.pixels[100*280+100]==0x3333);
+ // Real production monitor distinguishes 75 submitted frames/s from 25 LCD
+ // updates/s, and serial formatting is outside ALL compositor/canvas locks.
+ device.external=true;device.internal=true;++device.epoch;feedback.valid=false;
+ performanceLogs.clear();remainingTicks=51;
+ onTick=[&]{foreground.frame+=3;foreground.redraw=true;};
+ routing.tick();onTick=nullptr;
+ assert(performanceLogs.size()==2);
+ assert(performanceLogs[0].find("mode=Both")!=std::string::npos);
+ assert(performanceLogs[0].find("submit-fps=75.0")!=std::string::npos);
+ assert(performanceLogs[1].find("interval-avg/max-us=40000/40000")!=std::string::npos);
  ksystem.devices=nullptr;protectedRegion={};
  const auto benchStart=std::chrono::steady_clock::now();
  for(int frame=0;frame<1000;++frame){
@@ -475,7 +493,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
             subprocess.run(["gcc", "-std=c99", "-ffunction-sections", "-fdata-sections", *flags,
                             "-I" + str(u8g2.parent), "-c", str(source), "-o", str(obj)], check=True)
             objects.append(str(obj))
-        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
                         *objects, str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
     # Prove guard sensitivity: a background transfer through the footprint must
@@ -484,7 +502,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
                             "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
     assert bad_code != code
     (tmp / "test.cpp").write_text(prelude + bad_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
+    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
                     "-o", str(tmp / "test")], check=True)
     rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
     assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
