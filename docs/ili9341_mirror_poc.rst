@@ -57,13 +57,14 @@ new dependency download or shared dependency edit was needed.
 Build profiles (not yet built or flashed)
 ---------------------------------------
 
-* ``v2-ili9341-mirror-poc``: stock hardware.
-* ``v2-modified-backlight-ili9341-mirror-poc``: isolated amplifier SD hardware.
-* ``v2-modified-backlight-adc-charge-status-ili9341-mirror-poc``: same modified
-  backlight plus the existing ADC charge-status hardware feature.
+The mirror is enabled by default in every existing v2 profile on this temporary
+PoC branch. Keep your current build-runner profile; no special PoC profile or
+hardware modification is required. Stock hardware uses ``v2``; existing modified
+backlight/ADC profiles retain their original hardware flags and inherit the
+mirror flag. Legacy v1 is unchanged. The older ``*-ili9341-mirror-poc`` profiles
+remain compatibility aliases, but are not required.
 
-Use the profile matching the actual hardware. Other environments do not enable
-the service. The reviewed sibling SDK revision is
+Use the profile matching the actual hardware. The reviewed sibling SDK revision is
 ``8a1bbfa74a3e995ec8fd18e62c74f5986385e8cb``; the existing sibling library layout
 and dependency versions are preserved. Target compilation/linking and library
 resolution remain unverified until a firmware build is explicitly authorized.
