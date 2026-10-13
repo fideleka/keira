@@ -27,6 +27,8 @@ typedef enum KEIRA_VERSION_TYPE : uint8_t {
     KEIRA_VERSION_TYPE_RELEASE = 2
 } version_type_t;
 
+class DeviceManager;
+
 class KeiraSystem {
 public:
     KeiraSystem();
@@ -57,6 +59,7 @@ public:
     ThreadManager threads;
     AppManager apps;
     ServiceManager services;
+    DeviceManager* devices = nullptr;
     //////////////////////////////////////////////////////////////////////////
     // Yeah, we've to do that cause it doesn't support multithreading
     // TODO: move the fuck out from insane lib which have a begin/end

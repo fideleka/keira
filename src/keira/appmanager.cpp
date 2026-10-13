@@ -5,6 +5,8 @@
 #include "keira/appmanager.h"
 #include "keira/thread.h"
 #include "keira/keira_lang.h"
+#include "keira/ksystem.h"
+#include "devices/devicemanager.h"
 
 // Apps:
 #include "apps/statusbar/statusbar.h"
@@ -70,14 +72,35 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
 
+        auto* devices = ksystem.devices;
+        const bool internalOutput = !devices || devices->internalOutput();
+        if (devices && devices->invalidation() != externalGeneration) {
+            externalGeneration = devices->invalidation();
+            externalDirty = true;
+        }
+        const bool routeChanged = internalOutput != lastInternal;
+        if (routeChanged && !internalOutput) lilka::display.fillScreen(lilka::colors::Black);
+        lastInternal = internalOutput;
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
         if (lilka::displaySettings.isSleeping()) {
+            if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {
+                lilka::VolumeOverlaySnapshot none;
+                if (devices->capture(nullptr, nullptr, none, true)) {
+                    externalSleeping = true;
+                    externalDirty = false;
+                }
+            }
             KMTX_UNLOCK(ThreadManager::lock);
             vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
             continue;
         }
 
-        // Only this presentation task touches SPI. Feedback uses an immutable
+        if (externalSleeping) {
+            externalSleeping = false;
+            externalDirty = true;
+        }
+
+        // Only this presentation task touches internal SPI. Feedback uses an immutable
         // snapshot and never writes into app/back/screenshot canvases.
         const uint32_t overlayNow = millis();
         auto volumeOverlay = lilka::audio.getVolumeOverlay();
@@ -85,9 +108,10 @@ void AppManager::run() {
         memcpy(volumeOverlay.muteLabel, K_S_VOLUME_MUTE, sizeof(K_S_VOLUME_MUTE));
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
-        const bool repaintLayers = wokeDisplay || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
+        const bool repaintLayers =
+            wokeDisplay || routeChanged || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
         if (repaintLayers) {
-            lilka::display.clearOutsideOverlay(lilka::colors::Black);
+            if (internalOutput) lilka::display.clearOutsideOverlay(lilka::colors::Black);
             topApp->backgroundDirty = false;
         }
         KMTX_UNLOCK(topApp->canvasMutex);
@@ -115,13 +139,31 @@ void AppManager::run() {
             // Redraw app
             if (app->getRedraw() || repaintLayers) {
                 const int parity = (app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers ? app->frame % 2 : -1;
-                lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
+                externalDirty = true;
+                if (internalOutput) lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
                 app->setRedraw(false);
             }
             /// UNLOCK APP CANVAS
             KMTX_UNLOCK(app->canvasMutex);
         }
-        if (lilka::display.systemOverlayNeedsTransfer()) {
+        auto externalOverlay = volumeOverlay;
+        if (devices && devices->externalOutput()) {
+            const auto brightnessOverlay = lilka::brightness.getOverlay();
+            if (brightnessOverlay.visible(overlayNow) &&
+                (!externalOverlay.visible(overlayNow) ||
+                 overlayNow - brightnessOverlay.adjustedAt < overlayNow - externalOverlay.adjustedAt))
+                externalOverlay = brightnessOverlay;
+            const bool overlayVisible = externalOverlay.visible(overlayNow);
+            if (overlayVisible != externalOverlayVisible || externalOverlay.adjustedAt != externalOverlayAt ||
+                externalOverlay.level != externalOverlayLevel ||
+                externalOverlay.brightness != externalOverlayBrightness)
+                externalDirty = true;
+            externalOverlayVisible = overlayVisible;
+            externalOverlayAt = externalOverlay.adjustedAt;
+            externalOverlayLevel = externalOverlay.level;
+            externalOverlayBrightness = externalOverlay.brightness;
+        }
+        if (internalOutput && lilka::display.systemOverlayNeedsTransfer()) {
             // Match screenshot lock order: panel mutex, panel canvas, top canvas.
             // The SDK takes no locks. Expiry reads retained canvases even for paused
             // scenes; active feedback is opaque and needs no underlying repaint.
@@ -132,6 +174,22 @@ void AppManager::run() {
                 (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas, topApp->backCanvas
             };
             lilka::display.finishSystemOverlay(layers, 2);
+            KMTX_UNLOCK(topApp->canvasMutex);
+            KMTX_UNLOCK(panel->canvasMutex);
+            KMTX_UNLOCK(panelMtx);
+        }
+        if (devices && devices->externalOutput() && externalDirty) {
+            // Coherent composition; manager try-lock never waits for external SPI.
+            KMTX_LOCK(panelMtx);
+            KMTX_LOCK(panel->canvasMutex);
+            KMTX_LOCK(topApp->canvasMutex);
+            if (devices->capture(
+                    (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas,
+                    topApp->backCanvas,
+                    externalOverlay,
+                    false
+                ))
+                externalDirty = false;
             KMTX_UNLOCK(topApp->canvasMutex);
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);

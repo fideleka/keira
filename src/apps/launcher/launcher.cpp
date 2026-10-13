@@ -53,6 +53,7 @@
 #include "apps/usbdrive/usbdrive.h"
 #include "apps/soundsettings/sound.h"
 #include "apps/displaysettings/displaysettings.h"
+#include "apps/devices/devices.h"
 #include "apps/partmanager/partmanager.h"
 
 // Icons
@@ -335,6 +336,7 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
             ITEM::APP(
                 K_S_LAUNCHER_USB_DRIVE, [this]() { this->runApp<USBDriveApp>(); }, &memory_img, lilka::colors::Mint
             ),
+            ITEM::APP(K_S_DEVICES, [this]() { this->runApp<DevicesApp>(); }, &settings_img),
             ITEM::SUBMENU(
                 K_S_LAUNCHER_DEV_MENU,
                 {

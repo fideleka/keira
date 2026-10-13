@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Exercise production manager/driver lifecycle, NVS identity, frames and ELF bounds with host peripherals."""
+from pathlib import Path
+import subprocess
+import tempfile
+import sys
+
+root = Path(__file__).resolve().parents[2]
+mock = r'''
+#pragma once
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <cassert>
+#include <cstdio>
+#include <cstdarg>
+#include <string>
+#include <vector>
+#include <map>
+#include <atomic>
+#include <algorithm>
+#define LILKA_VERSION 2
+#define MALLOC_CAP_SPIRAM 1
+#define MALLOC_CAP_8BIT 2
+#define MALLOC_CAP_EXEC 4
+#define MALLOC_CAP_INTERNAL 8
+#define MALLOC_CAP_DMA 16
+#define SOC_IRAM_LOW 0x40370000
+#define SOC_IRAM_HIGH 0x403e0000
+inline std::map<void*,size_t> allocations;
+inline bool failFrame=false, failNvs=false, stopWorker=false, failTransfer=false, busBusy=false;
+inline unsigned fakeTime=1000, resetCount=0, starts=0;
+inline const void* inFlight=nullptr;
+inline std::map<std::string,std::vector<uint8_t>> nvm;
+inline void* heap_caps_malloc(size_t n,int caps){if(failFrame && n>=134400)return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
+inline void* heap_caps_calloc(size_t n,size_t s,int caps){void*p=heap_caps_malloc(n*s,caps);if(p)std::memset(p,0,n*s);return p;}
+inline void heap_caps_free(void*p){if(!p)return;assert(allocations.erase(p));std::free(p);}
+inline void* heap_caps_realloc(void*p,size_t n,int caps){if(!p)return heap_caps_malloc(n,caps);assert(allocations.erase(p));p=std::realloc(p,n);if(p)allocations[p]=n;return p;}
+inline size_t heap_caps_get_free_size(int){return 1000000;}
+inline size_t heap_caps_get_largest_free_block(int){return 1000000;}
+inline size_t heap_caps_get_minimum_free_size(int){return 1000000;}
+inline size_t uxTaskGetStackHighWaterMark(void*){return 5000;}
+inline uint32_t millis(){return fakeTime;}
+inline int64_t esp_timer_get_time(){return fakeTime*1000;}
+struct Stop{};
+inline void vTaskDelay(unsigned ms){fakeTime+=ms;if(stopWorker)throw Stop{};}
+#define pdMS_TO_TICKS(x) (x)
+#define pdTRUE 1
+#define portMAX_DELAY 0xffffffff
+using SemaphoreHandle_t=bool*;
+inline SemaphoreHandle_t xSemaphoreCreateMutex(){return new bool(false);}
+inline int xSemaphoreTake(SemaphoreHandle_t p,unsigned ticks){if(*p){assert(!ticks);return 0;}*p=true;return 1;}
+inline void xSemaphoreGive(SemaphoreHandle_t p){assert(*p);*p=false;}
+inline void vSemaphoreDelete(SemaphoreHandle_t p){delete p;}
+#define KMTX_LOCK(x) assert(xSemaphoreTake(x,portMAX_DELAY))
+#define KMTX_UNLOCK(x) xSemaphoreGive(x)
+#define NVS_LOCK
+#define NVS_UNLOCK
+class String:public std::string {
+public:using std::string::string;
+ String(const std::string&s):std::string(s){}
+ void toCharArray(char*p,size_t n)const{std::snprintf(p,n,"%s",c_str());}
+};
+inline String StringFormat(const char*f,...){char b[128];va_list v;va_start(v,f);vsnprintf(b,sizeof(b),f,v);va_end(v);return String(b);}
+inline size_t strlcpy(char*d,const char*s,size_t n){size_t l=std::strlen(s);if(n){size_t c=std::min(l,n-1);std::memcpy(d,s,c);d[c]=0;}return l;}
+class Preferences {
+public:
+ bool begin(const char*,bool){return true;}void end(){}
+ bool isKey(const char*k){return nvm.count(k);}
+ size_t getBytesLength(const char*k){return nvm[k].size();}
+ size_t getBytes(const char*k,void*p,size_t n){n=std::min(n,nvm[k].size());std::memcpy(p,nvm[k].data(),n);return n;}
+ size_t putBytes(const char*k,const void*p,size_t n){if(failNvs)return 0;nvm[k]=std::vector<uint8_t>((const uint8_t*)p,(const uint8_t*)p+n);return n;}
+ uint8_t getUChar(const char*k,uint8_t d){return nvm.count(k)&&nvm[k].size()?nvm[k][0]:d;}
+ size_t putUChar(const char*k,uint8_t v){return putBytes(k,&v,1);}
+ String getString(const char*k,const char*d){return nvm.count(k)?String((const char*)nvm[k].data()):String(d);}
+ size_t putString(const char*k,const char*v){return putBytes(k,v,std::strlen(v)+1);}
+};
+class Service{public:Service(const char*){}virtual~Service(){}virtual void run(){}void setktStackSize(unsigned){}};
+namespace lilka {
+struct Serial{template<class...T>void log(const char*,T...){}template<class...T>void err(const char*,T...){}};
+inline Serial serial;
+struct Display{int w=280,h=240;int width(){return w;}int height(){return h;}};
+inline Display display;
+class Canvas{std::vector<uint16_t>data;int px,py,w,h;public:Canvas(int x,int y,int width,int height):data(width*height),px(x),py(y),w(width),h(height){}int width(){return w;}int height(){return h;}int x(){return px;}int y(){return py;}uint16_t*getFramebuffer(){return data.data();}};
+struct VolumeOverlaySnapshot{bool valid=false;};
+template<class T>void drawVolumeOverlay(T&t,const VolumeOverlaySnapshot&s,int,int,uint32_t){if(s.valid)t.fillRect(100,100,40,20,0xffff);}
+}
+using gpio_num_t=int;
+#define GPIO_MODE_OUTPUT 1
+#define ESP_OK 0
+#define SPI2_HOST 2
+#define SPI_DMA_CH_AUTO 0
+using spi_device_handle_t=void*;
+struct spi_bus_config_t{int mosi_io_num,miso_io_num,sclk_io_num,quadwp_io_num,quadhd_io_num,max_transfer_sz;};
+struct spi_device_interface_config_t{int clock_speed_hz,spics_io_num,queue_size;};
+struct spi_transaction_t{unsigned length;const void*tx_buffer;};
+inline int spi_bus_initialize(int host,spi_bus_config_t*,int){assert(host==2);if(busBusy)return -1;busBusy=true;return 0;}
+inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){*p=(void*)1;return 0;}
+inline int spi_bus_remove_device(void*){return 0;}
+inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
+inline int spi_device_polling_start(void*,spi_transaction_t*t,unsigned){assert(!inFlight);inFlight=t;++starts;return 0;}
+inline int spi_device_polling_end(void*,unsigned){if(failTransfer)return -1;inFlight=nullptr;return 0;}
+inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
+inline int gpio_reset_pin(int){++resetCount;return 0;}
+struct System{};inline System ksystem;
+'''
+harness = r'''
+#define private public
+#include "devices/devicemanager.h"
+#undef private
+#include "devices/devicemanager.cpp"
+#include <fstream>
+extern "C" int kd_driver_entry(int,char**);
+int lilka_elf_init(lilka_elf_t*){return 0;}
+int lilka_elf_relocate(lilka_elf_t*,const uint8_t*,size_t){return -1;}
+int lilka_elf_run(lilka_elf_t*,int,char**){return -1;}
+void lilka_elf_deinit(lilka_elf_t*){}
+static void registered(DeviceManager&m,unsigned i){
+ auto&s=m.slots[i];s.owner=&m;
+ strlcpy(s.uuid,"674db8e0-cd55-4bfb-90b0-1e521e97c1cd",37);
+ strlcpy(s.driverUuid,"cfa4bc25-c2d6-4a18-ade9-16506b19acf1",37);
+ s.host={sizeof(kd_host),KD_ABI_VERSION,&s,DeviceManager::registerDevice,DeviceManager::setting,
+ DeviceManager::spiOpen,DeviceManager::gpioWrite,DeviceManager::spiWrite,DeviceManager::spiPixels,
+ DeviceManager::spiClose,DeviceManager::delayMs};
+ char*argv[]={reinterpret_cast<char*>(&s.host)};
+ assert(!kd_driver_entry(1,argv));assert(DeviceManager::registerDevice(&s,s.descriptor));
+ m.deviceCount=i+1;m.workerReady=true;
+}
+int main(int argc,char**argv){
+ assert(argc==2);
+ std::ifstream f(argv[1],std::ios::binary);std::vector<uint8_t>elf((std::istreambuf_iterator<char>(f)),{});
+ assert(validateDriverElf(elf.data(),elf.size()));
+ for(size_t i=0;i<sizeof(lilka_elf32_hdr_t);++i)assert(!validateDriverElf(elf.data(),i));
+ auto corrupt=elf;corrupt[32]=0xff;corrupt[33]=0xff;assert(!validateDriverElf(corrupt.data(),corrupt.size()));
+ corrupt=elf;corrupt[18]=0;assert(!validateDriverElf(corrupt.data(),corrupt.size()));
+ lilka_elf32_hdr_t header;memcpy(&header,elf.data(),sizeof(header));
+ for(unsigned i=0;i<header.shnum;++i){lilka_elf32_shdr_t section;memcpy(&section,elf.data()+header.shoff+i*sizeof(section),sizeof(section));
+  if(section.type==4){corrupt=elf;corrupt[section.offset+4]=0xff;assert(!validateDriverElf(corrupt.data(),corrupt.size()));}}
+ {
+ DeviceManager m;registered(m,0);
+ assert(m.internalOutput()&&!m.externalOutput());assert(allocations.empty());
+ assert(m.setEnabled(0,true));assert(m.slots[0].active&&m.internalOutput()&&!m.frame);
+ assert(m.setDisplayMode(DeviceManager::Both));assert(m.externalOutput()&&m.internalOutput());
+ assert(m.frame&&allocations[m.frame]==134400);
+ lilka::Canvas panel(0,0,280,24),old(0,24,280,216),small(20,40,40,30);
+ std::fill(old.getFramebuffer(),old.getFramebuffer()+280*216,0x1234);
+ std::fill(small.getFramebuffer(),small.getFramebuffer()+40*30,0x5678);
+ lilka::VolumeOverlaySnapshot none;
+ assert(m.capture(&panel,&old,none,false));assert(m.frame[100*280+100]==0x1234);
+ assert(m.capture(&panel,&small,none,false));assert(m.frame[100*280+100]==0);assert(m.frame[40*280+20]==0x5678);
+ assert(xSemaphoreTake(m.mutex,0));assert(!m.capture(&panel,&old,none,false));xSemaphoreGive(m.mutex);
+ assert(m.capture(nullptr,nullptr,none,true));assert(m.frame[40*280+20]==0);
+ assert(m.capture(nullptr,&small,none,false));
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferCount==1&&!m.pending);
+ assert(m.setDisplayMode(DeviceManager::External));assert(!m.internalOutput());
+ failNvs=true;assert(!m.setDisplayMode(DeviceManager::Internal));assert(m.displayMode()==DeviceManager::External);failNvs=false;
+ assert(m.setDisplayMode(DeviceManager::Internal));assert(!m.frame&&m.internalOutput());
+ assert(m.setEnabled(0,false));assert(allocations.empty()&&!busBusy);assert(resetCount>=4);
+ failFrame=true;assert(m.setDisplayMode(DeviceManager::Both));assert(!m.setEnabled(0,true));assert(m.internalOutput()&&!busBusy&&allocations.empty());failFrame=false;
+ assert(m.setEnabled(0,true));const auto count=allocations.size();
+ // Duplicate pins fail activation and restore the previous working setting.
+ assert(!m.changeSetting(0,1,-1));assert(m.slots[0].values[1]==1&&m.slots[0].active&&allocations.size()==count);
+ assert(m.changeSetting(0,5,1));assert(m.slots[0].values[5]==1);
+ for(int i=0;i<20;++i){assert(m.setEnabled(0,false));assert(allocations.empty());assert(m.setEnabled(0,true));assert(allocations.size()==count);}
+ assert(m.setEnabled(0,false));
+ }
+ assert(allocations.empty());
+ {
+ DeviceManager m;registered(m,0);assert(m.restore(m.slots[0]));assert(m.slots[0].values[5]==1);
+ // Persisted settings are matched by stable field IDs, not field order.
+ Record record;memcpy(&record,nvm["d00"].data(),sizeof(record));std::swap(record.fields[0],record.fields[5]);
+ memcpy(nvm["d00"].data(),&record,sizeof(record));m.slots[0].values[5]=0;assert(m.restore(m.slots[0]));assert(m.slots[0].values[5]==1);
+ record.schema=99;memcpy(nvm["d00"].data(),&record,sizeof(record));assert(!m.restore(m.slots[0]));assert(m.slots[0].readOnly);assert(!m.setEnabled(0,true));
+ assert(m.resetSettings(0));assert(!m.slots[0].readOnly&&m.slots[0].values[5]==0);
+ }
+ assert(allocations.empty());
+ {
+ DeviceManager m;registered(m,0);m.workerReady=false;
+ assert(!m.setEnabled(0,true)&&m.internalOutput()&&!m.externalOutput());m.workerReady=true;
+ assert(m.setEnabled(0,true));assert(m.setDisplayMode(DeviceManager::Both));
+ const unsigned claims=allocations.size();failTransfer=true;
+ const uint8_t command=0x2c;assert(DeviceManager::spiWrite(&m.slots[0],0,&command,1));
+ assert(m.spiFault&&inFlight==&m.transaction);
+ m.deactivate();assert(m.internalOutput()&&!m.externalOutput()&&busBusy);
+ assert(allocations.size()==1&&allocations.count(m.dma)); // Quarantined DMA is not freed in flight.
+ assert(!m.setEnabled(0,true));assert(allocations.size()==1);
+ failTransfer=false;assert(!spi_device_polling_end(m.spi,100)); // Simulate reboot/settlement only in fixture.
+ m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);assert(allocations.empty()&&!busBusy);
+ }
+ assert(allocations.empty());
+ puts("PASS: production SD driver/manager, NVS identity, bounded frames, stale-area clearing, rollback, 20 toggles and ELF bounds");
+}
+'''
+with tempfile.TemporaryDirectory(prefix='keira-device-host-') as tmp:
+    tmp = Path(tmp)
+    (tmp / 'mock.h').write_text(mock)
+    for name in ['keira/service.h','keira/ksystem.h','keira/utils/string.h','driver/spi_master.h',
+                 'driver/gpio.h','esp_heap_caps.h','esp_timer.h','soc/soc.h']:
+        p = tmp / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text('#pragma once\n#include "mock.h"\n')
+    # SDK loader types are unchanged; use its real public header.
+    loader = root.parent / 'sdk/lib/lilka/src/lilka/dynloader.h'
+    if not loader.is_file():
+        raise RuntimeError('Sibling SDK header required')
+    (tmp / 'lilka').mkdir()
+    (tmp / 'lilka/dynloader.h').write_text(loader.read_text())
+    (tmp / 'test.cpp').write_text(harness)
+    subprocess.run(['gcc','-std=c11','-Dmain=kd_driver_entry','-Dmemset=kd_module_memset',
+                    '-c',str(root/'drivers/ili9341/driver.c'),'-o',str(tmp/'driver.o')],check=True)
+    subprocess.run(['g++','-std=c++17','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',
+                    '-I'+str(tmp),'-I'+str(root/'src'),'-I'+str(root/'.pio/libdeps/v2/ArduinoJson/src'),
+                    str(tmp/'test.cpp'),str(root/'src/devices/elfcheck.cpp'),str(tmp/'driver.o'),
+                    '-o',str(tmp/'test')],check=True)
+    subprocess.run([str(tmp/'test'),sys.argv[1]],check=True)
