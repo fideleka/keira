@@ -184,7 +184,32 @@
        }
     }
  }
-@@ -414,6 +422,9 @@
+@@ -344,8 +352,6 @@
+    /* blit to screen */
+    vid_flush();
+ 
+-   /* grab input */
+-   osd_getinput();
+ }
+ 
+ /* main emulation loop */
+@@ -371,6 +377,15 @@
+          last_ticks = nofrendo_ticks;
+       }
+ 
++      /* Input belongs to emulation cadence, including undisplayed frames.
++       * Never call it from another task or spin-poll while no frame is due. */
++      if (nes.pause || frames_to_render > 0 || false == nes.autoframeskip)
++      {
++         osd_getinput();
++         if (nes.poweroff)
++            break;
++      }
++
+       if (true == nes.pause)
+       {
+          /* TODO: dim the screen, and pause/silence the apu */
+@@ -414,6 +429,9 @@
     ppu_reset(reset_type);
     mmc_reset();
     nes6502_reset();
@@ -194,7 +219,7 @@
  
     nes.scanline = 241;
  
-@@ -534,7 +545,7 @@
+@@ -534,7 +552,7 @@
        goto _fail;
  
     /* set the IRQ routines */
