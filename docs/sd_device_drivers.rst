@@ -342,3 +342,24 @@ pass. Repository-wide make gates still fail on unchanged statusbar formatting
 and existing host-fixture ODR conflicts (Acquire/FMEntry). No full firmware
 link or hardware timing/flicker/stack/audio/SD soak is claimed. Physical confirmation remains a follow-up after installing both
 components.
+
+Dual-display responsiveness follow-up
+-------------------------------------
+
+Both mode samples the external mirror at most once every 67 ms (15 FPS),
+checking the deadline before taking canvas locks. Deferred redraws remain
+dirty so the next capture takes the latest composed image. External-only
+keeps its existing capture cadence; driver transfer-rate settings are unchanged.
+This bounds mirror-copy frequency, not the duration of an individual capture.
+
+The compositor now yields for at least one scheduler tick after an overrun
+and rebases its deadline. It no longer repeatedly runs against expired 60 FPS
+deadlines, starving other equal-priority tasks. No buffer or task is added;
+only one atomic timestamp is retained. The stable external snapshot is still
+needed so the app can draw while the slower external transfer reads it.
+
+This follow-up is firmware-only: rebuild/flash Keira on the same branch.
+The preceding partial-transfer update still requires the 1.1.0 SD driver.
+Host checks cover sustained overruns, normal pacing/recovery, tick wrap,
+Both-mode capture deadlines and retained redraws. Actual dual-display latency
+and throughput remain unverified until tested on the device.

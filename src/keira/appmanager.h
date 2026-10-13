@@ -53,4 +53,5 @@ private:
     App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
     // Used for capping framerate to A
     TickType_t lastFrameTick = xTaskGetTickCount();
+    void waitForFrame();
 };

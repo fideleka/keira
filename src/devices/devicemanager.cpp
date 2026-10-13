@@ -656,6 +656,7 @@ bool DeviceManager::capture(
         ++captureCount;
         if (!changed) ++unchangedCaptures;
         captureUs = esp_timer_get_time() - start;
+        lastCaptureMs = millis();
     } else good = false;
     KMTX_UNLOCK(mutex);
     return good;

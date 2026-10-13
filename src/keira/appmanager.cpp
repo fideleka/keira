@@ -14,6 +14,17 @@
 
 #define MAX_FPS 60
 
+void AppManager::waitForFrame() {
+    const TickType_t period = pdMS_TO_TICKS(1000 / MAX_FPS);
+    const TickType_t now = xTaskGetTickCount();
+    if (now - lastFrameTick >= period) {
+        // Missed frames cannot be recovered. Always let apps/input/audio run
+        // after an overrun instead of spinning through expired deadlines.
+        vTaskDelay(1);
+        lastFrameTick = xTaskGetTickCount();
+    } else vTaskDelayUntil(&lastFrameTick, period);
+}
+
 AppManager::AppManager() {
     setName(APPMANAGER_NAME);
     setktStackSize(APPMANAGER_STACK);
@@ -91,7 +102,7 @@ void AppManager::run() {
                 }
             }
             KMTX_UNLOCK(ThreadManager::lock);
-            vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
+            waitForFrame();
             continue;
         }
 
@@ -178,7 +189,7 @@ void AppManager::run() {
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
         }
-        if (devices && devices->externalOutput() && externalDirty) {
+        if (devices && devices->externalOutput() && externalDirty && devices->captureDue()) {
             // Coherent composition; manager try-lock never waits for external SPI.
             KMTX_LOCK(panelMtx);
             KMTX_LOCK(panel->canvasMutex);
@@ -198,7 +209,7 @@ void AppManager::run() {
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
-        vTaskDelayUntil(&lastFrameTick, pdMS_TO_TICKS(1000 / MAX_FPS));
+        waitForFrame();
         //K_AMG_DBG lilka::serial.log("Last frame tick = %d", lastFrameTick);
     }
 }
