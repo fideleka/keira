@@ -80,39 +80,34 @@ bool pinAllowed(int pin) {
 bool bounded(const char* text, size_t maximum) {
     return text && strnlen(text, maximum) < maximum;
 }
-struct FrameTarget {
-    uint16_t* pixels;
-    int width, height;
-    void fillRect(int x, int y, int w, int h, uint16_t color) {
-        const int left = x < 0 ? 0 : x, top = y < 0 ? 0 : y;
-        const int right = x + w < width ? x + w : width, bottom = y + h < height ? y + h : height;
-        for (int row = top; row < bottom; ++row)
-            for (int col = left; col < right; ++col)
-                pixels[row * width + col] = color;
-    }
-    void drawRect(int x, int y, int w, int h, uint16_t color) {
-        fillRect(x, y, w, 1, color);
-        fillRect(x, y + h - 1, w, 1, color);
-        fillRect(x, y, 1, h, color);
-        fillRect(x + w - 1, y, 1, h, color);
-    }
+struct LayerView {
+    const uint16_t* pixels;
+    int x, y, width, height;
 };
-void copyLayer(uint16_t* pixels, int width, int height, lilka::Canvas* canvas) {
-    if (!canvas || !canvas->getFramebuffer()) return;
-    for (int row = 0; row < canvas->height() && canvas->y() + row < height; ++row) {
-        if (canvas->x() >= width) break;
-        const int count = canvas->width() < width - canvas->x() ? canvas->width() : width - canvas->x();
+LayerView layerView(lilka::Canvas* canvas) {
+    return canvas ? LayerView{canvas->getFramebuffer(), canvas->x(), canvas->y(), canvas->width(), canvas->height()}
+                  : LayerView{nullptr, 0, 0, 0, 0};
+}
+const uint16_t* fullRow(const LayerView& layer, int y, int width) {
+    if (!layer.pixels || layer.x != 0 || layer.width < width || y < layer.y || y >= layer.y + layer.height)
+        return nullptr;
+    return layer.pixels + (y - layer.y) * layer.width;
+}
+void copyLayerRow(uint16_t* row, int width, int y, const LayerView& layer) {
+    if (!layer.pixels || y < layer.y || y >= layer.y + layer.height || layer.x >= width) return;
+    const int left = layer.x < 0 ? 0 : layer.x;
+    const int right = layer.x + layer.width < width ? layer.x + layer.width : width;
+    if (right > left)
         memcpy(
-            pixels + (canvas->y() + row) * width + canvas->x(),
-            canvas->getFramebuffer() + row * canvas->width(),
-            count * sizeof(uint16_t)
+            row + left, layer.pixels + (y - layer.y) * layer.width + left - layer.x, (right - left) * sizeof(uint16_t)
         );
-    }
 }
 } // namespace
 
 DeviceManager::DeviceManager() : Service("devices") {
     setktStackSize(6144);
+    // A presentation worker is latency-sensitive; DMA waits yield the CPU.
+    setktPriority(KT_PRIO_DEFAULT);
 }
 DeviceManager::~DeviceManager() {
     // Lifecycle owner must stop/join service before destroying it.
@@ -261,11 +256,12 @@ bool DeviceManager::load(Slot& slot, const char* path) {
 }
 int32_t DeviceManager::registerDevice(void* context, const kd_device* d) {
     auto& slot = *static_cast<Slot*>(context);
-    if (slot.descriptor || !d || d->size != sizeof(kd_device) || d->abi != KD_ABI_VERSION ||
-        d->type != KD_TYPE_DISPLAY || !bounded(d->driver_uuid, 37) || !bounded(d->device_uuid, 37) ||
-        strcmp(d->driver_uuid, slot.driverUuid) || strcmp(d->device_uuid, slot.uuid) || !bounded(d->name, 48) ||
-        !bounded(d->version, 24) || !d->settings_version || d->setting_count > KD_MAX_SETTINGS ||
-        (d->setting_count && !d->settings) || d->state_size > 256 || !d->enable || !d->disable || !d->present)
+    if (slot.descriptor || !d || (d->size != offsetof(kd_device, present_rows) && d->size != sizeof(kd_device)) ||
+        d->abi != KD_ABI_VERSION || d->type != KD_TYPE_DISPLAY || !bounded(d->driver_uuid, 37) ||
+        !bounded(d->device_uuid, 37) || strcmp(d->driver_uuid, slot.driverUuid) || strcmp(d->device_uuid, slot.uuid) ||
+        !bounded(d->name, 48) || !bounded(d->version, 24) || !d->settings_version ||
+        d->setting_count > KD_MAX_SETTINGS || (d->setting_count && !d->settings) || d->state_size > 256 || !d->enable ||
+        !d->disable || !d->present)
         return -1;
     for (unsigned i = 0; i < d->setting_count; ++i) {
         const auto& f = d->settings[i];
@@ -401,6 +397,8 @@ bool DeviceManager::route() {
         frame = nullptr;
         frameCapacity = 0;
         pending = false;
+        frameValid = false;
+        memset(dirtyRows, 0, sizeof(dirtyRows));
     }
     routed = external;
     internal = !external || mode != External;
@@ -615,23 +613,86 @@ bool DeviceManager::capture(
     if (xSemaphoreTake(mutex, 0) != pdTRUE) return false;
     bool good = frame && active >= 0 && mode != Internal;
     const int w = lilka::display.width(), h = lilka::display.height();
-    if (good && w > 0 && h > 0 && static_cast<size_t>(w) * h <= frameCapacity) {
+    if (good && w > 0 && h > 0 && w <= 320 && h <= 320 && static_cast<size_t>(w) * h <= frameCapacity) {
         const int64_t start = esp_timer_get_time();
-        memset(frame, 0, w * h * sizeof(uint16_t));
-        if (!sleeping) {
-            copyLayer(frame, w, h, panel);
-            copyLayer(frame, w, h, app);
-            FrameTarget target{frame, w, h};
-            lilka::drawVolumeOverlay(target, overlay, w, h, millis());
+        const bool force = !frameValid || width != w || height != h;
+        const auto top = layerView(sleeping ? nullptr : app);
+        const auto status = layerView(sleeping ? nullptr : panel);
+        const auto geometry = lilka::volumeOverlayGeometry(w, h);
+        const uint32_t overlayNow = millis();
+        const bool overlayVisible = !sleeping && overlay.visible(overlayNow) && geometry.width;
+        uint16_t scratch[320]; // One temporary row, not another framebuffer.
+        bool changed = false;
+        for (int y = 0; y < h; ++y) {
+            const uint16_t* source = fullRow(top, y, w);
+            // A partial app overlaps the panel: compose rather than bypass it.
+            const bool topCovers = top.pixels && y >= top.y && y < top.y + top.height;
+            if (!source && !topCovers) source = fullRow(status, y, w);
+            const bool overlayRow = overlayVisible && y >= geometry.y && y < geometry.y + geometry.height;
+            if (!source || overlayRow) {
+                if (source) memcpy(scratch, source, w * sizeof(uint16_t));
+                else {
+                    memset(scratch, 0, w * sizeof(uint16_t));
+                    copyLayerRow(scratch, w, y, status);
+                    copyLayerRow(scratch, w, y, top);
+                }
+                if (overlayRow) {
+                    lilka::VolumeOverlayRow target{scratch, 0, y, w};
+                    lilka::drawVolumeOverlay(target, overlay, w, h, overlayNow);
+                }
+                source = scratch;
+            }
+            auto* destination = frame + y * w;
+            if (force || memcmp(destination, source, w * sizeof(uint16_t))) {
+                memcpy(destination, source, w * sizeof(uint16_t));
+                dirtyRows[y / 32] |= uint32_t(1) << (y % 32);
+                changed = true;
+            }
         }
         width = w;
         height = h;
-        pending = true;
+        frameValid = true;
+        pending = pending || changed;
         ++captureCount;
+        if (!changed) ++unchangedCaptures;
         captureUs = esp_timer_get_time() - start;
     } else good = false;
     KMTX_UNLOCK(mutex);
     return good;
+}
+int DeviceManager::presentPending(Slot& slot) {
+    unsigned rows = 0, bands = 0;
+    bool inside = false;
+    for (unsigned y = 0; y < height; ++y) {
+        const bool dirty = dirtyRows[y / 32] & (uint32_t(1) << (y % 32));
+        if (dirty) {
+            ++rows;
+            if (!inside) ++bands;
+        }
+        inside = dirty;
+    }
+    // Do not read beyond an older ABI-1 descriptor.
+    const bool supportsRows = slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->present_rows;
+    if (!supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
+        ++fullTransfers;
+        transferPixels += uint32_t(width) * height;
+        return slot.descriptor->present(&slot.host, slot.state, frame, width, height);
+    }
+    for (unsigned y = 0; y < height;) {
+        if (!(dirtyRows[y / 32] & (uint32_t(1) << (y % 32)))) {
+            ++y;
+            continue;
+        }
+        const unsigned first = y;
+        while (y < height && (dirtyRows[y / 32] & (uint32_t(1) << (y % 32))))
+            ++y;
+        ++rowTransfers;
+        transferPixels += uint32_t(width) * (y - first);
+        const int result =
+            slot.descriptor->present_rows(&slot.host, slot.state, frame, width, height, first, y - first);
+        if (result) return result;
+    }
+    return 0;
 }
 void DeviceManager::run() {
     workerReady = true;
@@ -648,7 +709,8 @@ void DeviceManager::run() {
             pending = false;
             const int64_t start = esp_timer_get_time();
             auto& slot = slots[active];
-            const int result = slot.descriptor->present(&slot.host, slot.state, frame, width, height);
+            const int result = presentPending(slot);
+            memset(dirtyRows, 0, sizeof(dirtyRows));
             transferUs = esp_timer_get_time() - start;
             ++transferCount;
             if (result) {
@@ -664,7 +726,7 @@ void DeviceManager::run() {
             lilka::serial.log(
                 "devices: captures=%u transfers=%u fps-x1000=%u capture=%uus transfer=%uus internal-free=%u largest=%u "
                 "min=%u "
-                "psram-free=%u stack=%u",
+                "psram-free=%u stack=%u spi-hz=%u unchanged=%u full=%u bands=%u pixels=%u",
                 captureCount,
                 transferCount,
                 static_cast<uint32_t>((uint64_t(transferCount - loggedTransfers) * 1000000) / (millis() - previousLog)),
@@ -674,7 +736,12 @@ void DeviceManager::run() {
                 heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                 heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                 heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-                uxTaskGetStackHighWaterMark(nullptr)
+                uxTaskGetStackHighWaterMark(nullptr),
+                spiHz,
+                unchangedCaptures,
+                fullTransfers,
+                rowTransfers,
+                transferPixels
             );
             loggedTransfers = transferCount;
             previousLog = millis();
@@ -708,6 +775,7 @@ int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t
     const esp_err_t busResult = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
     if (busResult != ESP_OK) return fail(slot, "SPI bus init", busResult);
     manager.spiOwner = &slot;
+    manager.spiHz = hz;
     manager.ownedPins = pinBit(clk) | pinBit(mosi) | pinBit(dc) | pinBit(reset);
     manager.clkPin = clk;
     manager.mosiPin = mosi;
@@ -788,16 +856,16 @@ int DeviceManager::transmit(uint32_t bits) {
     transaction = {};
     transaction.length = bits;
     transaction.tx_buffer = dma;
-    // IDF 4.4 polling_start accepts only portMAX_DELAY. This host is exclusive,
-    // with one synchronous owner and no queued transactions; completion below
-    // still has the bounded hardware timeout and quarantines an unfinished DMA.
-    const esp_err_t startResult = spi_device_polling_start(spi, &transaction, portMAX_DELAY);
-    if (startResult != ESP_OK) return fail(*spiOwner, "SPI transfer start", startResult);
-    const esp_err_t endResult = spi_device_polling_end(spi, pdMS_TO_TICKS(100));
-    if (endResult != ESP_OK) {
-        // Retain transaction/DMA/bus until reboot; never free an in-flight buffer.
+    // Queue depth one, one persistent descriptor/DMA buffer. Block on completion
+    // instead of burning a core in a polling loop; both waits are IDF-supported.
+    const esp_err_t startResult = spi_device_queue_trans(spi, &transaction, pdMS_TO_TICKS(100));
+    if (startResult != ESP_OK) return fail(*spiOwner, "SPI transfer submit", startResult);
+    spi_transaction_t* completed = nullptr;
+    const esp_err_t endResult = spi_device_get_trans_result(spi, &completed, pdMS_TO_TICKS(100));
+    if (endResult != ESP_OK || completed != &transaction) {
+        // Retain descriptor/DMA/bus on uncertain completion, including timeout.
         spiFault = true;
-        return fail(*spiOwner, "SPI transfer finish", endResult);
+        return fail(*spiOwner, "SPI transfer finish", endResult != ESP_OK ? endResult : ESP_ERR_INVALID_STATE);
     }
     return 0;
 }
