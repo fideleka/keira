@@ -315,6 +315,8 @@ int main(int argc,char**argv){
   wireBytes.clear();assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data()+offset,length));assert(!inFlight);
   assert(wireBytes.size()==length*2);for(unsigned i=0;i<length;++i){assert(wireBytes[2*i]==(pixels[offset+i]>>8));assert(wireBytes[2*i+1]==(pixels[offset+i]&255));}
  }
+ bool packedAhead=false;duringDma=[&]{for(unsigned i=0;i<2048;++i){assert(m.dma[4096+2*i]==(pixels[2048+i]>>8));assert(m.dma[4096+2*i+1]==(pixels[2048+i]&255));}packedAhead=true;};
+ assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));assert(packedAhead);
  failSubmissionAt=starts+2;assert(DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));assert(!inFlight&&!m.spiFault);failSubmissionAt=0;
  assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));
  m.deactivate();assert(allocations.empty()&&!busBusy);

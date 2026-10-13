@@ -269,6 +269,9 @@ void KeiraSystem::showStartupScreen() {
 void KeiraSystem::setup() {
     // Init Hardware
     lilka::begin();
+#if LILKA_VERSION == 2
+    lilka::display.enablePixelDMA();
+#endif
     if (!lilka::displaySettings.begin()) lilka::serial.err("Display settings task unavailable");
 
     // Display splash [Should be done as fast as possible]
