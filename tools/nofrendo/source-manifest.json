@@ -260,7 +260,7 @@
     },
     "nes/nes.c": {
       "original": "aa611a5ec9b7d72f937dd570efe7c8a92e4cc84c04ebd0eb33e5d1a85736609b",
-      "patched": "0357ccff731a8cfa055a831fdc8e319b5103a984d2262709b245f302376aa7b7"
+      "patched": "079d7e5d65cb7541dfc5bbaac52238ca63293bef1c35e22b4cc8709cafb0134c"
     },
     "nes/nes.h": {
       "original": "703575977da25703a918d63cfcb74cd1e506eb2ff79f5bf8c318cad58fe340b6",

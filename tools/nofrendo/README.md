@@ -126,3 +126,18 @@ notices are preserved. Distributing linked firmware must satisfy that license,
 including corresponding modified library source and applicable relinking
 requirements; keeping a patch alone is not a blanket distribution compliance
 claim. No dependency relicensing is attempted.
+
+## Render-independent input (display performance feature)
+
+The verified `nes/nes.c` overlay also polls `osd_getinput()` immediately before
+an emulated frame, including undisplayed automatic-frameskip frames. It no longer
+polls after video flushing. The idle spin path does not poll input; the same
+emulator task owns events, menu handling and turbo cadence. Exit from input
+handling checks poweroff before any further frame is rendered. Pause handling
+retains input polling. This intentionally changes input sampling timing; earlier
+ROM trace parity with the post-flush input schedule is not a timing guarantee.
+
+The manifest's original hashes/pin/license are unchanged. Its reviewed patched
+hash and patch key change, forcing a reproducible overlay rebuild without editing
+installed `.pio` dependencies. `tests/display_performance/nes.py` executes the
+patched loop through skipped/displayed frames and quit-before-render ordering.
