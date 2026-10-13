@@ -85,13 +85,16 @@ void AppManager::run() {
 
         auto* devices = ksystem.devices;
         const bool internalOutput = !devices || devices->internalOutput();
+        const bool sharedOutput = devices && devices->externalOutput();
+        const bool legacyInternal = internalOutput && !sharedOutput;
         if (devices && devices->invalidation() != externalGeneration) {
             externalGeneration = devices->invalidation();
             externalDirty = true;
         }
-        const bool routeChanged = internalOutput != lastInternal;
+        const bool routeChanged = internalOutput != lastInternal || sharedOutput != lastShared;
         if (routeChanged && !internalOutput) lilka::display.fillScreen(lilka::colors::Black);
         lastInternal = internalOutput;
+        lastShared = sharedOutput;
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
         if (lilka::displaySettings.isSleeping()) {
             if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {
@@ -101,6 +104,7 @@ void AppManager::run() {
                     externalDirty = false;
                 }
             }
+            if (sharedOutput) devices->presentInternal();
             KMTX_UNLOCK(ThreadManager::lock);
             waitForFrame();
             continue;
@@ -122,7 +126,7 @@ void AppManager::run() {
         const bool repaintLayers =
             wokeDisplay || routeChanged || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
         if (repaintLayers) {
-            if (internalOutput) lilka::display.clearOutsideOverlay(lilka::colors::Black);
+            if (legacyInternal) lilka::display.clearOutsideOverlay(lilka::colors::Black);
             topApp->backgroundDirty = false;
         }
         KMTX_UNLOCK(topApp->canvasMutex);
@@ -151,7 +155,7 @@ void AppManager::run() {
             if (app->getRedraw() || repaintLayers) {
                 const int parity = (app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers ? app->frame % 2 : -1;
                 externalDirty = true;
-                if (internalOutput) lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
+                if (legacyInternal) lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
                 app->setRedraw(false);
             }
             /// UNLOCK APP CANVAS
@@ -174,7 +178,7 @@ void AppManager::run() {
             externalOverlayLevel = externalOverlay.level;
             externalOverlayBrightness = externalOverlay.brightness;
         }
-        if (internalOutput && lilka::display.systemOverlayNeedsTransfer()) {
+        if (legacyInternal && lilka::display.systemOverlayNeedsTransfer()) {
             // Match screenshot lock order: panel mutex, panel canvas, top canvas.
             // The SDK takes no locks. Expiry reads retained canvases even for paused
             // scenes; active feedback is opaque and needs no underlying repaint.
@@ -189,8 +193,8 @@ void AppManager::run() {
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
         }
-        if (devices && devices->externalOutput() && externalDirty && devices->captureDue()) {
-            // Coherent composition; manager try-lock never waits for external SPI.
+        if (sharedOutput && externalDirty) {
+            // Compose once for BOTH readers. The frame lock never covers external SPI.
             KMTX_LOCK(panelMtx);
             KMTX_LOCK(panel->canvasMutex);
             KMTX_LOCK(topApp->canvasMutex);
@@ -205,6 +209,8 @@ void AppManager::run() {
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
         }
+        // App canvases are no longer locked during either LCD transfer in shared mode.
+        if (sharedOutput) devices->presentInternal();
         lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 

@@ -67,9 +67,11 @@ thread/layer locks. Clear the entire external composition before copying retaine
 layers to prevent stale uncovered pixels. Include status bar, fullscreen behavior,
 toasts and system volume/brightness feedback. No independent screenshot poller,
 no source-canvas mutation for external overlays and no queued historical frames.
-Use one PSRAM capture buffer, with nonblocking producer acquisition and an
-asynchronous service consuming complete frames outside compositor locks. If a
-transfer owns the buffer, skip capture and retry newest content, never enqueue.
+Use two shared PSRAM presentation frames, with nonblocking producer acquisition
+and an asynchronous service consuming complete frames outside compositor locks.
+Both LCDs read the same composed pixels. The external service leases one frame;
+the compositor reuses the other while it is in flight. Pending content is
+latest-frame-wins, never a queue of historical images.
 Re-capture transitions, overlay expiry, orientation and wake. Audit raw/direct
 and interlaced application paths; do not claim arbitrary direct writes are
 mirrored without proof. Before first application presentation, boot cards remain
@@ -88,7 +90,7 @@ Preserve 1:1 logical dimensions: 280x240 on 320x240, 20-pixel black side margins
 portrait uses appropriate rotation and centred margins. Default 20 MHz initially,
 with driver-defined selectable speed and refresh cap. Use bulk bounded DMA-capable
 SPI transfers and a small internal staging buffer, no per-pixel SPI calls and no
-extra display framebuffer. Frame pixels are host-order RGB565; host transport
+private framebuffer allocated by the driver. Frame pixels are host-order RGB565; host transport
 performs wire byte ordering. Clear margins on dimension changes. Disable sends
 display-off where possible but does not promise electrical backlight shutdown.
 
@@ -98,8 +100,10 @@ Memory/performance budgets and regression gates
 Initial explicit ceilings: four discovered modules, eight fields per device,
 4 KiB manifest (8 KiB capped JSON allocator), 64 KiB ELF, 8 KiB executable text and 32 KiB data per module,
 32 persisted device records. Release raw ELF file bytes after relocation.
-Frame cap 76800 pixels/153600 bytes in PSRAM, allocated to the actual logical
-size only for routed external output; current landscape and portrait 134400 bytes. One reusable 4096-byte internal DMA
+Each shared frame is capped at 76800 pixels/153600 bytes in PSRAM, allocated
+to the actual logical size only for routed external output. The pair currently
+uses 268800 bytes (280x240 or 240x280), versus 134400 for the old snapshot.
+One reusable 4096-byte internal DMA
 staging buffer only while a display owns SPI. Worker stack 6144 bytes; no task
 per driver, no per-frame allocations, no growing queues. Do not silently fall
 back to a large internal-RAM framebuffer or unsafe PSRAM executable fallback.
@@ -322,7 +326,8 @@ Diagnostics append ``spi-hz``, ``unchanged``, ``full``, ``bands`` and cumulative
 and transfer/capture times during animation, not idle FPS. At the unchanged
 20 MHz default a full 280x240 frame still needs about 54 ms of raw wire time;
 this cannot equal the internal display's full-screen animation rate. The
-existing 40 MHz setting remains experimental, not automatically selected.
+existing 40 MHz setting is not automatically selected; Anton subsequently
+confirmed it works on his wiring and selected it in Devices.
 
 Rebuild/flash Keira and rebuild the SD driver with ``--drivers`` on
 ``feature/sd-device-drivers``. Replace ``drivers/ili9341/driver.so`` and its
@@ -346,7 +351,8 @@ components.
 Dual-display responsiveness follow-up
 -------------------------------------
 
-Both mode samples the external mirror at most once every 67 ms (15 FPS),
+This historical mitigation is superseded by shared-frame presentation below.
+Both mode sampled the external mirror at most once every 67 ms (15 FPS),
 checking the deadline before taking canvas locks. Deferred redraws remain
 dirty so the next capture takes the latest composed image. External-only
 keeps its existing capture cadence; driver transfer-rate settings are unchanged.
@@ -363,3 +369,62 @@ The preceding partial-transfer update still requires the 1.1.0 SD driver.
 Host checks cover sustained overruns, normal pacing/recovery, tick wrap,
 Both-mode capture deadlines and retained redraws. Actual dual-display latency
 and throughput remain unverified until tested on the device.
+
+
+Shared double-buffered presentation
+-----------------------------------
+
+The fixed Both-mode 15 FPS capture cap is removed. The driver-selected refresh
+limit and actual SPI throughput still bound external transfers; they do not
+bound internal rendering or game simulation. Anton has already selected 40 MHz
+in Devices and confirmed it works with his wiring. Preserve this saved setting;
+there is no schema/default migration or driver binary change. At 40 MHz, raw
+wire time for 280x240 RGB565 is 26.88 ms, excluding commands/staging/scheduling.
+
+Apps already have their own drawing/back canvases. Those public APIs are
+unchanged. Two shared final presentation frames replace the single private
+external snapshot. Layers and feedback are composed once into these shared
+pixels; both LCD paths read the same completed image. This is not zero-copy
+app rendering: status bars, cropped layers and feedback still need composition.
+It removes the separate external-only image and internal reads from mutable
+app canvases in shared mode, not every pixel copy in the system.
+
+The compositor holds app canvas locks only during composition, never during
+internal or external SPI. External DMA retains an immutable frame lease under
+a dedicated frame lock, then releases that lock for the entire transfer. The
+producer always writes the unleased frame, replacing any pending older image.
+Internal SPI consumes the current shared frame synchronously after releasing
+canvas locks. It uses the RAM/bulk Arduino_GFX bitmap overload; the const/flash
+bitmap overload would perform per-pixel writes. The SDK's HWSPI bulk path reads
+without modifying the shared RGB565 input, so both readers can overlap.
+
+Frame metadata/dirty bits are protected independently from the driver mutex.
+External leases snapshot dimensions and accumulated row bits at acquisition;
+changes captured during a transfer remain pending for the next transfer.
+Internal dirty bits are independent, allowing both screens to suppress static
+traffic without confusing their different refresh histories. No historical
+queue, additional service task, per-frame allocation or forced core affinity
+is introduced: the existing FreeRTOS service is runnable on either ESP32-S3 core.
+Internal-only keeps its original presentation/interlace path. Shared mode
+presents the final composed image, rather than internal-only field parity.
+
+Settings/disable/driver handover wait for both readers before freeing frames.
+Failure to allocate either buffer rolls back both allocations and preserves
+internal fallback. The pair costs one additional actual-size PSRAM frame:
+134400 bytes (131.25 KiB) for current dimensions, with a ceiling of 153600
+additional bytes. There are two 40-byte dirty bitmaps and small bounded metadata,
+plus lifetime/frame mutexes; no new full-screen internal-RAM buffer or task stack.
+
+This change is firmware-only on feature/sd-device-drivers. Rebuild/flash Keira;
+keep the existing 1.1.0 SD driver and saved 40 MHz/refresh settings. Existing
+ABI-1 drivers without partial-row support still receive complete frames.
+
+Source checks exercise production external DMA while twenty newer frames are
+composed and internally presented: the leased pixels remain immutable, the
+canvas producer never takes the driver mutex, internal and external readers use
+shared storage, and the next transfer consumes latest content without a backlog.
+Allocation failure on the second buffer, legacy ABI, partial/fragmented/full
+rows, dirty accumulation, mode transitions, overlays, sleep/wake, timeout
+quarantine, settings persistence and repeated activation remain covered.
+Hardware FPS/input latency, PSRAM contention, heap/stack watermarks, audio/SD
+soak and full firmware linking/size remain unverified by these source checks.

@@ -45,12 +45,10 @@ public:
     uint32_t invalidation() const {
         return generation.load();
     }
-    // Caller holds compositor layer locks. Never blocks on driver transfers.
+    // Compositor task only, holding layer locks. Never blocks on driver transfers.
     bool capture(lilka::Canvas* panel, lilka::Canvas* app, const lilka::VolumeOverlaySnapshot& overlay, bool sleeping);
-    // Both mode mirrors at most 15 FPS; check before taking any canvas locks.
-    bool captureDue() const {
-        return displayMode() != Both || millis() - lastCaptureMs.load() >= 67;
-    }
+    // Same compositor task, with no canvas locks. Both LCDs read shared pixels.
+    void presentInternal();
 
 private:
     struct Slot {
@@ -73,15 +71,20 @@ private:
     std::atomic<bool> workerReady{false};
     std::atomic<uint32_t> ownedPins{0};
     std::atomic<uint32_t> generation{1};
-    std::atomic<uint32_t> lastCaptureMs{0};
+    // Lock order: driver mutex -> internalMutex -> frameMutex.
+    // Compositor capture takes only frameMutex; external DMA holds only driver mutex.
+    SemaphoreHandle_t internalMutex = xSemaphoreCreateMutex();
+    SemaphoreHandle_t frameMutex = xSemaphoreCreateMutex();
+    uint16_t* frames[2] = {};
+    int externalReading = -1;
     int active = -1;
     uint16_t* frame = nullptr;
     size_t frameCapacity = 0;
     uint16_t width = 0, height = 0;
     bool pending = false, bootSkipped = false, frameValid = false;
-    uint32_t dirtyRows[10] = {};
+    uint32_t dirtyRows[10] = {}, internalDirtyRows[10] = {};
     uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0;
-    int presentPending(Slot& slot);
+    int presentPending(Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* rows);
     uint32_t captureCount = 0, transferCount = 0, captureUs = 0, transferUs = 0;
     spi_device_handle_t spi = nullptr;
     uint8_t* dma = nullptr;

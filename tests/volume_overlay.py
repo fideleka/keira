@@ -160,17 +160,21 @@ struct { bool sleeping=false; bool serviceIdle(bool){return false;} bool isSleep
 struct {void log(const char*){}} serial;
 }
 struct DeviceManager {
- bool external=false,internal=true,busy=false,due=true;unsigned epoch=1,captures=0;
+ bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
+ bool dirty=false;
  std::vector<uint16_t> pixels;
+ void presentInternal(){
+  assert(held.size()==1 && held[0]==0); // Neither canvas nor panel mutex spans SPI.
+  if(external&&internal&&dirty){lilka::display.draw16bitRGBBitmap(0,0,pixels.data(),lilka::display.width(),lilka::display.height());dirty=false;}
+ }
  bool internalOutput(){return internal;}bool externalOutput(){return external;}unsigned invalidation(){return epoch;}
- bool captureDue(){return due;}
  bool capture(lilka::Canvas* panel,lilka::Canvas* app,const lilka::VolumeOverlaySnapshot& overlay,bool sleeping){
   if(busy)return false;
   ++captures;
   lilka::Surface target(lilka::display.width(),lilka::display.height());
   if(!sleeping){for(auto* layer:{panel,app})if(layer)target.draw16bitRGBBitmap(layer->x(),layer->y(),layer->getFramebuffer(),layer->width(),layer->height());
    lilka::drawVolumeOverlay(target,overlay,target.width(),target.height(),now);}
-  pixels=target.pixels;return true;
+  pixels=target.pixels;dirty=true;return true;
  }
 };
 struct {DeviceManager* devices=nullptr;} ksystem;
@@ -193,7 +197,7 @@ void vTaskDelayUntil(uint32_t*,int){assert(lockDepth==0);throw Stop();}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
  App* panel;App* lastPresentedApp=nullptr;int panelMtx=1;uint32_t lastFrameTick=0;
- bool externalDirty=true,externalSleeping=false,lastInternal=true;
+ bool externalDirty=true,externalSleeping=false,lastInternal=true,lastShared=false;
  uint32_t externalGeneration=0,externalOverlayAt=0;
  bool externalOverlayVisible=false,externalOverlayBrightness=false;
  int externalOverlayLevel=-1;
@@ -404,7 +408,7 @@ int main(){
  device.external=true;device.internal=false;++device.epoch;pixelWrites=0;routing.tick();
  assert(device.captures==1&&device.pixels[100*280+100]==0x2222);
  pixelWrites=0;const auto captures=device.captures;routing.tick();assert(pixelWrites==0&&device.captures==captures);
- device.due=false;foreground.redraw=true;const auto paced=device.captures;routing.tick();assert(device.captures==paced&&routing.externalDirty);device.due=true;
+ foreground.redraw=true;const auto uncapped=device.captures;routing.tick();assert(device.captures==uncapped+1);
  foreground.redraw=true;device.busy=true;routing.tick();assert(routing.externalDirty);
  routingApp.fillScreen(0x3333);device.busy=false;routing.tick();assert(!routing.externalDirty&&device.pixels[100*280+100]==0x3333);
  feedback.level=42;feedback.valid=true;feedback.adjustedAt=now;routing.tick();assert(pixelWrites==0);
