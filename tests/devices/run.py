@@ -19,6 +19,7 @@ mock = r'''
 #include <map>
 #include <atomic>
 #include <algorithm>
+#include <functional>
 #define LILKA_VERSION 2
 #define MALLOC_CAP_SPIRAM 1
 #define MALLOC_CAP_8BIT 2
@@ -30,11 +31,13 @@ mock = r'''
 inline std::map<void*,size_t> allocations;
 inline bool failFrame=false, failNvs=false, stopWorker=false, failTransfer=false, busBusy=false;
 inline bool failDma=false;
+inline unsigned frameAllocations=0, failFrameAllocation=0;
+inline std::function<void()> duringDma;
 inline int busError=0,deviceError=0;
 inline unsigned fakeTime=1000, resetCount=0, starts=0;
 inline const void* inFlight=nullptr;
 inline std::map<std::string,std::vector<uint8_t>> nvm;
-inline void* heap_caps_malloc(size_t n,int caps){if((failFrame && n>=134400)||(failDma&&n==4096))return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
+inline void* heap_caps_malloc(size_t n,int caps){if(n>=134400 && ++frameAllocations==failFrameAllocation)return nullptr;if((failFrame && n>=134400)||(failDma&&n==4096))return nullptr;void*p=std::malloc(n);if(p)allocations[p]=n;return p;}
 inline void* heap_caps_calloc(size_t n,size_t s,int caps){void*p=heap_caps_malloc(n*s,caps);if(p)std::memset(p,0,n*s);return p;}
 inline void heap_caps_free(void*p){if(!p)return;assert(allocations.erase(p));std::free(p);}
 inline void* heap_caps_realloc(void*p,size_t n,int caps){if(!p)return heap_caps_malloc(n,caps);assert(allocations.erase(p));p=std::realloc(p,n);if(p)allocations[p]=n;return p;}
@@ -82,7 +85,16 @@ class Service{public:void setktPriority(unsigned p){assert(p==KT_PRIO_DEFAULT);}
 namespace lilka {
 struct Serial{template<class...T>void log(const char*,T...){}template<class...T>void err(const char*,T...){}};
 inline Serial serial;
-struct Display{int w=280,h=240;int width(){return w;}int height(){return h;}};
+struct Display{
+ int w=280,h=240;unsigned writes=0;const uint16_t* lastSource=nullptr;
+ std::vector<uint16_t> pixels=std::vector<uint16_t>(280*240);
+ int width(){return w;}int height(){return h;}
+ void draw16bitRGBBitmap(int,int,const uint16_t*,int,int){assert(false && "Slow flash/const bitmap path");}
+ void draw16bitRGBBitmap(int x,int y,uint16_t* p,int rw,int rh){
+  assert(x==0 && rw==w);lastSource=p;++writes;
+  std::copy(p,p+rw*rh,pixels.begin()+y*w);
+ }
+};
 inline Display display;
 class Canvas{std::vector<uint16_t>data;int px,py,w,h;public:Canvas(int x,int y,int width,int height):data(width*height),px(x),py(y),w(width),h(height){}int width(){return w;}int height(){return h;}int x(){return px;}int y(){return py;}uint16_t*getFramebuffer(){return data.data();}};
 struct VolumeOverlaySnapshot{bool valid=false;bool visible(uint32_t)const{return valid;}};
@@ -111,7 +123,7 @@ inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
 inline int submitError=0;inline bool wrongCompletion=false;
 inline int spi_device_queue_trans(void*,spi_transaction_t*t,unsigned wait){assert(wait==100);if(submitError)return submitError;assert(!inFlight);inFlight=t;++starts;return 0;}
-inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
+inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;if(duringDma && ((spi_transaction_t*)inFlight)->length>=4096*8){auto callback=std::move(duringDma);duringDma=nullptr;callback();}*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
 inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
 inline int gpio_reset_pin(int){++resetCount;return 0;}
 struct System{};inline System ksystem;
@@ -158,32 +170,56 @@ int main(int argc,char**argv){
  assert(!m.setEnabled(0,true));assert(strstr(m.slots[0].status,"DMA buffer allocation: ESP_ERR_NO_MEM"));assert(allocations.empty()&&!busBusy);
  failDma=false;
  assert(m.internalOutput()&&!m.externalOutput());assert(allocations.empty());
- assert(m.setEnabled(0,true));assert(m.slots[0].active&&m.internalOutput()&&!m.frame);
+ m.slots[0].values[4]=2;assert(m.setEnabled(0,true));assert(m.spiHz==40000000);assert(m.slots[0].active&&m.internalOutput()&&!m.frame);
  assert(m.extensionPinOwned(12)&&m.extensionPinOwned(13)&&m.extensionPinOwned(14)&&m.extensionPinOwned(21));
  assert(!m.extensionPinOwned(47)&&!m.extensionPinOwned(48));
  assert(m.setDisplayMode(DeviceManager::Both));assert(m.externalOutput()&&m.internalOutput());
- assert(m.frame&&allocations[m.frame]==134400);
+ assert(m.frame&&allocations[m.frames[0]]==134400&&allocations[m.frames[1]]==134400);
  lilka::Canvas panel(0,0,280,24),old(0,24,280,216),small(20,40,40,30);
  std::fill(old.getFramebuffer(),old.getFramebuffer()+280*216,0x1234);
  std::fill(small.getFramebuffer(),small.getFramebuffer()+40*30,0x5678);
  lilka::VolumeOverlaySnapshot none;
- assert(m.captureDue());assert(m.capture(&panel,&old,none,false));assert(m.frame[100*280+100]==0x1234);
- assert(!m.captureDue());fakeTime+=66;assert(!m.captureDue());++fakeTime;assert(m.captureDue());
- assert(m.setDisplayMode(DeviceManager::External));assert(m.captureDue());assert(m.setDisplayMode(DeviceManager::Both));
+ assert(m.capture(&panel,&old,none,false));assert(m.frame[100*280+100]==0x1234);
+ assert(m.capture(&panel,&old,none,false)); // No elapsed-time cap.
+ assert(m.setDisplayMode(DeviceManager::External));assert(m.setDisplayMode(DeviceManager::Both));
  assert(m.capture(&panel,&small,none,false));assert(m.frame[100*280+100]==0);assert(m.frame[40*280+20]==0x5678);
- assert(xSemaphoreTake(m.mutex,0));assert(!m.capture(&panel,&old,none,false));xSemaphoreGive(m.mutex);
+ assert(xSemaphoreTake(m.frameMutex,0));assert(!m.capture(&panel,&old,none,false));xSemaphoreGive(m.frameMutex);
  assert(m.capture(nullptr,nullptr,none,true));assert(m.frame[40*280+20]==0);
  assert(m.capture(nullptr,&small,none,false));
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferCount==1&&!m.pending);
+ // Internal consumes the exact shared pointer, with no second capture/copy.
+ m.presentInternal();assert(lilka::display.lastSource==m.frame);assert(lilka::display.pixels==std::vector<uint16_t>(m.frame,m.frame+280*240));
+ const auto internalWrites=lilka::display.writes;m.presentInternal();assert(lilka::display.writes==internalWrites);
+ // Exercise a producer DURING production external DMA. The driver lock is held,
+ // but the compositor publishes many latest frames without touching leased pixels.
+ std::fill(small.getFramebuffer(),small.getFramebuffer()+40*30,0x6789);
+ assert(m.capture(nullptr,&small,none,false));
+ duringDma=[&]{
+  assert(*m.mutex && !*m.frameMutex && m.externalReading>=0);
+  const auto* leased=m.frames[m.externalReading];
+  const std::vector<uint16_t> stable(leased,leased+280*240);
+  for(unsigned i=0;i<20;++i){
+   small.getFramebuffer()[0]=0x8000+i;
+   assert(m.capture(nullptr,&small,none,false));assert(m.frame!=leased);
+   assert(std::equal(stable.begin(),stable.end(),leased));
+   m.presentInternal();assert(lilka::display.pixels[40*280+20]==0x8000+i);
+   assert(lilka::display.lastSource==m.frame+40*280);
+  }
+ };
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ assert(!duringDma && m.externalReading==-1 && m.pending);
+ assert(m.frame[40*280+20]==0x8013);
+ // The next transfer takes the LATEST frame, not twenty queued stale frames.
+ fakeTime+=100;stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(!m.pending);
  // Static captures queue no traffic; one changed scanline sends exactly one row.
  const auto baselineTransfers=m.transferCount;
  assert(m.capture(nullptr,&small,none,false)&&!m.pending);
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;assert(m.transferCount==baselineTransfers);
  small.getFramebuffer()[0]=0xabcd;
  assert(m.capture(nullptr,&small,none,false)&&m.pending);
- const auto pixelsBefore=m.transferPixels;
+ const auto pixelsBefore=m.transferPixels,rowsBefore=m.rowTransfers;
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
- assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==1&&m.frame[40*280+20]==0xabcd);
+ assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==rowsBefore+1&&m.frame[40*280+20]==0xabcd);
  // Dirty bits accumulate until presented even if a change is reverted.
  small.getFramebuffer()[40]=0xabcd;assert(m.capture(nullptr,&small,none,false));
  small.getFramebuffer()[40]=0x5678;assert(m.capture(nullptr,&small,none,false));
@@ -225,6 +261,8 @@ int main(int argc,char**argv){
  failNvs=true;assert(!m.setDisplayMode(DeviceManager::Internal));assert(m.displayMode()==DeviceManager::External);failNvs=false;
  assert(m.setDisplayMode(DeviceManager::Internal));assert(!m.frame&&m.internalOutput());
  assert(m.setEnabled(0,false));assert(allocations.empty()&&!busBusy);assert(resetCount>=4);assert(!m.extensionPinOwned(12));
+ failFrameAllocation=frameAllocations+2;assert(m.setDisplayMode(DeviceManager::Both));
+ assert(!m.setEnabled(0,true));assert(m.internalOutput()&&!busBusy&&allocations.empty());failFrameAllocation=0;
  failFrame=true;assert(m.setDisplayMode(DeviceManager::Both));assert(!m.setEnabled(0,true));assert(m.internalOutput()&&!busBusy&&allocations.empty());failFrame=false;
  assert(m.setEnabled(0,true));const auto count=allocations.size();
  // Duplicate pins fail activation and restore the previous working setting.
@@ -268,7 +306,7 @@ int main(int argc,char**argv){
  wrongCompletion=false;m.spiFault=false;DeviceManager::spiClose(&m.slots[0]);
  }
  assert(allocations.empty());
- puts("PASS: queued DMA/errors/quarantine, unchanged/row/full frames, legacy ABI, clipping/overlays, NVS, rollback, 20 toggles and ELF bounds");
+ puts("PASS: shared frames/20 in-flight updates/latest-wins, 40 MHz persistence, queued DMA/quarantine, partial/full frames, legacy ABI, overlays, allocation rollback, 20 toggles and ELF bounds");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='keira-device-host-') as tmp:

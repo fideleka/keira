@@ -114,7 +114,10 @@ DeviceManager::~DeviceManager() {
     deactivate();
     for (auto& slot : slots)
         if (slot.loaded) lilka_elf_deinit(&slot.elf);
-    heap_caps_free(frame);
+    for (auto* pixels : frames)
+        heap_caps_free(pixels);
+    vSemaphoreDelete(internalMutex);
+    vSemaphoreDelete(frameMutex);
     vSemaphoreDelete(mutex);
 }
 void DeviceManager::delayMs(uint32_t ms) {
@@ -376,32 +379,52 @@ bool DeviceManager::route() {
         routed = false;
         return false;
     }
+    KMTX_LOCK(internalMutex);
+    KMTX_LOCK(frameMutex);
     if (external && !frame) {
         const int w = lilka::display.width(), h = lilka::display.height();
         const size_t pixels = w > 0 && h > 0 ? static_cast<size_t>(w) * h : 0;
         if (pixels && pixels <= FramePixels) {
-            frame = static_cast<uint16_t*>(
-                heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
-            );
-            if (frame) frameCapacity = pixels;
+            for (auto& buffer : frames)
+                buffer = static_cast<uint16_t*>(
+                    heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                );
+            if (frames[0] && frames[1]) {
+                frame = frames[0];
+                frameCapacity = pixels;
+            } else {
+                for (auto& buffer : frames) {
+                    heap_caps_free(buffer);
+                    buffer = nullptr;
+                }
+            }
         }
     }
     if (external && !frame) {
         strlcpy(slots[active].status, "PSRAM frame allocation failed", sizeof(slots[active].status));
         internal = true;
         routed = false;
+        KMTX_UNLOCK(frameMutex);
+        KMTX_UNLOCK(internalMutex);
         return false;
     }
+    // The driver mutex ensures its reader has finished before rerouting/freeing.
     if (!external) {
-        heap_caps_free(frame);
+        for (auto& buffer : frames) {
+            heap_caps_free(buffer);
+            buffer = nullptr;
+        }
         frame = nullptr;
         frameCapacity = 0;
-        pending = false;
-        frameValid = false;
-        memset(dirtyRows, 0, sizeof(dirtyRows));
     }
+    pending = false;
+    frameValid = false;
+    memset(dirtyRows, 0, sizeof(dirtyRows));
+    memset(internalDirtyRows, 0, sizeof(internalDirtyRows));
     routed = external;
     internal = !external || mode != External;
+    KMTX_UNLOCK(frameMutex);
+    KMTX_UNLOCK(internalMutex);
     ++generation;
     return true;
 }
@@ -416,7 +439,6 @@ void DeviceManager::deactivate() {
         strlcpy(slot.status, slot.enabled ? "Enabled, inactive" : "Disabled", sizeof(slot.status));
     }
     active = -1;
-    pending = false;
     route();
 }
 bool DeviceManager::activate(unsigned index) {
@@ -610,12 +632,15 @@ bool DeviceManager::setDisplayMode(Mode value) {
 bool DeviceManager::capture(
     lilka::Canvas* panel, lilka::Canvas* app, const lilka::VolumeOverlaySnapshot& overlay, bool sleeping
 ) {
-    if (xSemaphoreTake(mutex, 0) != pdTRUE) return false;
-    bool good = frame && active >= 0 && mode != Internal;
+    if (xSemaphoreTake(frameMutex, 0) != pdTRUE) return false;
+    bool good = frame && routed.load() && mode != Internal;
     const int w = lilka::display.width(), h = lilka::display.height();
     if (good && w > 0 && h > 0 && w <= 320 && h <= 320 && static_cast<size_t>(w) * h <= frameCapacity) {
         const int64_t start = esp_timer_get_time();
         const bool force = !frameValid || width != w || height != h;
+        // Only the external worker retains a frame between compositor iterations.
+        // Reuse the other frame even if it was previously published: latest wins.
+        auto* output = frames[externalReading == 0 ? 1 : 0];
         const auto top = layerView(sleeping ? nullptr : app);
         const auto status = layerView(sleeping ? nullptr : panel);
         const auto geometry = lilka::volumeOverlayGeometry(w, h);
@@ -642,13 +667,18 @@ bool DeviceManager::capture(
                 }
                 source = scratch;
             }
-            auto* destination = frame + y * w;
-            if (force || memcmp(destination, source, w * sizeof(uint16_t))) {
-                memcpy(destination, source, w * sizeof(uint16_t));
-                dirtyRows[y / 32] |= uint32_t(1) << (y % 32);
+            const auto* previous = frame + y * w;
+            auto* destination = output + y * w;
+            const bool rowChanged = force || memcmp(previous, source, w * sizeof(uint16_t));
+            if (destination != previous || rowChanged) memcpy(destination, source, w * sizeof(uint16_t));
+            if (rowChanged) {
+                const uint32_t bit = uint32_t(1) << (y % 32);
+                dirtyRows[y / 32] |= bit;
+                internalDirtyRows[y / 32] |= bit;
                 changed = true;
             }
         }
+        frame = output;
         width = w;
         height = h;
         frameValid = true;
@@ -656,41 +686,71 @@ bool DeviceManager::capture(
         ++captureCount;
         if (!changed) ++unchangedCaptures;
         captureUs = esp_timer_get_time() - start;
-        lastCaptureMs = millis();
     } else good = false;
-    KMTX_UNLOCK(mutex);
+    KMTX_UNLOCK(frameMutex);
     return good;
 }
-int DeviceManager::presentPending(Slot& slot) {
+void DeviceManager::presentInternal() {
+    // Only the compositor calls capture/presentInternal, in sequence. Protect
+    // lifetime against settings/rerouting, but release frameMutex before SPI so
+    // the external worker can acquire/release its lease during internal DMA.
+    KMTX_LOCK(internalMutex);
+    KMTX_LOCK(frameMutex);
+    const bool good = frameValid && routed.load() && mode == Both;
+    // Arduino_GFX's const bitmap overload writes one pixel at a time. Its RAM
+    // overload uses bulk writePixels and does not modify the source on the SDK's ESP32 HWSPI bus.
+    uint16_t* pixels = good ? frame : nullptr;
+    const uint16_t w = width, h = height;
+    uint32_t rows[10];
+    memcpy(rows, internalDirtyRows, sizeof(rows));
+    if (good) memset(internalDirtyRows, 0, sizeof(internalDirtyRows));
+    KMTX_UNLOCK(frameMutex);
+    if (pixels) {
+        for (unsigned y = 0; y < h;) {
+            if (!(rows[y / 32] & (uint32_t(1) << (y % 32)))) {
+                ++y;
+                continue;
+            }
+            const unsigned first = y;
+            while (y < h && (rows[y / 32] & (uint32_t(1) << (y % 32))))
+                ++y;
+            lilka::display.draw16bitRGBBitmap(0, first, pixels + first * w, w, y - first);
+        }
+    }
+    KMTX_UNLOCK(internalMutex);
+}
+int DeviceManager::presentPending(
+    Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* dirty
+) {
     unsigned rows = 0, bands = 0;
     bool inside = false;
     for (unsigned y = 0; y < height; ++y) {
-        const bool dirty = dirtyRows[y / 32] & (uint32_t(1) << (y % 32));
-        if (dirty) {
+        const bool rowDirty = dirty[y / 32] & (uint32_t(1) << (y % 32));
+        if (rowDirty) {
             ++rows;
             if (!inside) ++bands;
         }
-        inside = dirty;
+        inside = rowDirty;
     }
     // Do not read beyond an older ABI-1 descriptor.
     const bool supportsRows = slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->present_rows;
     if (!supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
         ++fullTransfers;
         transferPixels += uint32_t(width) * height;
-        return slot.descriptor->present(&slot.host, slot.state, frame, width, height);
+        return slot.descriptor->present(&slot.host, slot.state, pixels, width, height);
     }
     for (unsigned y = 0; y < height;) {
-        if (!(dirtyRows[y / 32] & (uint32_t(1) << (y % 32)))) {
+        if (!(dirty[y / 32] & (uint32_t(1) << (y % 32)))) {
             ++y;
             continue;
         }
         const unsigned first = y;
-        while (y < height && (dirtyRows[y / 32] & (uint32_t(1) << (y % 32))))
+        while (y < height && (dirty[y / 32] & (uint32_t(1) << (y % 32))))
             ++y;
         ++rowTransfers;
         transferPixels += uint32_t(width) * (y - first);
         const int result =
-            slot.descriptor->present_rows(&slot.host, slot.state, frame, width, height, first, y - first);
+            slot.descriptor->present_rows(&slot.host, slot.state, pixels, width, height, first, y - first);
         if (result) return result;
     }
     return 0;
@@ -705,13 +765,28 @@ void DeviceManager::run() {
             active >= 0 && slots[active].descriptor->frame_interval_ms
                 ? slots[active].descriptor->frame_interval_ms(&slots[active].host, slots[active].state)
                 : 0;
-        if (pending && frame && active >= 0 && mode != Internal && millis() - previousTransfer >= interval) {
-            previousTransfer = millis();
+        const uint16_t* pixels = nullptr;
+        uint16_t frameWidth = 0, frameHeight = 0;
+        uint32_t rows[10] = {};
+        KMTX_LOCK(frameMutex);
+        if (pending && frameValid && active >= 0 && mode != Internal && millis() - previousTransfer >= interval) {
+            pixels = frame;
+            externalReading = frame == frames[0] ? 0 : 1;
+            frameWidth = width;
+            frameHeight = height;
+            memcpy(rows, dirtyRows, sizeof(rows));
+            memset(dirtyRows, 0, sizeof(dirtyRows));
             pending = false;
+        }
+        KMTX_UNLOCK(frameMutex);
+        if (pixels) {
+            previousTransfer = millis();
             const int64_t start = esp_timer_get_time();
             auto& slot = slots[active];
-            const int result = presentPending(slot);
-            memset(dirtyRows, 0, sizeof(dirtyRows));
+            const int result = presentPending(slot, pixels, frameWidth, frameHeight, rows);
+            KMTX_LOCK(frameMutex);
+            externalReading = -1;
+            KMTX_UNLOCK(frameMutex);
             transferUs = esp_timer_get_time() - start;
             ++transferCount;
             if (result) {
@@ -724,14 +799,17 @@ void DeviceManager::run() {
             }
         }
         if (millis() - previousLog >= 10000 && active >= 0 && mode != Internal) {
+            KMTX_LOCK(frameMutex);
+            const auto captured = captureCount, copiedUs = captureUs, unchanged = unchangedCaptures;
+            KMTX_UNLOCK(frameMutex);
             lilka::serial.log(
                 "devices: captures=%u transfers=%u fps-x1000=%u capture=%uus transfer=%uus internal-free=%u largest=%u "
                 "min=%u "
                 "psram-free=%u stack=%u spi-hz=%u unchanged=%u full=%u bands=%u pixels=%u",
-                captureCount,
+                captured,
                 transferCount,
                 static_cast<uint32_t>((uint64_t(transferCount - loggedTransfers) * 1000000) / (millis() - previousLog)),
-                captureUs,
+                copiedUs,
                 transferUs,
                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                 heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
@@ -739,7 +817,7 @@ void DeviceManager::run() {
                 heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
                 uxTaskGetStackHighWaterMark(nullptr),
                 spiHz,
-                unchangedCaptures,
+                unchanged,
                 fullTransfers,
                 rowTransfers,
                 transferPixels

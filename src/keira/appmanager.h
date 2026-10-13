@@ -46,7 +46,7 @@ private:
     // TopPanel (StatusBarApp)
     App* panel = NULL;
     SemaphoreHandle_t panelMtx = xSemaphoreCreateMutex();
-    bool externalDirty = true, externalSleeping = false, lastInternal = true;
+    bool externalDirty = true, externalSleeping = false, lastInternal = true, lastShared = false;
     uint32_t externalGeneration = 0, externalOverlayAt = 0;
     bool externalOverlayVisible = false, externalOverlayBrightness = false;
     int externalOverlayLevel = -1;
