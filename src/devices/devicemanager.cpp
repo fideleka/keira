@@ -1,4 +1,5 @@
 #include "devicemanager.h"
+#include "frame_row.h"
 #if LILKA_VERSION != 1
 #    include "elfcheck.h"
 #    include "keira/ksystem.h"
@@ -669,8 +670,7 @@ bool DeviceManager::capture(
             }
             const auto* previous = frame + y * w;
             auto* destination = output + y * w;
-            const bool rowChanged = force || memcmp(previous, source, w * sizeof(uint16_t));
-            if (destination != previous || rowChanged) memcpy(destination, source, w * sizeof(uint16_t));
+            const bool rowChanged = displayFrame::copyCompareRow(destination, source, previous, w, force);
             if (rowChanged) {
                 const uint32_t bit = uint32_t(1) << (y % 32);
                 dirtyRows[y / 32] |= bit;
