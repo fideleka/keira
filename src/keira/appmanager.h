@@ -50,7 +50,7 @@ private:
     bool externalDirty = true, externalSleeping = false, lastInternal = true, lastShared = false;
     uint32_t externalGeneration = 0, externalOverlayAt = 0;
     bool externalOverlayVisible = false, externalOverlayBrightness = false;
-    int externalOverlayLevel = -1;
+    int externalOverlayLevel = -1, externalOverlayMode = -1;
     App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
 // Used for capping framerate to A
 #if LILKA_VERSION == 2

@@ -22,7 +22,7 @@ def function(path, signature):
     return text[start:end]
 
 sync = function(ROOT / "src/apps/soundsettings/sound.cpp", "bool SoundConfigApp::syncSystemVolume()")
-gb = function(ROOT / "src/apps/gameboy/gameboyapp.cpp", "void GameBoyApp::writeAudio()")
+gb = function(ROOT / "src/apps/gameboy/gameboyapp.cpp", "bool GameBoyApp::writeAudio()")
 nes = function(ROOT / "src/apps/nes/osd.cpp", "bool do_audio_frame()")
 tracker = function(ROOT / "src/apps/liltracker/i2s_sink.cpp", "size_t I2SSink::write(")
 adjust = function(args.sdk / "lib/lilka/src/lilka/audio.cpp", "void Audio::adjustVolume(")
@@ -73,6 +73,7 @@ void generateAudio(void* data, int count) {
  for(int i=0;i<count;++i) static_cast<int16_t*>(data)[i] = 1000;
 }
 void (*audio_callback)(void*,int)=generateAudio;
+size_t gbcore_audio_sample_frames(){return 640;}
 size_t gbcore_render_audio(void*, int16_t* data) {
  for(int i=0;i<16;++i) data[i] = 1000;
  return 8;
@@ -83,7 +84,7 @@ struct GameBoyApp {
  void* core = nullptr;
  bool audioReady = true;
  void stopAudio() { audioReady = false; }
- void writeAudio();
+ bool writeAudio();
 };
 struct I2SSink { size_t write(const int16_t*, size_t); };
 struct SoundConfigApp {

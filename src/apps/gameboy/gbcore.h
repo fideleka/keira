@@ -26,6 +26,8 @@ void gbcore_set_buttons(GbCore* core, uint8_t buttons);
 void gbcore_run_frame(GbCore* core, bool draw);
 // The renderer fills two interleaved int16_t channels per sample frame.
 size_t gbcore_audio_sample_frames(void);
+// Effective mixer clock after Gnuboy rounds its double-speed-cycle divisor.
+uint32_t gbcore_audio_sample_rate(void);
 size_t gbcore_render_audio(GbCore* core, int16_t* samples);
 void gbcore_set_clock(GbCore* core, const struct tm* time);
 

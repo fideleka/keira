@@ -3,6 +3,46 @@
 #include "keira/ksystem.h"
 #include "devices/devicemanager.h"
 
+#include <cstring>
+
+namespace {
+// Presentation-only localization keeps the freestanding driver ABI language-neutral.
+const char* driverText(const char* original) {
+    static const struct {
+        const char* source;
+        const char* translated;
+    } strings[] = {
+        {"Clock pin", K_S_DRIVER_CLOCK},
+        {"MOSI pin", K_S_DRIVER_MOSI},
+        {"Reset pin", K_S_DRIVER_RESET},
+        {"DC pin", K_S_DRIVER_DC},
+        {"Backlight pin", K_S_DRIVER_BACKLIGHT},
+        {"SPI speed", K_S_DRIVER_SPEED},
+        {"Orientation", K_S_DRIVER_ORIENTATION},
+        {"Refresh limit", K_S_DRIVER_REFRESH},
+        {"Panel drive", K_S_DRIVER_DRIVE},
+        {"SPI test", K_S_DRIVER_TEST},
+        {"Automatic", K_S_DRIVER_AUTO},
+        {"Automatic, flipped", K_S_DRIVER_FLIPPED},
+        {"Disconnected", K_S_DRIVER_DISCONNECTED},
+        {"Off", K_S_DRIVER_TEST_OFF},
+        {"Fixed image + writes", K_S_DRIVER_WRITES},
+        {"Fixed image, hold", K_S_DRIVER_HOLD},
+        {"79Hz default", K_S_DRIVER_DRIVE_DEFAULT},
+        {"70Hz line", K_S_DRIVER_DRIVE_70},
+        {"61Hz line", K_S_DRIVER_DRIVE_61},
+        {"79Hz frame", K_S_DRIVER_DRIVE_FRAME},
+        {"15 FPS", K_S_DRIVER_FPS_15},
+        {"20 FPS", K_S_DRIVER_FPS_20},
+        {"30 FPS", K_S_DRIVER_FPS_30},
+        {"60 FPS", K_S_DRIVER_FPS_60},
+    };
+    for (const auto& text : strings)
+        if (!strcmp(original, text.source)) return text.translated;
+    return original;
+}
+} // namespace
+
 DevicesApp::DevicesApp() : App("Devices") {
 }
 void DevicesApp::run() {
@@ -53,10 +93,10 @@ void DevicesApp::devicePage(unsigned index) {
             DeviceManager::SettingInfo setting;
             manager->settingInfo(index, f, setting);
             menu.addItem(
-                setting.label,
+                driverText(setting.label),
                 nullptr,
                 lilka::colors::White,
-                setting.kind == KD_SETTING_CHOICE    ? String(setting.choice)
+                setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
                 : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
                                                      : String(setting.value)
             );
@@ -91,17 +131,17 @@ void DevicesApp::settingPage(unsigned index, unsigned field) {
     auto* manager = ksystem.devices;
     DeviceManager::SettingInfo setting;
     if (!manager->settingInfo(index, field, setting)) return;
-    lilka::Menu menu(setting.label);
-    menu.addItem(setting.label);
+    lilka::Menu menu(driverText(setting.label));
+    menu.addItem(driverText(setting.label));
     menu.addActivationButton(K_BTN_BACK);
     menu.removeActivationButton(lilka::Button::A);
     menu.setHorizontalNavigationEnabled(false);
     while (!menu.isFinished()) {
         manager->settingInfo(index, field, setting);
-        const String value = setting.kind == KD_SETTING_CHOICE    ? String(setting.choice)
+        const String value = setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
                              : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
                                                                   : String(setting.value);
-        menu.setItem(0, setting.label, nullptr, lilka::colors::White, String("< ") + value + " >");
+        menu.setItem(0, driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >");
         const auto state = lilka::controller.peekState();
         if (!state.selectHeld) {
             const bool less = state.left.justPressed || state.d.justPressed,

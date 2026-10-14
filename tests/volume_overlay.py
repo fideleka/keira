@@ -88,6 +88,7 @@ void unlock(int id){assert(!held.empty()&&held.back()==id);held.pop_back();--loc
 #define pdMS_TO_TICKS(x) (x)
 #define GET_BACK(x) (x.empty() ? nullptr : x.back())
 #define APP_PCAST(x) (x)
+inline size_t strlcpy(char*d,const char*s,size_t n){size_t l=strlen(s);if(n){size_t c=std::min(l,n-1);memcpy(d,s,c);d[c]=0;}return l;}
 constexpr int KTS_SUSPENDED=1;
 namespace lilka { struct DisplayFrame { template<class T> explicit DisplayFrame(T&) {} };
 namespace colors {constexpr uint16_t Black=0;}
@@ -167,6 +168,8 @@ struct {void log(const char*){} template<class... T>void log(const char* format,
 }} serial;
 }
 struct DeviceManager {
+ lilka::VolumeOverlaySnapshot modeFeedback;
+ lilka::VolumeOverlaySnapshot getOverlay(){return modeFeedback;}
  bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
  bool dirty=false;
  std::vector<uint16_t> pixels;
@@ -184,6 +187,7 @@ struct DeviceManager {
   pixels=target.pixels;dirty=true;return true;
  }
 };
+namespace lilka { DeviceManager devices; }
 struct {DeviceManager* devices=nullptr;} ksystem;
 namespace AppFlags {constexpr int APP_FLAG_FULLSCREEN=1,APP_FLAG_INTERLACED=2;}
 struct App {
@@ -209,7 +213,7 @@ struct AppManager:ThreadManager {
  bool externalDirty=true,externalSleeping=false,lastInternal=true,lastShared=false;
  uint32_t externalGeneration=0,externalOverlayAt=0;
  bool externalOverlayVisible=false,externalOverlayBrightness=false;
- int externalOverlayLevel=-1;
+ int externalOverlayLevel=-1,externalOverlayMode=-1;
  struct {uint32_t endTime=0;} toast;
  void threadsRun(){}void renderToast(lilka::Canvas*){assert(false);}
  void waitForFrame();void run();void renderToCanvas(lilka::Canvas*);
@@ -427,6 +431,30 @@ int main(){
  const auto sleepingCapture=device.captures;routing.tick();assert(device.captures==sleepingCapture);
  lilka::displaySettings.sleeping=false;routing.tick();assert(device.pixels[100*280+100]==0x3333);
  device.external=false;++device.epoch;foreground.redraw=true;routing.tick();assert(display.pixels[100*280+100]==0x3333);
+ // All mode feedback is localized and composed identically for both readers.
+ const char* modeNames[]={K_S_DISPLAY_INTERNAL,K_S_DISPLAY_EXTERNAL,K_S_DISPLAY_BOTH};
+ feedback.valid=false;device.external=true;device.internal=true;++device.epoch;
+ for(int mode=0;mode<3;++mode){
+  ++now;device.modeFeedback.valid=true;device.modeFeedback.displayMode=mode;device.modeFeedback.adjustedAt=now;
+  strcpy(device.modeFeedback.muteLabel,"Unlocalized");
+  routing.tick();
+  auto localized=device.modeFeedback;strcpy(localized.muteLabel,modeNames[mode]);
+  Surface reference(280,240);
+  // Compose source layers using their real offsets.
+  std::fill(reference.pixels.begin(),reference.pixels.end(),0);
+  reference.draw16bitRGBBitmap(0,0,routingPanel.getFramebuffer(),280,24);
+  reference.draw16bitRGBBitmap(0,24,routingApp.getFramebuffer(),280,216);
+  drawVolumeOverlay(reference,localized,280,240,now);
+  assert(device.pixels==reference.pixels&&display.pixels==reference.pixels);
+  // Dump fresh actual font/renderer pixels for independent visual review.
+  FILE* preview=fopen((std::string("/tmp/lilka-mode-")+std::to_string(mode)+"-"+K_S_DISPLAY_BOTH+".ppm").c_str(),"wb");
+  assert(preview);fprintf(preview,"P6\n280 240\n255\n");
+  for(auto pixel:reference.pixels){unsigned char rgb[]={static_cast<unsigned char>(((pixel>>11)&31)*255/31),static_cast<unsigned char>(((pixel>>5)&63)*255/63),static_cast<unsigned char>((pixel&31)*255/31)};fwrite(rgb,1,3,preview);}fclose(preview);
+  const auto activeCopies=device.captures;routing.tick();assert(device.captures==activeCopies);
+  now=device.modeFeedback.adjustedAt+1200;routing.tick();assert(!display.overlayActive);
+  assert(device.pixels[100*280+100]==0x3333);
+ }
+ device.modeFeedback.valid=false;
  // Real production monitor distinguishes 75 submitted frames/s from 25 LCD
  // updates/s, and serial formatting is outside ALL compositor/canvas locks.
  device.external=true;device.internal=true;++device.epoch;feedback.valid=false;

@@ -174,6 +174,11 @@ void gbcore_run_frame(GbCore* core, bool draw) {
     }
 }
 
+uint32_t gbcore_audio_sample_rate(void) {
+    const unsigned divisor = (unsigned)((2097152.0 / 32000.0) + 0.5);
+    return (2097152u + divisor / 2) / divisor;
+}
+
 size_t gbcore_audio_sample_frames(void) {
     return GB_AUDIO_CAPACITY_FRAMES;
 }
