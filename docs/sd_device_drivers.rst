@@ -539,3 +539,45 @@ while pin/clock/refresh values and UUID/schema are preserved. The retired ABI ta
 remains solely to accept existing module descriptor sizes and is never called.
 No NES optimization, shared RAM framebuffer, SDK, clock or wiring is reverted.
 Physical external shimmer remains unresolved; MISO is still disconnected.
+
+Panel-drive shimmer comparison (ILI9341 1.1.4)
+--------------------------------------------
+
+This module adds ``Panel drive (test)`` with four choices: Original (~79 Hz),
+~70 Hz line inversion, ~61 Hz line inversion, and ~79 Hz frame inversion. These
+are nominal LCD scan rates, not SPI clocks, emulation rates or the Refresh limit.
+Original remains the default and emits the same initialization as 1.1.3.
+
+The comparison only overrides datasheet registers B1 (DIVA=0, RTNA=24/27/31)
+and B4 (normal-mode line/frame polarity). B4 is NOT pixel-color inversion;
+RGB565/55h, color-inversion-off, gamma, VCOM and voltage settings remain unchanged.
+The datasheet requires EXTC high for these controls; whether this particular
+module applies them and whether shimmer improves need physical testing.
+
+Rebuild/install just the driver.so and matching1.1.4manifest (host/SDK API unchanged).
+In Devices -> ILI9341 display -> Panel drive (test), compare Original with ~70 Hz
+line, then ~61 Hz line, then ~79 Hz frame, using the same light menu selection or
+NES scene. Keep SPI speed and Refresh limit fixed; revert to Original if worse.
+Settingid9 deliberately skips retiredid8: old Whole-frame selections are ignored,
+not silently reinterpreted. Existing UUID/schema/pins/saved40MHz remain intact.
+
+Checked sources:
+
+* ILI9341 datasheet, pp155 and161:
+  https://cdn-shop.adafruit.com/datasheets/ILI9341.pdf
+* Maintained Adafruit initialization matches our original B1/B6/VCOM sequence:
+  https://github.com/adafruit/Adafruit_ILI9341/blob/master/Adafruit_ILI9341.cpp
+* ESPHome ``color_palette:8BIT`` changes the MCU RAM buffer to RGB332. Its source
+  converts it back to RGB565 for the wire, using126-byte chunks instead of the
+  direct16-bit path. This anecdote is not proof that LCD16-bit color is wrong:
+  https://esphome.io/components/display/ili9xxx/
+  https://github.com/esphome/esphome/blob/dev/esphome/components/ili9xxx/ili9xxx_display.cpp
+
+Our SPI pixel path already packs PSRAM pixels into internal DMA-capable staging
+buffers. Host tests now assert D/C never changes while a transaction is pending
+and verify exact B1/B4 overrides for all choices, preserved55h/C5/C7 values,
+absence of21h color inversion, persistence and retired-id isolation. Existing
+pixel-order/chunk/immutable-lease tests remain passing. These checks cannot prove
+physical signal integrity, backlight bias or panel analog behavior. BLK/LED remains
+unconnected per the current setup; no arbitrary supply/GPIO connection is advised
+without identifying this module's backlight circuit. MISO stays disconnected.
