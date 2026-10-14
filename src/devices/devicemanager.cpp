@@ -261,7 +261,9 @@ bool DeviceManager::load(Slot& slot, const char* path) {
 }
 int32_t DeviceManager::registerDevice(void* context, const kd_device* d) {
     auto& slot = *static_cast<Slot*>(context);
-    if (slot.descriptor || !d || (d->size != offsetof(kd_device, present_rows) && d->size != sizeof(kd_device)) ||
+    if (slot.descriptor || !d ||
+        (d->size != offsetof(kd_device, present_rows) && d->size != offsetof(kd_device, prefer_full_frame) &&
+         d->size != sizeof(kd_device)) ||
         d->abi != KD_ABI_VERSION || d->type != KD_TYPE_DISPLAY || !bounded(d->driver_uuid, 37) ||
         !bounded(d->device_uuid, 37) || strcmp(d->driver_uuid, slot.driverUuid) || strcmp(d->device_uuid, slot.uuid) ||
         !bounded(d->name, 48) || !bounded(d->version, 24) || !d->settings_version ||
@@ -743,8 +745,11 @@ int DeviceManager::presentPending(
         inside = rowDirty;
     }
     // Do not read beyond an older ABI-1 descriptor.
-    const bool supportsRows = slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->present_rows;
-    if (!supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
+    const bool supportsRows =
+        slot.descriptor->size >= offsetof(kd_device, prefer_full_frame) && slot.descriptor->present_rows;
+    const bool wholeFrame = slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->prefer_full_frame &&
+                            slot.descriptor->prefer_full_frame(&slot.host, slot.state);
+    if (wholeFrame || !supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
         ++fullTransfers;
         transferPixels += uint32_t(width) * height;
         return slot.descriptor->present(&slot.host, slot.state, pixels, width, height);
