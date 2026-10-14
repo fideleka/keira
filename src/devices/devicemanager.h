@@ -104,6 +104,7 @@ private:
     int submit(spi_transaction_t& transfer, const uint8_t* bytes, uint32_t bits);
     int finish(const spi_transaction_t& transfer);
     static int32_t fail(Slot& slot, const char* operation, int32_t error);
+    int backlightPin = -1;
     int dcPin = -1, resetPin = -1, clkPin = -1, mosiPin = -1;
     void run() override;
     bool load(Slot& slot, const char* path);

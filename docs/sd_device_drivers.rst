@@ -81,8 +81,8 @@ ILI9341 reference driver
 ------------------------
 
 Blue 2.8-inch, 240x320, eight-pin, no touch/CS. CLK=12, MOSI=13, RES=14, DC=21;
-MISO unused. VCC=3.3 V and GND from extension, BLK disconnected as device-tested.
-No brightness capability advertised. Dedicated external SPI (not display/SD bus),
+MISO unused. VCC=3.3 V and GND from extension. Optional BLK control is described
+below; it defaults to Disconnected. Dedicated external SPI (not display/SD bus),
 managed GPIO whitelist/resource ownership and rollback. Only host handles cross
 the C ABI; no Arduino/C++ objects or unrestricted SDK internals.
 
@@ -97,7 +97,7 @@ display-off where possible but does not promise electrical backlight shutdown.
 Memory/performance budgets and regression gates
 ----------------------------------------------
 
-Initial explicit ceilings: four discovered modules, eight fields per device,
+Initial explicit ceilings: four discovered modules, twelve fields per device,
 4 KiB manifest (8 KiB capped JSON allocator), 64 KiB ELF, 8 KiB executable text and 32 KiB data per module,
 32 persisted device records. Release raw ELF file bytes after relocation.
 Each shared frame is capped at 76800 pixels/153600 bytes in PSRAM, allocated
@@ -174,8 +174,8 @@ SPI3_HOST is the internal display/SD bus and must not be claimed. Managed driver
 claims do not intercept legacy Lua/raw GPIO/SPI code: do not concurrently run
 extension GPIO tests or scripts touching driver-owned pins. Driver registration
 cannot open SPI before an instance state exists. Internal mode calls the driver's
-output-off callback and avoids external captures; the backlight itself is not
-controlled. No display brightness setting is declared for this board.
+output-off callback and avoids external captures. With configured BLK control,
+the external backlight is also off in Internal mode.
 
 Compositor capture clears uncovered pixels, includes final retained layers and
 current overlay, and retries newest content after busy-buffer drops. Static
@@ -581,3 +581,44 @@ pixel-order/chunk/immutable-lease tests remain passing. These checks cannot prov
 physical signal integrity, backlight bias or panel analog behavior. BLK/LED remains
 unconnected per the current setup; no arbitrary supply/GPIO connection is advised
 without identifying this module's backlight circuit. MISO stays disconnected.
+
+
+Shared external backlight (ILI9341 1.1.5)
+---------------------------------------
+
+Use the normal modified-hardware environment with LILKA_INDEPENDENT_BACKLIGHT=1.
+The existing isolated native-backlight prerequisite still applies; stock-board
+builds must not enable PWM on the shared amplifier/backlight GPIO46. External
+BLK attachment reports unavailable if the shared brightness service is disabled.
+
+Device-tested module behavior: BLK open reads about 0.72 V and illuminates the
+backlight; BLK through 220 ohms to GND turns it fully off while the LCD still
+shows an image under a flashlight. Wiring: extension P4/GPIO47 -> 220 ohms -> BLK.
+Keep common GND and 3.3 V VCC; leave MISO disconnected. No pull-up is added.
+
+Rebuild the firmware against the matching SDK and reinstall driver.so plus the
+1.1.5 manifest. In Devices -> ILI9341, set Backlight pin (open drain) to GPIO47.
+The setting defaults to Disconnected so existing wiring is never silently driven.
+The host rejects conflicts with CLK/MOSI/RES/DC before attaching backlight PWM.
+Existing brightness shortcuts (Select+Left/Right) and Display settings control
+one saved level for both active screens. Idle dim, suspend and wake use the same
+overrides on both; display routing lights only the active native/external outputs.
+No extra polling task, per-frame PWM update, NVS write or audio change is added.
+
+The SDK uses low-speed LEDC channel6 on the already reserved native channel7's
+20 kHz, 8-bit timer3. It initializes channel6 and connects its GPIO-matrix signal
+without a push-pull setup transition. LOW sinks BLK; HIGH is high impedance.
+GPIO47 is reserved while attached; GPIO Manager and supported Lua/mJS GPIO/PWM
+wrappers reject reconfiguration. Raw hardware calls remain outside this protection.
+Disabling/unloading the driver releases BLK to its module's default full-on state.
+A configured inactive display retains PWM ownership and is held off.
+
+ABI1 host structure is unchanged. The optional device backlight_pin tail is size
+checked; all previous descriptor sizes still work. The settings ceiling becomes
+12; old fixed eight-field NVS records are read and rewritten preserving settings
+by ID. The new field is ID10, with schema1 unchanged. Older firmware cannot read
+the expanded saved records, so downgrade may restore device defaults.
+
+Host and target-header checks do not establish physical PWM quality. Verify both
+screens at 5/50/100 percent, Internal/External/Both routing, idle dim and wake,
+and continuous NES audio on the device. PWM is not claimed to cure LCD shimmer.
