@@ -267,12 +267,12 @@ void AppManager::run() {
         const uint32_t elapsed = millis() - windowAt;
         const bool report = elapsed >= (KEIRA_MEASURE ? 5000u : 2000u);
         char appName[48] = {};
-        if (report && (!KEIRA_MEASURE || KEIRA_MEASURE_LOG)) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
+        if (report) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
         lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
-        if (report && (!KEIRA_MEASURE || KEIRA_MEASURE_LOG)) {
+        if (report) {
             const uint32_t appFps = submitted.fpsX10(elapsed), lcdFps = internalTimes.fpsX10(elapsed);
             const uint32_t compositorFps = work.fpsX10(elapsed);
             lilka::serial.log(
@@ -300,8 +300,6 @@ void AppManager::run() {
                 internalTimes.maxUs,
                 overruns
             );
-        }
-        if (report) {
             windowAt = millis();
             work = intervals = internalTimes = submitted = FrameMetrics{};
             overruns = 0;

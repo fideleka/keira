@@ -805,8 +805,7 @@ void DeviceManager::run() {
                 );
             }
         }
-        if ((!KEIRA_MEASURE || KEIRA_MEASURE_LOG) && millis() - previousLog >= (KEIRA_MEASURE ? 5000u : 2000u) &&
-            active >= 0 && mode != Internal) {
+        if (millis() - previousLog >= (KEIRA_MEASURE ? 5000u : 2000u) && active >= 0 && mode != Internal) {
             const uint32_t elapsed = millis() - previousLog;
             const uint32_t externalFps = transferTiming.fpsX10(elapsed);
             KMTX_LOCK(frameMutex);

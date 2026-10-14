@@ -217,9 +217,6 @@ void GameBoyApp::clearMissingLines() {
 }
 
 void GameBoyApp::drawLine(void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette) {
-#if KEIRA_MEASURE
-    const int64_t start = esp_timer_get_time();
-#endif
     auto* app = static_cast<GameBoyApp*>(context);
     if (!app->drawnLines[line]) ++app->drawnLineCount;
     app->drawnLines[line] = true;
@@ -244,9 +241,6 @@ void GameBoyApp::drawLine(void* context, const uint8_t* pixels, uint8_t line, bo
         for (int x = 0; x < 240; ++x)
             middle[x] = blend565(upper[x], output[x]);
     }
-#if KEIRA_MEASURE
-    app->measuredBlitUs += esp_timer_get_time() - start;
-#endif
 }
 
 void GameBoyApp::run() {
@@ -393,7 +387,6 @@ void GameBoyApp::run() {
         previousMeasuredButtons = buttons;
         measures.record(measurement::InputWork, esp_timer_get_time() - frameStart);
         const int64_t coreStart = esp_timer_get_time();
-        measuredBlitUs = 0;
 #endif
 
         if (drawFrame) {
@@ -406,9 +399,6 @@ void GameBoyApp::run() {
         measures.record(drawFrame ? measurement::CoreDraw : measurement::CoreSkip, esp_timer_get_time() - coreStart);
 #endif
         if (drawFrame) {
-#if KEIRA_MEASURE
-            measures.record(measurement::Blit, measuredBlitUs);
-#endif
             clearMissingLines();
             if (screenshotOnNextFrame) {
                 screenshotOnNextFrame = false;
