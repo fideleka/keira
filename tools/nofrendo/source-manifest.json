@@ -24,7 +24,7 @@
     },
     "cpu/nes6502.c": {
       "original": "8c7d5574ba0e00b70edda4fe06ca0960cbaed2f07de4dc1dd52c7e12543f11ef",
-      "patched": "a17676bfa8491669f059b1562c112bd8a7b6c358feeef97594ab300e623a56b2"
+      "patched": "36db3c0dfdab0d2fade8b376b4cbfc25054b1f5c8155b0197b037d74fb4596a6"
     },
     "cpu/nes6502.h": {
       "original": "756664237efcceb17a40617ba31bb2fbdb637a3dfed055e3cb6c3571f23f6d53",
@@ -260,7 +260,7 @@
     },
     "nes/nes.c": {
       "original": "aa611a5ec9b7d72f937dd570efe7c8a92e4cc84c04ebd0eb33e5d1a85736609b",
-      "patched": "19a32151c5dbb431518e1f8e27ce6a2ac9f420bd3ccd09427d22003106331d09"
+      "patched": "1f3f8896bfa41f22ca9d2f1751df469928fc7ae2e94ee3ce474b8632d224f811"
     },
     "nes/nes.h": {
       "original": "703575977da25703a918d63cfcb74cd1e506eb2ff79f5bf8c318cad58fe340b6",
@@ -284,7 +284,7 @@
     },
     "nes/nes_ppu.c": {
       "original": "f69bbf63b4346272938e5586a0985f6987c789a0cd40c17e1f526b2c3c9e2d71",
-      "patched": "e0e661f75574435ada2d11433127b6e5625832934d55b47c4b949075f4327705"
+      "patched": "9d6b317551df8a5d92702f0b50bf0641ac4999274a502dcec47a6166674f9897"
     },
     "nes/nes_ppu.h": {
       "original": "c1e537a5c38a1f289ac87a4bc4b4af2f0ed5974880bfb9857df7078e26d28eef",

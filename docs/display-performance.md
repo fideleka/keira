@@ -203,9 +203,11 @@ Mapper hblank, FIQ accounting and end-of-line bookkeeping remain outside the
 sampled CPU/PPU sections. Different sample populations and preemption mean that
 subtracting averages is only a rough guide, not an exact residual profile.
 
-A full sampled frame adds 1,050 clock calls; unsampled frames add no clock
-calls inside the core. Statistics are committed only twice per sampled frame,
-not once per scanline. Reporting adds at most two records to the existing
+The CPU/PPU separation adds 1,050 clock calls per full sampled frame; the finer
+drawn-frame breakdown below adds 960 more. Unsampled frames add no clock calls
+inside the core. CPU/PPU statistics are committed twice per sampled frame, not
+once per scanline; finer drawn-frame statistics add two commits. The CPU/PPU
+separation adds at most two records to the existing
 bounded logger burst. Both categories sample separately to avoid systematically
 missing skipped frames. Sampling is diagnostic, not a cycle-exact profiler.
 
@@ -240,3 +242,43 @@ blit/capture times, input-gap tails and `emu-stack-free`. Repeat in External
 mode if possible. Do not infer gameplay FPS from static scenes where unchanged
 LCD frames are intentionally suppressed. No FPS uplift is claimed until this
 same-scene device comparison is available.
+
+## CPU dispatch round (after the ~22 FPS device profile)
+
+The next source round shares the cold level-IRQ entry inside the computed-goto
+CPU loop. Previously every opcode tail expanded IRQ stack pushes/vector fetching.
+The no-source path now checks IRQ sources first; asserted, unmasked sources still
+enter at the same instruction boundary with the same cycle charge. Direct
+threaded dispatch remains; CLI/RTI, legacy pulse delivery, mapper acknowledgments
+and JAM handling are retained. Xtensa `-Os` CPU object text is 71,508 -> 46,416
+bytes (-25,092, about 35%); BSS stays 4,204. This is an instruction-footprint
+reduction, **not a measured 35% speedup** or a full firmware size result.
+
+`tests/nofrendo/cpu_dispatch.py` links two actual CPU objects: current dispatch
+and the previous expanded level-IRQ policy reconstructed in a temporary source.
+65,536 cases cover every opcode, all level-source combinations, interrupt-mask/
+flag states, burn cycles, short budgets and handler-side assertion/acknowledgment.
+Cycles/register state and all 65,536 RAM bytes must match, plus handler trace.
+Run with sanitizers; no cartridge is required. Existing actual mapper/APU IRQ
+regressions remain required too.
+
+Sampled drawn frames additionally report `nes-background` and `nes-sprites`.
+These are nested **within nes-ppu-draw** and exclude scanline staging copies,
+vblank status and scroll housekeeping. Sprite time includes fake sprite-zero
+work when sprite display is disabled. Counters are emulator-task-owned and
+recorded once per sampled frame; no per-line locks or logs. A sampled full drawn
+frame now uses 2,010 clock calls vs 1,050 previously; sampled skipped frames stay
+at 1,050. Unsampled core frames use no clock calls. Reporting adds one record,
+not another profile/build variant. Discard the first startup/transitional window.
+
+The CHR memory diagnostic now reads the active PPU bank pointer via a small
+read-only accessor. The prior `chr=none` came from a stale saved PPU
+context; it was not proof that CHR memory was missing. No large context is copied
+onto the task stack and the concurrent audio context is untouched.
+
+Rebuild/reflash Keira only; capture the same moving demo for 30–60 seconds in
+Both mode at actual 40 MHz, with sound enabled. Compare moving-frame FPS and CPU
+time first; use background/sprite costs to select the following optimization
+round. Audio/display timing, SPI clock, SDK and SD module are unchanged. The
+second round remains measurement-driven; do not bundle speculative changes that
+would make this CPU round's device comparison uninterpretable.

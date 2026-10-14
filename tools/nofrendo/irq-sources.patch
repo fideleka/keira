@@ -18,10 +18,19 @@
        {                                                           \
           cpu.int_pending = 0;                                     \
           IRQ_PROC();                                              \
-@@ -1322,12 +1322,21 @@
+@@ -1322,12 +1322,32 @@
  
  #define MIN(a, b) (((a) < (b)) ? (a) : (b))
  
++/* Share the cold level-IRQ entry instead of expanding its stack pushes and
++ * vector fetch into every threaded opcode tail. Keep the no-IRQ path short. */
++#ifdef NES6502_JUMPTABLE
++#define POLL_LEVEL_IRQ() \
++   do { \
++      if (cpu.irq_sources && !i_flag && !cpu.jammed && remaining_cycles > 0) \
++         goto service_level_irq; \
++   } while (0)
++#else
 +#define POLL_LEVEL_IRQ() \
 +   do { \
 +      if (!cpu.jammed && !i_flag && cpu.irq_sources && remaining_cycles > 0) { \
@@ -29,6 +38,8 @@
 +         ADD_CYCLES(INT_CYCLES); \
 +      } \
 +   } while (0)
++
++#endif
 +
  #ifdef NES6502_JUMPTABLE
  
@@ -40,7 +51,7 @@
     if (remaining_cycles <= 0)                                            \
        goto end_execute;                                                  \
     nofrendo_log_printf(nes6502_disasm(PC, COMBINE_FLAGS(), A, X, Y, S)); \
-@@ -1336,6 +1345,7 @@
+@@ -1336,6 +1356,7 @@
  #else /* !NES6520_DISASM */
  
  #define OPCODE_END            \
@@ -48,7 +59,7 @@
     if (remaining_cycles <= 0) \
        goto end_execute;       \
     goto *opcode_table[bank_readbyte(PC++)];
-@@ -1344,7 +1354,7 @@
+@@ -1344,7 +1365,7 @@
  
  #else /* !NES6502_JUMPTABLE */
  #define OPCODE_BEGIN(xx) case 0x##xx:
@@ -57,7 +68,7 @@
  #endif /* !NES6502_JUMPTABLE */
  
  /* Execute instructions until count expires
-@@ -1421,7 +1431,7 @@
+@@ -1421,7 +1442,7 @@
        cpu.burn_cycles -= burn_for;
     }
  
@@ -66,7 +77,19 @@
     {
        cpu.int_pending = 0;
        IRQ_PROC();
-@@ -2393,6 +2403,7 @@
+@@ -2374,6 +2395,11 @@
+    OPCODE_END
+ 
+ #ifdef NES6502_JUMPTABLE
++service_level_irq:
++   IRQ_PROC();
++   ADD_CYCLES(INT_CYCLES);
++   OPCODE_END
++
+ end_execute:
+ 
+ #else  /* !NES6502_JUMPTABLE */
+@@ -2393,6 +2419,7 @@
  {
     cpu.p_reg = Z_FLAG | R_FLAG | I_FLAG;     /* Reserved bit always 1 */
     cpu.int_pending = 0;                      /* No pending interrupts */
@@ -74,7 +97,7 @@
     cpu.int_latency = 0;                      /* No latent interrupts */
     cpu.pc_reg = bank_readword(RESET_VECTOR); /* Fetch reset vector */
     cpu.burn_cycles = RESET_CYCLES;
-@@ -2418,6 +2429,16 @@
+@@ -2418,6 +2445,16 @@
        cpu.burn_cycles += INT_CYCLES;
        STORE_LOCAL_REGS();
     }
@@ -184,7 +207,7 @@
        }
     }
  }
-@@ -288,22 +296,44 @@
+@@ -288,22 +296,47 @@
  {
     nes6502_nmi();
  }
@@ -192,6 +215,8 @@
 +#if KEIRA_MEASURE
 +extern uint64_t osd_measure_clock(void);
 +extern int osd_measure_core_sample(int draw);
++extern void ppu_measure_begin(int sample);
++extern void ppu_measure_end(void);
 +extern void osd_measure_core(int draw, uint64_t cpu_us, uint64_t ppu_us);
 +#endif
  
@@ -203,6 +228,7 @@
 +#if KEIRA_MEASURE
 +   const int sample = osd_measure_core_sample(draw_flag);
 +   uint64_t cpu_us = 0, ppu_us = 0, start = 0;
++   ppu_measure_begin(sample && draw_flag);
 +#endif
  
     while (262 != nes.scanline)
@@ -229,7 +255,7 @@
           nes.scanline_cycles -= elapsed_cycles;
           nes_checkfiq(elapsed_cycles);
  
-@@ -318,7 +348,13 @@
+@@ -318,7 +351,13 @@
           mapintf->hblank(in_vblank);
  
        nes.scanline_cycles += (float)NES_SCANLINE_CYCLES;
@@ -243,13 +269,14 @@
        nes.scanline_cycles -= (float)elapsed_cycles;
        nes_checkfiq(elapsed_cycles);
  
-@@ -327,7 +363,17 @@
+@@ -327,7 +366,18 @@
     }
  
     nes.scanline = 0;
 -}
 +#if KEIRA_MEASURE
 +   if (sample) osd_measure_core(draw_flag, cpu_us, ppu_us);
++   ppu_measure_end();
 +#endif
 +}
 +
@@ -262,7 +289,7 @@
  
  static void system_video(bool draw)
  {
-@@ -344,8 +390,6 @@
+@@ -344,8 +394,6 @@
     /* blit to screen */
     vid_flush();
  
@@ -271,7 +298,7 @@
  }
  
  /* main emulation loop */
-@@ -358,6 +402,9 @@
+@@ -358,6 +406,9 @@
     last_ticks = nofrendo_ticks;
     frames_to_render = 0;
     nes.scanline_cycles = 0;
@@ -281,7 +308,7 @@
     nes.fiq_cycles = (int)NES_FIQ_PERIOD;
  
     while (false == nes.poweroff)
-@@ -371,6 +418,18 @@
+@@ -371,6 +422,18 @@
           last_ticks = nofrendo_ticks;
        }
  
@@ -300,7 +327,7 @@
        if (true == nes.pause)
        {
           /* TODO: dim the screen, and pause/silence the apu */
-@@ -380,15 +439,30 @@
+@@ -380,15 +443,30 @@
        else if (frames_to_render > 1)
        {
           frames_to_render--;
@@ -331,7 +358,7 @@
     }
  }
  
-@@ -414,6 +488,9 @@
+@@ -414,6 +492,9 @@
     ppu_reset(reset_type);
     mmc_reset();
     nes6502_reset();
@@ -341,7 +368,7 @@
  
     nes.scanline = 241;
  
-@@ -534,7 +611,7 @@
+@@ -534,7 +615,7 @@
        goto _fail;
  
     /* set the IRQ routines */
@@ -362,7 +389,37 @@
  #include "nes.h"
  #include "../gui.h"
  #include "../cpu/nes6502.h"
-@@ -573,7 +576,9 @@
+@@ -54,6 +57,29 @@
+ 
+ /* the NES PPU */
+ static ppu_t ppu;
++
++#if KEIRA_MEASURE
++extern uint64_t osd_measure_clock(void);
++extern void osd_measure_ppu_parts(uint64_t bg, uint64_t sprites);
++const void *ppu_measure_pattern_base(void)
++{
++   return ppu.page[0];
++}
++static int profile_active;
++static uint64_t profile_bg, profile_sprites;
++void ppu_measure_begin(int sample)
++{
++   profile_active = sample;
++   profile_bg = profile_sprites = 0;
++}
++void ppu_measure_end(void)
++{
++   if (profile_active) osd_measure_ppu_parts(profile_bg, profile_sprites);
++   profile_active = 0;
++}
++#endif
++
++
+ 
+ void ppu_displaysprites(bool display)
+ {
+@@ -573,7 +599,9 @@
  }
  
  /* rendering routines */
@@ -373,7 +430,7 @@
                          const uint8 *colors)
  {
     uint32 pattern = ((pat2 & 0xAA) << 8) | ((pat2 & 0x55) << 1) | ((pat1 & 0xAA) << 7) | (pat1 & 0x55);
-@@ -1008,6 +1013,27 @@
+@@ -1008,6 +1036,27 @@
  static void ppu_renderscanline(bitmap_t *bmp, int scanline, bool draw_flag)
  {
     uint8 *buf = bmp->line[scanline];
@@ -401,10 +458,30 @@
  
     /* start scanline - transfer ppu latch into vaddr */
     if (ppu.bg_on || ppu.obj_on)
-@@ -1031,6 +1057,9 @@
+@@ -1023,14 +1072,29 @@
+       }
+    }
+ 
++#if KEIRA_MEASURE
++   uint64_t part_start = profile_active ? osd_measure_clock() : 0;
++#endif
+    if (draw_flag)
+       ppu_renderbg(buf);
++#if KEIRA_MEASURE
++   if (profile_active) {
++      profile_bg += osd_measure_clock() - part_start;
++      part_start = osd_measure_clock();
++   }
++#endif
+ 
+    /* TODO: fetch obj data 1 scanline before */
+    if (true == ppu.drawsprites && true == draw_flag)
        ppu_renderoam(buf, scanline);
     else
        ppu_fakeoam(scanline);
++#if KEIRA_MEASURE
++   if (profile_active) profile_sprites += osd_measure_clock() - part_start;
++#endif
 +
 +   if (staged)
 +      memcpy(destination - 8, buf - 8, sizeof(scratch));

@@ -27,6 +27,9 @@ extern "C" {
 #include <osd.h>
 #include <noftypes.h>
 #include <nofrendo.h>
+#if KEIRA_MEASURE
+const void* ppu_measure_pattern_base(void);
+#endif
 }
 
 // No need to add `extern "C"` to functions below, because it's already declared in `osd.h`
@@ -641,13 +644,15 @@ extern "C" void osd_measure_core_memory(void) {
                : esp_ptr_internal(pointer)     ? "internal"
                                                : "other";
     };
+    // Read only the active bank pointer, not a stale saved context or a large
+    // PPU snapshot on the emulator stack. The concurrent APU is untouched.
     const auto* machine = nes_getcontextptr();
     const auto* bitmap = vid_getbuffer();
     lilka::serial.log(
         "measure-nes-memory: framebuffer=%s cpu-ram=%s chr=%s",
         region(bitmap ? bitmap->data : nullptr),
         region(machine && machine->cpu ? machine->cpu->mem_page[0] : nullptr),
-        region(machine && machine->ppu ? machine->ppu->page[0] : nullptr)
+        region(ppu_measure_pattern_base())
     );
 }
 extern "C" int osd_measure_core_sample(int draw) {
@@ -657,6 +662,10 @@ extern "C" int osd_measure_core_sample(int draw) {
 extern "C" void osd_measure_core(int draw, uint64_t cpuUs, uint64_t ppuUs) {
     Driver::app->measures.record(draw ? measurement::NesCpuDraw : measurement::NesCpuSkip, cpuUs);
     Driver::app->measures.record(draw ? measurement::NesPpuDraw : measurement::NesPpuSkip, ppuUs);
+}
+extern "C" void osd_measure_ppu_parts(uint64_t backgroundUs, uint64_t spritesUs) {
+    Driver::app->measures.record(measurement::NesBackground, backgroundUs);
+    Driver::app->measures.record(measurement::NesSprites, spritesUs);
 }
 extern "C" void osd_measure_report(void) {
     Driver::app->reportMeasurements();

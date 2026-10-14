@@ -364,7 +364,9 @@ void App::reportMeasurements(bool force) {
         "nes-cpu-draw",
         "nes-ppu-draw",
         "nes-cpu-skip",
-        "nes-ppu-skip"
+        "nes-ppu-skip",
+        "nes-background",
+        "nes-sprites"
     };
     static_assert(sizeof(names) / sizeof(names[0]) == measurement::PhaseCount, "phase names must match metrics");
     for (unsigned i = 0; i < measurement::PhaseCount; i += 2) {
