@@ -27,7 +27,8 @@ typedef enum KEIRA_VERSION_TYPE : uint8_t {
     KEIRA_VERSION_TYPE_RELEASE = 2
 } version_type_t;
 
-class DeviceManager;
+#include <lilka/devices.h>
+using DeviceManager = lilka::DeviceManager;
 
 class KeiraSystem {
 public:

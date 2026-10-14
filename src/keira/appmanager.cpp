@@ -108,10 +108,10 @@ void AppManager::run() {
             externalDirty = true;
         }
         const bool routeChanged = internalOutput != lastInternal || sharedOutput != lastShared;
-        if (routeChanged && !internalOutput) lilka::display.fillScreen(lilka::colors::Black);
         lastInternal = internalOutput;
         lastShared = sharedOutput;
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
+        lilka::display.serviceOutputPower();
         if (lilka::displaySettings.isSleeping()) {
             monitored = nullptr;
             if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {

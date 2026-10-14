@@ -24,13 +24,36 @@ page_block = construction(device_source, "lilka::Menu menu(info.name)", "menu.se
 display_block = construction(display_source, "lilka::Menu menu(K_S_LAUNCHER_DISPLAY)", "while (!menu.isFinished())")
 display_updates = construction(display_source, "        menu.setItem(", "        // Observe adjustment keys")
 blocks = [("Devices",list_block,"menu"), ("Device",page_block,"menu"),
-          ("Device scrolled",page_block+"menu.setCursor(8);menu.update();", "menu"),
+          ("Device scrolled",page_block+"menu.setCursor(10);menu.update();", "menu"),
           ("Display",display_block+display_updates,"menu")]
 
 gpio_source = (root / "src/apps/gpiomanager/gpiomanager.cpp").read_text()
 gpio_block = construction(gpio_source, "            for (int i = 0; i < PIN_COUNT; i++)", "            menu.setCursor(lastPos)")
 blocks += [("GPIO protected", 'lilka::Menu menu("GPIO");'+gpio_block, "menu"),
            ("GPIO free pins", 'lilka::Menu menu("GPIO");'+gpio_block+'menu.setCursor(5);menu.update();', "menu")]
+
+# Render the actual root Settings labels, retaining nested submenu/lambda boundaries.
+import re
+launcher = (root / "src/apps/launcher/launcher.cpp").read_text()
+start = launcher.index("K_S_SETTINGS,", launcher.index("item_t LauncherApp::buildMainMenu"))
+start = launcher.index("{", start)
+depth = 0
+labels = []
+for match in re.finditer(r'"(?:\\.|[^"\\])*"|\{|\}|ITEM::(?:MENU|SUBMENU|APP)\s*\(\s*(K_S_[A-Z_]+)', launcher[start:]):
+    token = match.group(0)
+    if token == "{":
+        depth += 1
+    elif token == "}":
+        depth -= 1
+        if depth == 0:
+            break
+    elif match.group(1) and depth == 1:
+        labels.append(match.group(1))
+assert labels.count("K_S_DEVICES") == 1
+assert launcher.count("ITEM::MENU(K_S_DEVICES") == 1
+assert "ITEM::APP(K_S_DEVICES" not in launcher
+settings_block = "lilka::Menu menu(K_S_SETTINGS);" + "".join("menu.addItem(" + label + ");" for label in labels)
+blocks.insert(0, ("Settings · Devices", settings_block + "menu.setCursor(" + str(labels.index("K_S_DEVICES")) + ");menu.update();", "menu"))
 
 ui = (sdk / "lib/lilka/src/lilka/ui.h").read_text()
 menu = ui[ui.index("typedef void (*PMenuItemCallback)") : ui.index("/// Клас для відображення сповіщення.")]
@@ -70,12 +93,12 @@ bool pinReserved(unsigned i){return i<4;}
 
 struct DeviceManager {
  enum Mode {Internal,External,Both};
- struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=7;};
+ struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=9;};
  struct SettingInfo {const char*label;const char*choice;int value;unsigned kind;};
  unsigned count(){return 1;}void info(unsigned,Info&){}
  void settingInfo(unsigned,unsigned f,SettingInfo&r){
-  const char* labels[]={"Clock pin","MOSI pin","Reset pin","DC pin","SPI speed","Orientation","Refresh limit"};
-  const char* choices[]={"GPIO12","GPIO13","GPIO14","GPIO21","20 MHz","Automatic","30 FPS"};
+  const char* labels[]={"Clock pin","MOSI pin","Reset pin","DC pin","SPI speed","Orientation","Refresh limit","Panel drive","Backlight pin"};
+  const char* choices[]={"GPIO12","GPIO13","GPIO14","GPIO21","20 MHz","Automatic","30 FPS","79Hz default","GPIO47"};
   r={labels[f],choices[f],1,KD_SETTING_CHOICE};
  }
  Mode displayMode(){return Both;}
@@ -113,7 +136,7 @@ int main() {
             "-std=c++17",
             "-I" + str(out),
             "-I" + str(root / "src"),
-            "-I" + str(root / "drivers"),
+            "-I" + str(root / "drivers"), "-I" + str(sdk / "lib/lilka/src"),
             str(out / "menu.cpp"),
             str(out / "render.cpp"),
             "-o",
@@ -130,8 +153,8 @@ for line in output.splitlines():
     values = line.split("\t", 9)
     frames[-1].append((list(map(int, values[:9])), values[9]))
 svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="216" viewBox="0 0 1680 216">',
-    '<rect width="1680" height="216" fill="black"/>',
+    f'<svg xmlns="http://www.w3.org/2000/svg" width="{len(frames)*280}" height="216" viewBox="0 0 {len(frames)*280} 216">',
+    f'<rect width="{len(frames)*280}" height="216" fill="black"/>',
 ]
 for frame, draws in enumerate(frames):
     offset = frame * 280

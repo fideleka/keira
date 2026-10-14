@@ -203,11 +203,8 @@ void KeiraSystem::launchServices() {
 
     // Discover before apps/scripts start; Select bypasses native module execution.
 #if LILKA_VERSION != 1
-    devices = new (std::nothrow) DeviceManager();
-    if (devices) {
-        devices->discover(lilka::controller.peekState().selectHeld);
-        if (devices->hasRegisteredDriver()) services.spawn(devices);
-    }
+    devices = &lilka::devices;
+    lilka::display.setLayeredPresentation(true);
 #endif
 
     // User scripts go last, so they can rely on system services
