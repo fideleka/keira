@@ -74,7 +74,8 @@ void vTaskDelayUntil(int*, int) {
 }
 void vTaskSuspend(void*) {
 }
-void do_audio_frame() {
+bool do_audio_frame() {
+    return true;
 }
 void xTaskCreatePinnedToCore(void (*)(void*), const char*, int, void*, int, void**, int) {
 }

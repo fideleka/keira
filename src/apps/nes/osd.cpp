@@ -1,4 +1,5 @@
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <lilka.h>
 
 #include <freertos/FreeRTOS.h>
@@ -405,8 +406,10 @@ void osd_stopsound() {
     audio_callback = 0;
 }
 
-void do_audio_frame() {
+bool do_audio_frame() {
+    if (!audio_frame || !audio_callback) return false;
     // Reference: https://github.com/moononournation/arduino-nofrendo/blob/c5ba6d39c1fff0ceed314b76f6da5145d0d99bcc/examples/esp32-nofrendo/sound.c#L72
+    const int64_t deadline = esp_timer_get_time() + 50000;
     int left = HW_AUDIO_SAMPLERATE / NES_REFRESH_RATE;
     auto volume = lilka::audio.getVolume();
     while (left) {
@@ -426,15 +429,29 @@ void do_audio_frame() {
             *(--stereo_ptr) = a;
         }
 
-        size_t i2s_bytes_write;
-        // adjust volume
+        // Gain and mono-to-stereo conversion happen once. Preserve the unwritten
+        // tail on partial writes instead of asking the APU for replacement data.
         lilka::audio.adjustVolume(audio_frame, 4 * n, 16, volume);
-        esp_err_t result = i2s_write(
-            esp_i2s::I2S_NUM_0, static_cast<int16_t*>(audio_frame), 4 * n, &i2s_bytes_write, pdMS_TO_TICKS(50)
-        );
-        if (result != ESP_OK || i2s_bytes_write < 4) break; // bounded mutex hold even on I2S failure
-        left -= i2s_bytes_write / 4;
+        const size_t bytes = 4 * n;
+        size_t offset = 0;
+        while (offset < bytes) {
+            const int64_t remainingUs = deadline - esp_timer_get_time();
+            if (remainingUs <= 0) return false;
+            const TickType_t timeout = pdMS_TO_TICKS((remainingUs + 999) / 1000);
+            size_t written = 0;
+            const esp_err_t result = i2s_write(
+                esp_i2s::I2S_NUM_0,
+                reinterpret_cast<const uint8_t*>(audio_frame) + offset,
+                bytes - offset,
+                &written,
+                timeout ? timeout : 1
+            );
+            if (result != ESP_OK || !written || written > bytes - offset || written % 4) return false;
+            offset += written;
+        }
+        left -= n;
     }
+    return true;
 }
 
 void osd_setsound(void (*playfunc)(void* buffer, int length)) {
@@ -445,11 +462,11 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
         xSemaphoreTake(audioStoppedSemaphore, 0);
     }
     xTaskCreatePinnedToCore(
-        [](void* arg) {
-            FractionalTicks audioPeriod(configTICK_RATE_HZ, NES_REFRESH_RATE);
-            TickType_t xLastWakeTime = xTaskGetTickCount();
+        [](void*) {
             while (true) {
-                // Call do_audio_frame 60 times per second.
+                bool fed = false;
+                // Active PCM is paced by the 22050 Hz I2S consumer, not an
+                // emulation-frame timer. 367 samples * 60 Hz underfeeds it.
                 {
                     Acquire lock(xSoundMutex);
                     if (!audio_frame) {
@@ -459,17 +476,16 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
 #    if KEIRA_MEASURE
                         const int64_t audioStart = esp_timer_get_time();
 #    endif
-                        do_audio_frame();
+                        fed = do_audio_frame();
 #    if KEIRA_MEASURE
                         if (Driver::app->measurementsActive)
                             Driver::app->measures.record(measurement::Audio, esp_timer_get_time() - audioStart);
 #    endif
-                    } else {
-                        xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
-                        audioPeriod.reset();
                     }
                 }
-                vTaskDelayUntil(&xLastWakeTime, audioPeriod.next());
+                // I2S blocks when its bounded DMA queue is full. Yield outside
+                // the sound mutex; pause/failure must not become a busy loop.
+                vTaskDelay(fed ? 1 : pdMS_TO_TICKS(10));
             }
             if (audioStoppedSemaphore) {
                 xSemaphoreGive(audioStoppedSemaphore);

@@ -132,7 +132,7 @@ additional framebuffer. Rebuild/flash firmware only for this follow-up.
   overlay composition, accumulated external/internal damage, latest-wins and
   immutable in-flight external storage remain intact. Fully moving rows still
   require a copy; this is not zero-copy and does not eliminate all scanning.
-- **60 Hz scheduling:** v2 compositor, NES timer and audio alternate 16/17-tick
+- **60 Hz scheduling:** v2 compositor and NES timer alternate 16/17-tick
   intervals at 1 kHz, totaling 1000 ticks per 60 intervals. NES timer deadlines
   compensate daemon jitter. Menu resume resets phase/debt. A guarded,
   nonblocking reschedule cannot enqueue after Stop, and a shutdown barrier
@@ -158,3 +158,32 @@ LCD update rate. Expect ~60 polls/s over a long steady window, not 62.5. Do not
 sum concurrent audio/capture/transfer wall times or count unchanged-scene LCD
 skips as game slowdowns. Keep heap/stack and audio/menu/SD soak checks; no
 numerical FPS gain has been measured or promised for this source update.
+
+
+### Audio follow-up (regression reported on 01195cd)
+
+The same 60 Hz task delay is **not** suitable for the audio producer. Its batch
+uses integer `22050 / 60 = 367` samples, so 60 batches/s only supply 22,020
+samples/s to a 22,050 Hz consumer. The earlier 16 ms delay accidentally masked
+this with oversupply/backpressure. Fixed-frame pacing slowly drains the bounded
+DMA queue, and RTOS jitter can worsen the audible interruption. The supplied
+log shows audio calls dropping from ~16 ms (mostly I2S wait) to ~2.7 ms.
+
+Active audio now follows blocking I2S consumption, with a one-tick yield outside
+the sound mutex. Paused or failed feed sleeps 10 ms rather than spinning. Partial
+writes resubmit the existing PCM tail within a 50 ms batch deadline (plus tick
+rounding), without regenerating APU samples or
+applying gain twice; errors, zero progress and invalid byte counts stop the
+batch. NES emulation/compositor stay at 60 Hz, and pixel/capture optimizations
+are unchanged. No added allocation, driver version change or logging stream.
+
+Production producer/task host test simulates >99 seconds of continuous 22,050
+Hz consumption, queue occupancy and partial-write sample order; a fixed-60-Hz
+negative control drains the queue. Stereo/gain, error/pause yield, menu/history,
+timer, source syntax and focused formatting/static checks are separate from
+actual device sound verification, which remains pending.
+
+Measured comparable moving-demo windows before versus 01195cd: blit10.005 ->
+8.161 ms (~18% reduction), capture10.788 ->10.418 ms (~3% reduction), submitted
+~21.8 ->23 FPS (~5% higher). Core draw20.86 ms and native13.88 ms remain large;
+this is not a frame-matched A/B result or an audio-fixed build measurement.
