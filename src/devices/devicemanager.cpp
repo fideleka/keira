@@ -263,7 +263,7 @@ int32_t DeviceManager::registerDevice(void* context, const kd_device* d) {
     auto& slot = *static_cast<Slot*>(context);
     if (slot.descriptor || !d ||
         (d->size != offsetof(kd_device, present_rows) && d->size != offsetof(kd_device, prefer_full_frame) &&
-         d->size != sizeof(kd_device)) ||
+         d->size != offsetof(kd_device, backlight_pin) && d->size != sizeof(kd_device)) ||
         d->abi != KD_ABI_VERSION || d->type != KD_TYPE_DISPLAY || !bounded(d->driver_uuid, 37) ||
         !bounded(d->device_uuid, 37) || strcmp(d->driver_uuid, slot.driverUuid) || strcmp(d->device_uuid, slot.uuid) ||
         !bounded(d->name, 48) || !bounded(d->version, 24) || !d->settings_version ||
@@ -306,11 +306,13 @@ bool DeviceManager::restore(Slot& slot) {
             const String key = StringFormat("d%02u", i);
             if (!prefs.isKey(key.c_str())) continue;
             Record r = {};
-            if (prefs.getBytesLength(key.c_str()) != sizeof(r) ||
-                prefs.getBytes(key.c_str(), &r, sizeof(r)) != sizeof(r))
+            const size_t length = prefs.getBytesLength(key.c_str());
+            const size_t legacyLength = offsetof(Record, fields) + 8 * sizeof(Record::Field);
+            if ((length != sizeof(r) && length != legacyLength) || prefs.getBytes(key.c_str(), &r, length) != length)
                 continue;
             if (!memchr(r.uuid, 0, sizeof(r.uuid)) || strcmp(r.uuid, slot.uuid)) continue;
-            if (r.magic != 0x4b445631 || r.version != 1 || r.count > KD_MAX_SETTINGS || r.enabled > 1 ||
+            if (r.magic != 0x4b445631 || r.version != 1 ||
+                r.count > (length - offsetof(Record, fields)) / sizeof(Record::Field) || r.enabled > 1 ||
                 !memchr(r.driverUuid, 0, sizeof(r.driverUuid)) || strcmp(r.driverUuid, slot.driverUuid) ||
                 (slot.descriptor && r.schema != slot.schema)) {
                 slot.readOnly = true;
@@ -360,9 +362,10 @@ bool DeviceManager::persist(Slot& slot) {
                 continue;
             }
             Record old = {};
-            if (prefs.getBytesLength(key.c_str()) == sizeof(old) &&
-                prefs.getBytes(key.c_str(), &old, sizeof(old)) == sizeof(old) &&
-                memchr(old.uuid, 0, sizeof(old.uuid)) && !strcmp(old.uuid, slot.uuid)) {
+            const size_t length = prefs.getBytesLength(key.c_str());
+            if ((length == sizeof(old) || length == offsetof(Record, fields) + 8 * sizeof(Record::Field)) &&
+                prefs.getBytes(key.c_str(), &old, length) == length && memchr(old.uuid, 0, sizeof(old.uuid)) &&
+                !strcmp(old.uuid, slot.uuid)) {
                 selected = i;
                 break;
             }
@@ -430,10 +433,22 @@ bool DeviceManager::route() {
     internal = !external || mode != External;
     KMTX_UNLOCK(frameMutex);
     KMTX_UNLOCK(internalMutex);
+    if (lilka::brightness.isEnabled() &&
+        !lilka::brightness.setActiveDisplays(!external || mode != External, external)) {
+        internal = true;
+        routed = false;
+        lilka::brightness.setActiveDisplays(true, false);
+        return false;
+    }
     ++generation;
     return true;
 }
 void DeviceManager::deactivate() {
+    if (backlightPin >= 0) {
+        lilka::brightness.detachExternalBacklight();
+        ownedPins = ownedPins.load() & ~pinBit(backlightPin);
+        backlightPin = -1;
+    }
     if (active >= 0) {
         auto& slot = slots[active];
         slot.descriptor->disable(&slot.host, slot.state);
@@ -465,6 +480,21 @@ bool DeviceManager::activate(unsigned index) {
         slot.state = nullptr;
         strlcpy(slot.status, error, sizeof(slot.status));
         return false;
+    }
+    if (slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->backlight_pin) {
+        const int pin = slot.descriptor->backlight_pin(&slot.host, slot.state);
+        if (pin != -1) {
+            if (!pinAllowed(pin) || extensionPinOwned(pin) || !lilka::brightness.attachExternalBacklight(pin)) {
+                slot.descriptor->disable(&slot.host, slot.state);
+                spiClose(&slot);
+                heap_caps_free(slot.state);
+                slot.state = nullptr;
+                strlcpy(slot.status, "Backlight GPIO conflict / PWM unavailable", sizeof(slot.status));
+                return false;
+            }
+            backlightPin = pin;
+            ownedPins = ownedPins.load() | pinBit(pin);
+        }
     }
     slot.active = true;
     active = index;

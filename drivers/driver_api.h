@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 #define KD_ABI_VERSION     1u
-#define KD_MAX_SETTINGS    8u
+#define KD_MAX_SETTINGS    12u
 #define KD_TYPE_DISPLAY    1u
 #define KD_SETTING_INTEGER 1u
 #define KD_SETTING_BOOLEAN 2u
@@ -42,6 +42,8 @@ typedef struct {
     // Retired ABI-1 compatibility tail from the 1.1.2 flush experiment.
     // Kept for descriptor-size compatibility only; the host never calls it.
     uint32_t (*prefer_full_frame)(const void* host, void* state);
+    // Optional ABI-1 tail: -1 means no external backlight control.
+    int32_t (*backlight_pin)(const void* host, void* state);
 } kd_device;
 
 typedef struct {

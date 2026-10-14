@@ -1,11 +1,16 @@
 #include "mjsgpio.h"
 #include <Arduino.h>
+#include <lilka/brightness.h>
 #include "mjs.h"
 
 // gpio.set_mode(pin, mode)
 static void mjs_gpio_set_mode(struct mjs* mjs) {
     int pin = mjs_get_int(mjs, mjs_arg(mjs, 0));
     int mode = mjs_get_int(mjs, mjs_arg(mjs, 1));
+    if (lilka::brightness.isPinReserved(pin)) {
+        mjs_return(mjs, mjs_mk_boolean(mjs, false));
+        return;
+    }
     pinMode(pin, mode);
 }
 
@@ -13,6 +18,10 @@ static void mjs_gpio_set_mode(struct mjs* mjs) {
 static void mjs_gpio_write(struct mjs* mjs) {
     int pin = mjs_get_int(mjs, mjs_arg(mjs, 0));
     int value = mjs_get_int(mjs, mjs_arg(mjs, 1));
+    if (lilka::brightness.isPinReserved(pin)) {
+        mjs_return(mjs, mjs_mk_boolean(mjs, false));
+        return;
+    }
     digitalWrite(pin, value);
 }
 

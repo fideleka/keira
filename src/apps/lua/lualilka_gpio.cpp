@@ -1,8 +1,10 @@
 #include "lualilka_gpio.h"
+#include <lilka/brightness.h>
 
 static int lualilka_gpio_setMode(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int mode = luaL_checkinteger(L, 2);
+    if (lilka::brightness.isPinReserved(pin)) return luaL_error(L, "Backlight pin is reserved");
     pinMode(pin, mode);
     return 0;
 }
@@ -10,6 +12,7 @@ static int lualilka_gpio_setMode(lua_State* L) {
 static int lualilka_gpio_write(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int value = luaL_checkinteger(L, 2);
+    if (lilka::brightness.isPinReserved(pin)) return luaL_error(L, "Backlight pin is reserved");
     digitalWrite(pin, value);
     return 0;
 }

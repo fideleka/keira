@@ -85,6 +85,14 @@ class Service{public:void setktPriority(unsigned p){assert(p==KT_PRIO_DEFAULT);}
 namespace lilka {
 struct Serial{template<class...T>void log(const char*,T...){}template<class...T>void err(const char*,T...){}};
 inline Serial serial;
+struct Brightness {
+ bool enabled=true;int pin=-1;bool native=true,external=false;
+ bool isEnabled(){return enabled;}
+ bool attachExternalBacklight(int value){if(!enabled||pin>=0)return false;pin=value;return true;}
+ void detachExternalBacklight(){pin=-1;}
+ bool setActiveDisplays(bool n,bool e){native=n;external=e;return true;}
+};
+inline Brightness brightness;
 struct Display{
  int w=280,h=240;unsigned writes=0;const uint16_t* lastSource=nullptr;
  std::vector<uint16_t> pixels=std::vector<uint16_t>(280*240);
@@ -228,9 +236,9 @@ int main(int argc,char**argv){
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
  assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==rowsBefore+1&&m.frame[40*280+20]==0xabcd);
  // Even an installed 1.1.2 descriptor requesting full flush is ignored.
- assert(m.slots[0].descriptor->setting_count==8&&m.slots[0].descriptor->settings[7].id==9);
+ assert(m.slots[0].descriptor->setting_count==9&&m.slots[0].descriptor->settings[7].id==9);
  const auto*rowCurrent=m.slots[0].descriptor;kd_device retired=*rowCurrent;
- retired.size=sizeof(kd_device);retired.prefer_full_frame=[](const void*,void*)->uint32_t{assert(false);return 1;};
+ retired.size=offsetof(kd_device,backlight_pin);retired.prefer_full_frame=[](const void*,void*)->uint32_t{assert(false);return 1;};
  m.slots[0].descriptor=&retired;
  small.getFramebuffer()[0]^=1;assert(m.capture(nullptr,&small,none,false));
  const auto removedFull=m.fullTransfers,removedRows=m.rowTransfers,removedPixels=m.transferPixels;
@@ -363,6 +371,21 @@ int main(int argc,char**argv){
  }}
  assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2&&m.slots[0].values[7]==0&&!m.slots[0].readOnly);
  assert(m.setEnabled(0,true));assert(m.spiHz==40000000);
+ // Backlight field preserves pin/SPI settings from a real old 8-field blob.
+ for(auto& entry:nvm){if(entry.second.size()==sizeof(Record)){Record saved;std::memcpy(&saved,entry.second.data(),sizeof saved);saved.count=8;std::memcpy(entry.second.data(),&saved,sizeof saved);entry.second.resize(offsetof(Record,fields)+8*sizeof(Record::Field));}}
+ assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2&&m.slots[0].values[8]==0);
+ assert(m.persist(m.slots[0]));
+ // Conflicting backlight pins must roll back without changing native brightness.
+ m.slots[0].values[0]=4;assert(m.activate(0)); // SPI clock temporarily uses GPIO47.
+ assert(!m.changeSetting(0,8,1)&&m.slots[0].values[8]==0&&m.active==0);
+ m.slots[0].values[0]=0;assert(m.activate(0));
+ assert(m.changeSetting(0,8,1));assert(m.backlightPin==47&&m.extensionPinOwned(47));
+ assert(lilka::brightness.pin==47);
+ assert(m.setDisplayMode(DeviceManager::External));assert(!lilka::brightness.native&&lilka::brightness.external);
+ assert(m.setDisplayMode(DeviceManager::Both));assert(lilka::brightness.native&&lilka::brightness.external);
+ assert(m.setDisplayMode(DeviceManager::Internal));assert(lilka::brightness.native&&!lilka::brightness.external);
+ m.deactivate();assert(lilka::brightness.pin==-1&&!m.extensionPinOwned(47));
+ m.slots[0].values[8]=0;assert(m.activate(0));
  // Panel-drive choices emit only documented B1/B4 overrides; default unchanged.
  for(int mode=0;mode<4;++mode){
   assert(m.setEnabled(0,false));m.slots[0].values[7]=mode;wireChunks.clear();assert(m.setEnabled(0,true));

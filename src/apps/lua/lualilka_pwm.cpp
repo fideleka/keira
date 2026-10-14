@@ -21,7 +21,7 @@ static int lualilka_pwm_setup(lua_State* L) {
 static int lualilka_pwm_attachPin(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
     int channel = luaL_checkinteger(L, 2);
-    if (lilka::brightness.isPWMChannelReserved(channel) || (lilka::brightness.isEnabled() && pin == LILKA_SLEEP))
+    if (lilka::brightness.isPWMChannelReserved(channel) || lilka::brightness.isPinReserved(pin))
         return luaL_error(L, "Backlight PWM is reserved");
     ledcAttachPin((uint8_t)pin, (uint8_t)channel);
     return 0;
@@ -30,7 +30,7 @@ static int lualilka_pwm_attachPin(lua_State* L) {
 // pwm.detach_pin(pin)
 static int lualilka_pwm_detachPin(lua_State* L) {
     int pin = luaL_checkinteger(L, 1);
-    if (lilka::brightness.isEnabled() && pin == LILKA_SLEEP) return luaL_error(L, "Backlight pin is reserved");
+    if (lilka::brightness.isPinReserved(pin)) return luaL_error(L, "Backlight pin is reserved");
     ledcDetachPin((uint8_t)pin);
     return 0;
 }
