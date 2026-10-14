@@ -113,12 +113,15 @@ using esp_err_t=int;
 inline const char* esp_err_to_name(int error){return error==ESP_ERR_NO_MEM?"ESP_ERR_NO_MEM":error==ESP_ERR_INVALID_ARG?"ESP_ERR_INVALID_ARG":error==ESP_ERR_INVALID_STATE?"ESP_ERR_INVALID_STATE":"ESP_FAIL";}
 #define SPI2_HOST 2
 #define SPI_DMA_CH_AUTO 0
+#define APB_CLK_FREQ 80000000
+inline int spi_get_actual_clock(int apb,int hz,int duty){assert(apb==80000000&&duty==128);return hz>60000000?80000000:hz>=40000000?40000000:hz;}
 using spi_device_handle_t=void*;
 struct spi_bus_config_t{int mosi_io_num,miso_io_num,sclk_io_num,quadwp_io_num,quadhd_io_num,data4_io_num,data5_io_num,data6_io_num,data7_io_num,max_transfer_sz;};
 struct spi_device_interface_config_t{int clock_speed_hz,spics_io_num,queue_size;};
 struct spi_transaction_t{unsigned length;const void*tx_buffer;};
 inline int spi_bus_initialize(int host,spi_bus_config_t*b,int){assert(host==2);assert(b->miso_io_num==-1&&b->quadwp_io_num==-1&&b->quadhd_io_num==-1&&b->data4_io_num==-1&&b->data5_io_num==-1&&b->data6_io_num==-1&&b->data7_io_num==-1);if(busError)return busError;if(busBusy)return -1;busBusy=true;return 0;}
-inline int spi_bus_add_device(int,spi_device_interface_config_t*,spi_device_handle_t*p){if(deviceError)return deviceError;*p=(void*)1;return 0;}
+inline int openedClock=0;
+inline int spi_bus_add_device(int,spi_device_interface_config_t*config,spi_device_handle_t*p){if(deviceError)return deviceError;openedClock=config->clock_speed_hz;*p=(void*)1;return 0;}
 inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
 inline int submitError=0;inline bool wrongCompletion=false;
@@ -319,6 +322,23 @@ int main(int argc,char**argv){
  assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));assert(packedAhead);
  failSubmissionAt=starts+2;assert(DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));assert(!inFlight&&!m.spiFault);failSubmissionAt=0;
  assert(!DeviceManager::spiPixels(&m.slots[0],pixels.data(),4096));
+ m.deactivate();assert(allocations.empty()&&!busBusy);
+ }
+ {
+ DeviceManager m;registered(m,0);
+ assert(m.slots[0].descriptor->settings_version==1);
+ assert(m.slots[0].descriptor->settings[4].default_value==1&&m.slots[0].descriptor->settings[4].maximum==6);
+ assert(!strcmp(m.slots[0].descriptor->settings[4].choices[2],"40 MHz (test)"));
+ assert(!strcmp(m.slots[0].descriptor->settings[4].choices[6],"80 MHz (test)"));
+ m.slots[0].state=(void*)1;
+ assert(DeviceManager::spiOpen(&m.slots[0],12,13,21,14,80000001));assert(!busBusy&&!m.spiOwner);
+ assert(strstr(m.slots[0].status,"Invalid SPI speed"));m.slots[0].state=nullptr;
+ m.slots[0].values[4]=2;assert(m.persist(m.slots[0]));m.slots[0].values[4]=1;
+ assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2); // Existing saved index remains 40 MHz.
+ assert(m.setEnabled(0,true));assert(m.spiHz==40000000);
+ for(int index=3;index<=6;++index){assert(m.changeSetting(0,4,1));const int requests[]={0,0,0,50000000,60000000,70000000,80000000};assert(m.slots[0].values[4]==index&&openedClock==requests[index]&&m.spiRequestedHz==unsigned(requests[index]));assert(m.spiHz==unsigned(index<=4?40000000:80000000));}
+ for(int index=5;index>=2;--index){assert(m.changeSetting(0,4,-1));assert(m.slots[0].values[4]==index);}
+ assert(m.spiHz==40000000&&openedClock==40000000);
  m.deactivate();assert(allocations.empty()&&!busBusy);
  }
  puts("PASS: shared frames/20 in-flight updates/latest-wins, 40 MHz persistence, queued DMA/quarantine, partial/full frames, legacy ABI, overlays, allocation rollback, 20 toggles and ELF bounds");
