@@ -58,6 +58,8 @@ def summarize(windows):
                 item[2] = max(item[2], maximum)
         for name, (count, total, maximum) in phases.items():
             print(f'{name:20s} {count:8d} {total/count/1000 if count else 0:10.3f} {maximum/1000:10.3f}')
+    if any(any(name.startswith('nes-cpu-') for name in row['phases']) for row in windows):
+        print('NES CPU/PPU rows: sampled once per 16 drawn/skipped frames independently; totals cover sampled frames only.')
     print('\nNested phases must NOT be added. Clock durations include preemption. Polling is not physical-button-to-photon latency.')
 
 

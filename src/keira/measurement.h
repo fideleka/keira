@@ -10,7 +10,22 @@
 #    include <atomic>
 
 namespace measurement {
-enum Phase { InputWork, CoreDraw, CoreSkip, Blit, PublishWait, PublishWork, Audio, Capture, Internal, PhaseCount };
+enum Phase {
+    InputWork,
+    CoreDraw,
+    CoreSkip,
+    Blit,
+    PublishWait,
+    PublishWork,
+    Audio,
+    Capture,
+    Internal,
+    NesCpuDraw,
+    NesPpuDraw,
+    NesCpuSkip,
+    NesPpuSkip,
+    PhaseCount
+};
 struct Snapshot {
     FrameMetrics phase[PhaseCount];
     FrameMetrics pollGap;

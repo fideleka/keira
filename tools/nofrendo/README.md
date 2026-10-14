@@ -20,10 +20,13 @@ clean fix/nes-irq branch. Debug history remains separate and unchanged.
 
 ## Firmware scope
 
-Only five dependency files are patched: cpu/nes6502.c, cpu/nes6502.h, nes/nes.c,
-sndhrdw/nes_apu.c and mappers/map004.c. Keira app/driver files remain identical
-to features/stage. No startup callbacks, log-level/tag toggles, CPU snapshot API,
-identity function, runtime probe or diagnostic fixture is shipped.
+The original IRQ repair patched five dependency files: cpu/nes6502.c, cpu/nes6502.h, nes/nes.c,
+sndhrdw/nes_apu.c and mappers/map004.c. The current feature overlay additionally
+patches nes/nes_ppu.c for internal-RAM scanline staging and a forced-inline tile
+kernel, and nes/nes.c for per-frame input cadence and bounded CPU/PPU profiling.
+The original IRQ semantics below are retained. Profiling runs only with the
+normal KEIRA_MEASURE flag; tests/fixtures are not shipped. See
+[display performance](../../docs/display-performance.md) for scope and checks.
 
 - FRAME assertion persists while masked. $4015 reads return the prior frame flag
   and acknowledge FRAME only. $4017 bit 6 acknowledges and inhibits FRAME; bit 7
@@ -141,3 +144,13 @@ The manifest's original hashes/pin/license are unchanged. Its reviewed patched
 hash and patch key change, forcing a reproducible overlay rebuild without editing
 installed `.pio` dependencies. `tests/display_performance/nes.py` executes the
 patched loop through skipped/displayed frames and quit-before-render ordering.
+
+## Core optimization checks
+
+    python3 tests/nofrendo/core_profile.py --sanitize
+
+Compares real PPU output/state/guard bytes against the unmodified pinned renderer,
+then checks real frame-loop CPU/PPU clock accounting and zero-clock unsampled
+execution. `--baseline /path/to/reviewed/overlay` optionally compares an earlier
+IRQ-corrected tree. No proprietary ROM is required. This does not replace
+same-game device timing, physical sound checks or mapper/ROM compatibility tests.
