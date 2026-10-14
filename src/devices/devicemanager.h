@@ -1,4 +1,5 @@
 #pragma once
+#include "keira/measurement.h"
 #include "keira/service.h"
 #include "keira/frame_metrics.h"
 #include "../../drivers/driver_api.h"
@@ -87,6 +88,9 @@ private:
     uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0;
     int presentPending(Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* rows);
     FrameMetrics captureTiming;
+#if KEIRA_MEASURE
+    FrameMetrics packingTiming, dmaWaitTiming;
+#endif
     uint32_t captureCount = 0, transferCount = 0, captureUs = 0, transferUs = 0;
     spi_device_handle_t spi = nullptr;
     uint8_t* dma = nullptr;

@@ -805,7 +805,8 @@ void DeviceManager::run() {
                 );
             }
         }
-        if (millis() - previousLog >= 2000 && active >= 0 && mode != Internal) {
+        if ((!KEIRA_MEASURE || KEIRA_MEASURE_LOG) && millis() - previousLog >= (KEIRA_MEASURE ? 5000u : 2000u) &&
+            active >= 0 && mode != Internal) {
             const uint32_t elapsed = millis() - previousLog;
             const uint32_t externalFps = transferTiming.fpsX10(elapsed);
             KMTX_LOCK(frameMutex);
@@ -847,6 +848,21 @@ void DeviceManager::run() {
                 heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
                 uxTaskGetStackHighWaterMark(nullptr)
             );
+#    if KEIRA_MEASURE
+            lilka::serial.log(
+                "measure-spi: pack-chunks=%u pack-total-us=%llu pack-avg/max-us=%u/%u wait-chunks=%u "
+                "wait-total-us=%llu wait-avg/max-us=%u/%u",
+                packingTiming.count,
+                static_cast<unsigned long long>(packingTiming.totalUs),
+                packingTiming.averageUs(),
+                packingTiming.maxUs,
+                dmaWaitTiming.count,
+                static_cast<unsigned long long>(dmaWaitTiming.totalUs),
+                dmaWaitTiming.averageUs(),
+                dmaWaitTiming.maxUs
+            );
+            packingTiming = dmaWaitTiming = FrameMetrics{};
+#    endif
             loggedTransfers = transferCount;
             previousLog = millis();
             transferTiming = FrameMetrics{};
@@ -935,7 +951,13 @@ int32_t DeviceManager::spiPixels(void* context, const uint16_t* pixels, uint32_t
     while (count) {
         const uint32_t length = count < 2048 ? count : 2048;
         uint8_t* staging = manager.dma + buffer * 4096;
+#    if KEIRA_MEASURE
+        const int64_t packingStart = esp_timer_get_time();
+#    endif
         lilka::packRGB565(staging, pixels, length);
+#    if KEIRA_MEASURE
+        manager.packingTiming.record(esp_timer_get_time() - packingStart);
+#    endif
         // Pack the other staging buffer while the preceding chunk shifts out.
         // Only one transaction is outstanding: no descriptor/buffer is reused
         // until completion, and DC cannot change until this function returns.
@@ -974,8 +996,14 @@ int DeviceManager::submit(spi_transaction_t& transfer, const uint8_t* bytes, uin
 }
 
 int DeviceManager::finish(const spi_transaction_t& transfer) {
+#    if KEIRA_MEASURE
+    const int64_t waitStart = esp_timer_get_time();
+#    endif
     spi_transaction_t* completed = nullptr;
     const esp_err_t result = spi_device_get_trans_result(spi, &completed, pdMS_TO_TICKS(100));
+#    if KEIRA_MEASURE
+    dmaWaitTiming.record(esp_timer_get_time() - waitStart);
+#    endif
     if (result != ESP_OK || completed != &transfer) {
         // Retain BOTH staging buffers/descriptors/bus on uncertain completion.
         spiFault = true;

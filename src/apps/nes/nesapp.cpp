@@ -35,6 +35,9 @@ void NesApp::rememberSuccessfulLaunch() {
 
 void NesApp::run() {
     loadPreferences();
+#if KEIRA_MEASURE
+    startMeasurements();
+#endif
     // Load the ROM
     Driver::setNesApp(this);
     nofrendo_main(1, argv);
@@ -42,6 +45,9 @@ void NesApp::run() {
     // Nofrendo normally relies on process-exit cleanup. Keira keeps running, so
     // release every emulator subsystem before returning to the launcher.
     osd_shutdown();
+#if KEIRA_MEASURE
+    reportMeasurements(true);
+#endif
     main_quit();
     gui_shutdown();
     vid_shutdown();

@@ -461,7 +461,7 @@ state = display_header[display_header.index("    static constexpr int overlayRow
 prelude = prelude.replace("// PRODUCTION_DISPLAY_STATE", state)
 prelude += "namespace lilka { struct OverlayStorage {\n" + state + "}; }\n"
 prelude = "#define LILKA_DISPLAY_WIDTH 240\n#define LILKA_DISPLAY_HEIGHT 280\n" + prelude
-code = function(sdk / "display.cpp", "void GFX<T>::drawCanvas(")
+code = '#include "keira/measurement.h"\n' + function(sdk / "display.cpp", "void GFX<T>::drawCanvas(")
 code = "template <typename T>\n" + code
 for signature in ("void Display::presentCanvas(", "void Display::drawCanvas(", "void Display::drawSystemOverlay(", "bool Display::prepareSystemOverlay(",
                   "void Display::presentCanvasOutsideOverlay(", "void Display::clearOutsideOverlay(",

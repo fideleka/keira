@@ -184,7 +184,20 @@
        }
     }
  }
-@@ -344,8 +352,6 @@
+@@ -329,6 +337,12 @@
+    nes.scanline = 0;
+ }
+ 
++#if KEIRA_MEASURE
++extern uint64_t osd_measure_clock(void);
++extern void osd_measure_frame(int draw, uint64_t us);
++extern void osd_measure_report(void);
++#endif
++
+ static void system_video(bool draw)
+ {
+    /* TODO: hack */
+@@ -344,8 +358,6 @@
     /* blit to screen */
     vid_flush();
  
@@ -193,7 +206,7 @@
  }
  
  /* main emulation loop */
-@@ -371,6 +377,15 @@
+@@ -371,6 +383,18 @@
           last_ticks = nofrendo_ticks;
        }
  
@@ -206,10 +219,44 @@
 +            break;
 +      }
 +
++#if KEIRA_MEASURE
++      const bool measuredWork = nes.pause || frames_to_render > 0 || false == nes.autoframeskip;
++#endif
        if (true == nes.pause)
        {
           /* TODO: dim the screen, and pause/silence the apu */
-@@ -414,6 +429,9 @@
+@@ -380,15 +404,30 @@
+       else if (frames_to_render > 1)
+       {
+          frames_to_render--;
++#if KEIRA_MEASURE
++         const uint64_t measuredStart = osd_measure_clock();
++#endif
+          nes_renderframe(false);
++#if KEIRA_MEASURE
++         osd_measure_frame(0, osd_measure_clock() - measuredStart);
++#endif
+          system_video(false);
+       }
+       else if ((1 == frames_to_render && true == nes.autoframeskip) || false == nes.autoframeskip)
+       {
+          frames_to_render = 0;
++#if KEIRA_MEASURE
++         const uint64_t measuredStart = osd_measure_clock();
++#endif
+          nes_renderframe(true);
++#if KEIRA_MEASURE
++         osd_measure_frame(1, osd_measure_clock() - measuredStart);
++#endif
+          system_video(true);
+       }
++#if KEIRA_MEASURE
++      if (measuredWork) osd_measure_report();
++#endif
+    }
+ }
+ 
+@@ -414,6 +453,9 @@
     ppu_reset(reset_type);
     mmc_reset();
     nes6502_reset();
@@ -219,7 +266,7 @@
  
     nes.scanline = 241;
  
-@@ -534,7 +552,7 @@
+@@ -534,7 +576,7 @@
        goto _fail;
  
     /* set the IRQ routines */

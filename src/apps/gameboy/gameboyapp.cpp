@@ -217,6 +217,9 @@ void GameBoyApp::clearMissingLines() {
 }
 
 void GameBoyApp::drawLine(void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette) {
+#if KEIRA_MEASURE
+    const int64_t start = esp_timer_get_time();
+#endif
     auto* app = static_cast<GameBoyApp*>(context);
     if (!app->drawnLines[line]) ++app->drawnLineCount;
     app->drawnLines[line] = true;
@@ -241,6 +244,9 @@ void GameBoyApp::drawLine(void* context, const uint8_t* pixels, uint8_t line, bo
         for (int x = 0; x < 240; ++x)
             middle[x] = blend565(upper[x], output[x]);
     }
+#if KEIRA_MEASURE
+    app->measuredBlitUs += esp_timer_get_time() - start;
+#endif
 }
 
 void GameBoyApp::run() {
@@ -268,6 +274,10 @@ void GameBoyApp::run() {
     }
 
     loadPreferences();
+#if KEIRA_MEASURE
+    startMeasurements();
+    uint8_t previousMeasuredButtons = 0xff;
+#endif
     clearGameCanvases();
     bool startWasPressed = false;
     bool startGameActive = false;
@@ -280,12 +290,17 @@ void GameBoyApp::run() {
     uint8_t skippedInRow = 0;
     while (true) {
         const int64_t frameStart = esp_timer_get_time();
+#if KEIRA_MEASURE
+        measures.poll(frameStart);
+#endif
         const lilka::State state = lilka::controller.getState();
         if (state.selectConsumed) selectConsumed = true;
         if (state.start.pressed && !startWasPressed) {
             startGameActive = !(state.select.pressed || state.selectHeld);
-            if (!startGameActive && (!selectConsumed || state.selectConsumed) &&
-                !state.c.pressed && !state.d.pressed) {
+            if (!startGameActive && (!selectConsumed || state.selectConsumed) && !state.c.pressed && !state.d.pressed) {
+#if KEIRA_MEASURE
+                measurementsActive = false;
+#endif
                 gbcore_set_buttons(core, 0xFF);
 #if LILKA_VERSION == 2
                 if (audioReady) esp_i2s::i2s_zero_dma_buffer(esp_i2s::I2S_NUM_0);
@@ -308,6 +323,9 @@ void GameBoyApp::run() {
                 screenshotOnNextFrame = action == SystemAction::Screenshot;
                 nextFrameAt = esp_timer_get_time();
                 skippedInRow = 0;
+#if KEIRA_MEASURE
+                measurementsActive = true;
+#endif
                 continue; // no paused-time CPU/audio catch-up
             }
         }
@@ -370,6 +388,13 @@ void GameBoyApp::run() {
         if (preferences.precisionMode ? vertical < 0 : state.up.pressed) buttons &= ~0x40;
         if (preferences.precisionMode ? vertical > 0 : state.down.pressed) buttons &= ~0x80;
         gbcore_set_buttons(core, buttons);
+#if KEIRA_MEASURE
+        if (buttons != previousMeasuredButtons) measures.changed();
+        previousMeasuredButtons = buttons;
+        measures.record(measurement::InputWork, esp_timer_get_time() - frameStart);
+        const int64_t coreStart = esp_timer_get_time();
+        measuredBlitUs = 0;
+#endif
 
         if (drawFrame) {
             canvas->fillScreen(lilka::colors::Black);
@@ -377,7 +402,13 @@ void GameBoyApp::run() {
             drawnLineCount = 0;
         }
         gbcore_run_frame(core, drawFrame);
+#if KEIRA_MEASURE
+        measures.record(drawFrame ? measurement::CoreDraw : measurement::CoreSkip, esp_timer_get_time() - coreStart);
+#endif
         if (drawFrame) {
+#if KEIRA_MEASURE
+            measures.record(measurement::Blit, measuredBlitUs);
+#endif
             clearMissingLines();
             if (screenshotOnNextFrame) {
                 screenshotOnNextFrame = false;
@@ -385,7 +416,14 @@ void GameBoyApp::run() {
             }
             queueDraw();
         }
+#if KEIRA_MEASURE
+        const int64_t audioStart = esp_timer_get_time();
+#endif
         writeAudio();
+#if KEIRA_MEASURE
+        measures.record(measurement::Audio, esp_timer_get_time() - audioStart);
+        reportMeasurements();
+#endif
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
         if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));
@@ -393,6 +431,9 @@ void GameBoyApp::run() {
     }
 
     stopAudio();
+#if KEIRA_MEASURE
+    reportMeasurements(true);
+#endif
     gbcore_copy_save(core);
     if (!writeSave()) alert("Game Boy", K_S_GB_SAVE_FAILED);
     releaseGame();

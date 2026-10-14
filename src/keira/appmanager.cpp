@@ -233,6 +233,9 @@ void AppManager::run() {
             KMTX_LOCK(panelMtx);
             KMTX_LOCK(panel->canvasMutex);
             KMTX_LOCK(topApp->canvasMutex);
+#if KEIRA_MEASURE
+            const int64_t captureStart = esp_timer_get_time();
+#endif
             if (devices->capture(
                     (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas,
                     topApp->backCanvas,
@@ -240,6 +243,10 @@ void AppManager::run() {
                     false
                 ))
                 externalDirty = false;
+#if KEIRA_MEASURE
+            if (topApp->measurementsActive)
+                topApp->measures.record(measurement::Capture, esp_timer_get_time() - captureStart);
+#endif
             KMTX_UNLOCK(topApp->canvasMutex);
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
@@ -251,18 +258,21 @@ void AppManager::run() {
             if (internalPresented) internalUs = esp_timer_get_time() - start;
         }
         if (internalPresented) internalTimes.record(internalUs);
+#if KEIRA_MEASURE
+        if (internalPresented && topApp->measurementsActive) topApp->measures.record(measurement::Internal, internalUs);
+#endif
         const uint32_t workUs = esp_timer_get_time() - iterationStart;
         work.record(workUs);
         if (workUs >= (1000 / MAX_FPS) * 1000) ++overruns;
         const uint32_t elapsed = millis() - windowAt;
-        const bool report = elapsed >= 2000;
+        const bool report = elapsed >= (KEIRA_MEASURE ? 5000u : 2000u);
         char appName[48] = {};
-        if (report) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
+        if (report && (!KEIRA_MEASURE || KEIRA_MEASURE_LOG)) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
         lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
-        if (report) {
+        if (report && (!KEIRA_MEASURE || KEIRA_MEASURE_LOG)) {
             const uint32_t appFps = submitted.fpsX10(elapsed), lcdFps = internalTimes.fpsX10(elapsed);
             const uint32_t compositorFps = work.fpsX10(elapsed);
             lilka::serial.log(
@@ -290,6 +300,8 @@ void AppManager::run() {
                 internalTimes.maxUs,
                 overruns
             );
+        }
+        if (report) {
             windowAt = millis();
             work = intervals = internalTimes = submitted = FrameMetrics{};
             overruns = 0;
