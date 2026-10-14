@@ -1,4 +1,5 @@
 #include "devices.h"
+#include "keira/keira.h"
 #include "keira/ksystem.h"
 #include "devices/devicemanager.h"
 
