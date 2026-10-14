@@ -20,6 +20,8 @@ static const uint32_t speeds[] = {10000000, 20000000, 40000000, 50000000, 600000
 static const char* const rotation_names[] = {"Automatic", "Automatic, flipped"};
 static const char* const refresh_names[] = {"15 FPS", "20 FPS", "30 FPS", "60 FPS"};
 static const uint32_t intervals[] = {67, 50, 34, 17};
+static const char* const drive_names[] =
+    {"Original (~79 Hz)", "~70 Hz, line inversion", "~61 Hz, line inversion", "~79 Hz, frame inversion"};
 static const kd_setting settings[] = {
     {1, "Clock pin", KD_SETTING_CHOICE, 0, 0, 5, 1, pin_names},
     {2, "MOSI pin", KD_SETTING_CHOICE, 1, 0, 5, 1, pin_names},
@@ -28,6 +30,8 @@ static const kd_setting settings[] = {
     {5, "SPI speed", KD_SETTING_CHOICE, 1, 0, 6, 1, speed_names},
     {6, "Orientation", KD_SETTING_CHOICE, 0, 0, 1, 1, rotation_names},
     {7, "Refresh limit", KD_SETTING_CHOICE, 2, 0, 3, 1, refresh_names},
+    // ID 8 belonged to the removed full-frame experiment. Never reinterpret it.
+    {9, "Panel drive (test)", KD_SETTING_CHOICE, 0, 0, 3, 1, drive_names},
 };
 static int command(const kd_host* host, uint8_t code, const uint8_t* bytes, uint32_t count) {
     if (host->spi_write(host->context, 0, &code, 1)) return -1;
@@ -75,6 +79,15 @@ static int enable(const void* api, void* memory) {
         const uint8_t code = initialization[offset++];
         if (command(host, code, initialization + offset, count)) return -1;
         offset += count;
+    }
+    const int drive = host->setting(host->context, 9);
+    if (drive) {
+        // Datasheet B1: DIVA=0, RTNA=27/31/24. B4: NLA selects normal-mode
+        // line/frame polarity inversion, not RGB color inversion (20h/21h).
+        const uint8_t rates[] = {0x18, 0x1b, 0x1f, 0x18};
+        const uint8_t frame_rate[] = {0x00, rates[drive]};
+        const uint8_t inversion = drive == 3 ? 0x06 : 0x02;
+        if (command(host, 0xb1, frame_rate, 2) || command(host, 0xb4, &inversion, 1)) return -1;
     }
     if (command(host, 0x20, 0, 0) || command(host, 0x11, 0, 0)) return -1;
     host->delay_ms(120);
@@ -138,7 +151,7 @@ static const kd_device descriptor = {
     "cfa4bc25-c2d6-4a18-ade9-16506b19acf1",
     "674db8e0-cd55-4bfb-90b0-1e521e97c1cd",
     "ILI9341 display",
-    "1.1.3",
+    "1.1.4",
     1,
     sizeof(settings) / sizeof(settings[0]),
     settings,

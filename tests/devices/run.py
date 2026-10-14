@@ -126,10 +126,12 @@ inline int spi_bus_remove_device(void*){return 0;}
 inline int spi_bus_free(int){assert(!inFlight);busBusy=false;return 0;}
 inline int submitError=0;inline bool wrongCompletion=false;
 inline std::vector<uint8_t> queuedBytes, wireBytes;
+inline int currentDc=0;
+inline std::vector<std::pair<int,std::vector<uint8_t>>> wireChunks;
 inline int failSubmissionAt=0;
 inline int spi_device_queue_trans(void*,spi_transaction_t*t,unsigned wait){assert(wait==100);if(submitError)return submitError;if(failSubmissionAt && starts+1==failSubmissionAt)return -1;assert(!inFlight);inFlight=t;queuedBytes.assign((const uint8_t*)t->tx_buffer,(const uint8_t*)t->tx_buffer+(t->length+7)/8);++starts;return 0;}
-inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;assert(!memcmp(((spi_transaction_t*)inFlight)->tx_buffer,queuedBytes.data(),queuedBytes.size()));wireBytes.insert(wireBytes.end(),queuedBytes.begin(),queuedBytes.end());if(duringDma && ((spi_transaction_t*)inFlight)->length>=4096*8){auto callback=std::move(duringDma);duringDma=nullptr;callback();}*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
-inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int,int){return 0;}
+inline int spi_device_get_trans_result(void*,spi_transaction_t**result,unsigned wait){assert(wait==100);if(failTransfer)return -1;assert(!memcmp(((spi_transaction_t*)inFlight)->tx_buffer,queuedBytes.data(),queuedBytes.size()));wireBytes.insert(wireBytes.end(),queuedBytes.begin(),queuedBytes.end());wireChunks.emplace_back(currentDc,queuedBytes);if(duringDma && ((spi_transaction_t*)inFlight)->length>=4096*8){auto callback=std::move(duringDma);duringDma=nullptr;callback();}*result=wrongCompletion?nullptr:(spi_transaction_t*)inFlight;inFlight=nullptr;return 0;}
+inline int gpio_set_direction(int,int){return 0;}inline int gpio_set_level(int pin,int level){if(pin==21){assert(!inFlight);currentDc=level;}return 0;}
 inline int gpio_reset_pin(int){++resetCount;return 0;}
 struct System{};inline System ksystem;
 '''
@@ -226,7 +228,7 @@ int main(int argc,char**argv){
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
  assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==rowsBefore+1&&m.frame[40*280+20]==0xabcd);
  // Even an installed 1.1.2 descriptor requesting full flush is ignored.
- assert(m.slots[0].descriptor->setting_count==7);
+ assert(m.slots[0].descriptor->setting_count==8&&m.slots[0].descriptor->settings[7].id==9);
  const auto*rowCurrent=m.slots[0].descriptor;kd_device retired=*rowCurrent;
  retired.size=sizeof(kd_device);retired.prefer_full_frame=[](const void*,void*)->uint32_t{assert(false);return 1;};
  m.slots[0].descriptor=&retired;
@@ -359,8 +361,21 @@ int main(int argc,char**argv){
   Record saved;std::memcpy(&saved,entry.second.data(),sizeof saved);
   if(!strcmp(saved.uuid,m.slots[0].uuid)){saved.count=8;saved.fields[7].id=8;saved.fields[7].value=1;std::memcpy(entry.second.data(),&saved,sizeof saved);}
  }}
- assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2&&!m.slots[0].readOnly);
+ assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2&&m.slots[0].values[7]==0&&!m.slots[0].readOnly);
  assert(m.setEnabled(0,true));assert(m.spiHz==40000000);
+ // Panel-drive choices emit only documented B1/B4 overrides; default unchanged.
+ for(int mode=0;mode<4;++mode){
+  assert(m.setEnabled(0,false));m.slots[0].values[7]=mode;wireChunks.clear();assert(m.setEnabled(0,true));
+  std::map<unsigned,std::vector<uint8_t>> regs;unsigned cmd=0;
+  for(const auto&chunk:wireChunks){if(!chunk.first){assert(chunk.second.size()==1);cmd=chunk.second[0];regs[cmd].clear();}else regs[cmd].insert(regs[cmd].end(),chunk.second.begin(),chunk.second.end());}
+  const uint8_t rates[]={0x18,0x1b,0x1f,0x18};
+  assert(regs[0xb1]==std::vector<uint8_t>({0,rates[mode]}));
+  if(!mode)assert(!regs.count(0xb4));else assert(regs[0xb4]==std::vector<uint8_t>({uint8_t(mode==3?6:2)}));
+  assert(!regs.count(0x21)&&regs[0x3a]==std::vector<uint8_t>({0x55}));
+  assert(regs[0xc5]==std::vector<uint8_t>({0x3e,0x28})&&regs[0xc7]==std::vector<uint8_t>({0x86}));
+ }
+ assert(m.persist(m.slots[0]));m.slots[0].values[7]=0;assert(m.restore(m.slots[0])&&m.slots[0].values[7]==3);
+ for(int i=0;i<3;++i)assert(m.changeSetting(0,7,-1));assert(m.slots[0].values[7]==0);
  for(int index=3;index<=6;++index){assert(m.changeSetting(0,4,1));const int requests[]={0,0,0,50000000,60000000,70000000,80000000};assert(m.slots[0].values[4]==index&&openedClock==requests[index]&&m.spiRequestedHz==unsigned(requests[index]));assert(m.spiHz==unsigned(index<=4?40000000:80000000));}
  for(int index=5;index>=2;--index){assert(m.changeSetting(0,4,-1));assert(m.slots[0].values[4]==index);}
  assert(m.spiHz==40000000&&openedClock==40000000);
