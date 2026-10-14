@@ -1,5 +1,8 @@
 
 #include "keira/app.h"
+#if KEIRA_MEASURE
+#    include "devices/devicemanager.h"
+#endif
 
 #include <lilka/colors565.h>
 #include <lilka/display.h>
@@ -241,7 +244,14 @@ void App::deinitCanvas() {
 }
 //-----------------------------------------------------------------------------
 void App::queueDraw() {
+#if KEIRA_MEASURE
+    const int64_t waitStart = esp_timer_get_time();
+#endif
     KMTX_LOCK(canvasMutex);
+#if KEIRA_MEASURE
+    const int64_t acquired = esp_timer_get_time();
+    if (measurementsActive) measures.record(measurement::PublishWait, acquired - waitStart);
+#endif
 
     // Draw toolbar on top of canvas
     if (toolBarLabel != "") {
@@ -274,9 +284,105 @@ void App::queueDraw() {
     frame++;
 
     setRedraw(true);
-
+#if KEIRA_MEASURE
+    if (measurementsActive) {
+        measures.submitted(esp_timer_get_time());
+        measures.record(measurement::PublishWork, esp_timer_get_time() - acquired);
+    }
+#endif
     KMTX_UNLOCK(canvasMutex);
 
     // Switch to a drawing task
     taskYIELD();
 }
+
+#if KEIRA_MEASURE
+void App::startMeasurements() {
+#    if defined(LILKA_MEASURE_INPUT) && LILKA_MEASURE_INPUT
+    lilka::controller.takeInputMeasurements();
+#    endif
+    measurementAt = millis();
+    measurementsActive = true;
+}
+void App::reportMeasurements(bool force) {
+    if (!measurementsActive && !force) return;
+    const uint32_t now = millis(), elapsed = now - measurementAt;
+    if (!force && (!KEIRA_MEASURE_LOG || elapsed < 5000)) return;
+    if (!elapsed) return;
+    measurement::Snapshot snapshot;
+    measures.take(snapshot);
+    measurementAt = now;
+#    if defined(LILKA_MEASURE_INPUT) && LILKA_MEASURE_INPUT
+    const auto scanner = lilka::controller.takeInputMeasurements();
+#    endif
+    const auto mode = ksystem.devices ? ksystem.devices->displayMode() : DeviceManager::Internal;
+    const char* modeName = mode == DeviceManager::Both       ? "Both"
+                           : mode == DeviceManager::External ? "External"
+                                                             : "Internal";
+    const int64_t reportStart = esp_timer_get_time();
+    const uint32_t dropsBefore = lilka::serial.droppedLogs();
+    lilka::serial.log(
+        "measure: app=%s mode=%s window-ms=%u polls=%u submits=%u changes=%u gap-us=%u/%u gaps>33/50/100ms=%u/%u/%u",
+        getName(),
+        modeName,
+        elapsed,
+        snapshot.polls,
+        snapshot.submissions,
+        snapshot.changes,
+        snapshot.pollGap.averageUs(),
+        snapshot.pollGap.maxUs,
+        snapshot.gapOver33,
+        snapshot.gapOver50,
+        snapshot.gapOver100
+    );
+#    if defined(LILKA_MEASURE_INPUT) && LILKA_MEASURE_INPUT
+    lilka::serial.log(
+        "measure-controller: scans=%u gap-us=%u/%u scan-work-us=%u/%u",
+        scanner.scans,
+        scanner.gaps ? static_cast<unsigned>(scanner.gapTotalUs / scanner.gaps) : 0,
+        scanner.gapMaxUs,
+        scanner.scans ? static_cast<unsigned>(scanner.workTotalUs / scanner.scans) : 0,
+        scanner.workMaxUs
+    );
+#    endif
+    lilka::serial.log(
+        "measure-span: app=%s poll-span-us=%llu submit-span-us=%llu",
+        getName(),
+        static_cast<unsigned long long>(snapshot.lastPollUs - snapshot.firstPollUs),
+        static_cast<unsigned long long>(snapshot.lastSubmitUs - snapshot.firstSubmitUs)
+    );
+    static const char* names[] = {
+        "input", "core-draw", "core-skip", "blit", "publish-wait", "publish-work", "audio", "capture", "internal"
+    };
+    for (unsigned i = 0; i < measurement::PhaseCount; i += 2) {
+        const auto& first = snapshot.phase[i];
+        const FrameMetrics empty;
+        const auto& second = i + 1 < measurement::PhaseCount ? snapshot.phase[i + 1] : empty;
+        if (!first.count && !second.count) continue;
+        // Compact pairs keep the whole burst well below the 16-record queue
+        // limit. Values are count,total-us,average-us,max-us; no truncation.
+        lilka::serial.log(
+            "measure-phase: app=%s %s=%u,%llu,%u,%u %s=%u,%llu,%u,%u",
+            getName(),
+            names[i],
+            first.count,
+            static_cast<unsigned long long>(first.totalUs),
+            first.averageUs(),
+            first.maxUs,
+            i + 1 < measurement::PhaseCount ? names[i + 1] : "none",
+            second.count,
+            static_cast<unsigned long long>(second.totalUs),
+            second.averageUs(),
+            second.maxUs
+        );
+    }
+    lilka::serial.log(
+        "measure-log: app=%s enqueue-us=%u dropped-total=%u dropped-this-report=%u emu-stack-free=%u",
+        getName(),
+        static_cast<unsigned>(esp_timer_get_time() - reportStart),
+        lilka::serial.droppedLogs(),
+        lilka::serial.droppedLogs() - dropsBefore,
+        uxTaskGetStackHighWaterMark(nullptr)
+    );
+}
+#endif

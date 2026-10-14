@@ -58,6 +58,9 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
     last_render = micros();
 #endif
 
+#if KEIRA_MEASURE
+    const int64_t blitStart = esp_timer_get_time();
+#endif
     lilka::Canvas* canvas = app->canvas;
     // Restore only the uncovered margins on every alternate app buffer. The
     // compositor may have stamped a toast there since this buffer's last use.
@@ -115,6 +118,9 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
         app->screenshotOnNextFrame = false;
         if (!screenshot::request(canvas)) ksystem.apps.startToast(K_S_SCREENSHOT_SAVE_ERROR);
     }
+#if KEIRA_MEASURE
+    app->measures.record(measurement::Blit, esp_timer_get_time() - blitStart);
+#endif
     app->queueDraw();
 }
 

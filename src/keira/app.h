@@ -1,4 +1,5 @@
 #pragma once
+#include "measurement.h"
 // Libraries:
 #include <lilka.h> // need to fix it in apps
 #include <lilka/display.h>
@@ -52,6 +53,17 @@ public:
     lilka::Canvas* canvas = NULL;
     // Swap canvas and backCanvas, automaticaly changes redraw status
     void queueDraw();
+#if KEIRA_MEASURE
+    measurement::Window measures;
+    void reportMeasurements(bool force = false);
+    void startMeasurements();
+    std::atomic<bool> measurementsActive{false};
+
+private:
+    uint32_t measurementAt = 0;
+
+public:
+#endif
 
 protected:
     //========================================================================

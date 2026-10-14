@@ -10,6 +10,9 @@ public:
 
 private:
     void run() override;
+#if KEIRA_MEASURE
+    uint64_t measuredBlitUs = 0;
+#endif
     static void drawLine(void* context, const uint8_t* pixels, uint8_t line, bool color, const uint16_t* palette);
     bool loadRom();
     bool loadSave();

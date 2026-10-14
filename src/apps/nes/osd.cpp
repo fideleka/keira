@@ -81,6 +81,9 @@ void setJoypadEvent(size_t index, bool pressed) {
         eventHandler(pressed ? INP_STATE_MAKE : INP_STATE_BREAK);
     }
     inputState.forwarded[index] = pressed;
+#if KEIRA_MEASURE
+    if (Driver::app->measurementsActive) Driver::app->measures.changed();
+#endif
 }
 
 void releaseJoypad() {
@@ -123,6 +126,10 @@ void* mem_alloc(int size, bool prefer_fast_memory) {
 }
 
 void osd_getinput(void) {
+#if KEIRA_MEASURE
+    const int64_t inputStart = esp_timer_get_time();
+    Driver::app->measures.poll(inputStart);
+#endif
     lilka::State state = lilka::controller.getState();
 
     if (inputState.exitRequested) {
@@ -135,8 +142,8 @@ void osd_getinput(void) {
     // save/load consumption must not be reinterpreted as a menu chord.
     if (state.start.pressed && !inputState.startWasPressed) {
         inputState.startGameActive = !(state.select.pressed || state.selectHeld);
-        if (!inputState.startGameActive && (!inputState.selectConsumed || state.selectConsumed) &&
-            !state.c.pressed && !state.d.pressed) {
+        if (!inputState.startGameActive && (!inputState.selectConsumed || state.selectConsumed) && !state.c.pressed &&
+            !state.d.pressed) {
             inputState.selectConsumed = true;
             inputState.startWasPressed = true;
             openSystemMenu();
@@ -212,6 +219,9 @@ void osd_getinput(void) {
     for (size_t i = 0; i < JOYPAD_EVENT_COUNT; i++) {
         setJoypadEvent(i, desiredStates[i]);
     }
+#if KEIRA_MEASURE
+    Driver::app->measures.record(measurement::InputWork, esp_timer_get_time() - inputStart);
+#endif
 }
 
 int logprint(const char* string) {
@@ -385,8 +395,16 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
                     if (!audio_frame) {
                         break;
                     }
-                    if (!Driver::app->audioPaused) do_audio_frame();
-                    else xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
+                    if (!Driver::app->audioPaused) {
+#    if KEIRA_MEASURE
+                        const int64_t audioStart = esp_timer_get_time();
+#    endif
+                        do_audio_frame();
+#    if KEIRA_MEASURE
+                        if (Driver::app->measurementsActive)
+                            Driver::app->measures.record(measurement::Audio, esp_timer_get_time() - audioStart);
+#    endif
+                    } else xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
                 }
                 vTaskDelayUntil(&xLastWakeTime, xFrequency);
             }
@@ -441,10 +459,16 @@ namespace {
 // Stop commands are asynchronous. The timer-daemon barrier proves the callback
 // is quiescent before the modal loop, so nofrendo_ticks cannot accrue catch-up.
 void openSystemMenu() {
+#if KEIRA_MEASURE
+    Driver::app->measurementsActive = false;
+#endif
     releaseJoypad();
     SemaphoreHandle_t stopped = xSemaphoreCreateBinary();
     if (!stopped) {
         lilka::serial.err(K_S_EMU_MENU_UNAVAILABLE);
+#if KEIRA_MEASURE
+        Driver::app->measurementsActive = true;
+#endif
         return; // chord already consumed; keep emulator running safely
     }
     if (timer) {
@@ -483,6 +507,9 @@ void openSystemMenu() {
         Acquire lock(xSoundMutex);
         Driver::app->audioPaused = false;
     }
+#if KEIRA_MEASURE
+    Driver::app->measurementsActive = true;
+#endif
     if (timer) xTimerReset(timer, portMAX_DELAY);
     // Screenshot is deferred until the next game blit, not the menu framebuffer.
     if (action == NesApp::SystemAction::Screenshot) Driver::app->screenshotOnNextFrame = true;
@@ -505,3 +532,15 @@ void prepareRuntimeShutdown() {
     }
 }
 } // namespace
+
+#if KEIRA_MEASURE
+extern "C" uint64_t osd_measure_clock(void) {
+    return esp_timer_get_time();
+}
+extern "C" void osd_measure_frame(int draw, uint64_t us) {
+    Driver::app->measures.record(draw ? measurement::CoreDraw : measurement::CoreSkip, us);
+}
+extern "C" void osd_measure_report(void) {
+    Driver::app->reportMeasurements();
+}
+#endif

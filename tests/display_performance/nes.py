@@ -72,10 +72,14 @@ with tempfile.TemporaryDirectory() as tmp:
     input_test=r'''
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 struct Clock{int reads=0;operator int(){return ++reads<=4?0:3;}}nofrendo_ticks;
 struct{bool poweroff=false,pause=false,autoframeskip=true;int scanline_cycles,fiq_cycles;struct Apu{void(*process)(void*,int);}*apu;}nes;
 #define NES_FIQ_PERIOD 1
 int polls=0,skipped=0,shown=0,renders=0;bool quit=false;
+extern "C" uint64_t osd_measure_clock(){return 1000;}
+extern "C" void osd_measure_frame(int draw,uint64_t us){assert(us==0);assert(draw==0||draw==1);}
+extern "C" void osd_measure_report(){}
 void osd_setsound(void(*)(void*,int)){}void gui_tick(int){}void gui_frame(bool){}
 void osd_getinput(){assert(nofrendo_ticks.reads>=5);++polls;assert(polls==renders+1);if(quit)nes.poweroff=true;}
 void vid_flush(){++shown;nes.poweroff=true;}
@@ -86,5 +90,6 @@ int main(){decltype(nes)::Apu apu{};nes.apu=&apu;nes_emulate();assert(polls==3&&
  puts("PASS: input before skipped/displayed emulated frames; exit never renders another frame");}
 '''
     (tmp/'input.cpp').write_text(input_test)
-    subprocess.run(['g++','-std=c++17','-O2','-fsanitize=address,undefined',str(tmp/'input.cpp'),'-o',str(tmp/'input')],check=True)
-    subprocess.run([str(tmp/'input')],check=True)
+    for define in ([], ['-DKEIRA_MEASURE=1']):
+        subprocess.run(['g++','-std=c++17','-O2','-fsanitize=address,undefined',*define,str(tmp/'input.cpp'),'-o',str(tmp/'input')],check=True)
+        subprocess.run([str(tmp/'input')],check=True)

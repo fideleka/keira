@@ -136,5 +136,6 @@ gb=(ROOT/'src/apps/gameboy/gameboyapp.cpp').read_text()
 assert 'holdExitRequested() ? SystemAction::Exit : showSystemMenu()' in gb
 assert 'if (action == SystemAction::Exit) break;' in gb
 assert 'if (action == SystemAction::Reset) gbcore_reset(core);' in gb
-assert 'stopAudio();\n    gbcore_copy_save(core);\n    if (!writeSave())' in gb
+assert 'stopAudio();' in gb and gb.index('stopAudio();', gb.index('void GameBoyApp::run()')) < gb.index('gbcore_copy_save(core);', gb.index('void GameBoyApp::run()'))
+assert 'gbcore_copy_save(core);\n    if (!writeSave())' in gb
 assert 'releaseGame();' in gb
