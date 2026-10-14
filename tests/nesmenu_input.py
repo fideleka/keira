@@ -8,6 +8,12 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 osd = (ROOT / "src/apps/nes/osd.cpp").read_text()
 helpers = osd[osd.index("namespace {"):osd.index("int osd_init_sound();")]
+# Input-only fixture: timer lifecycle is covered by display_performance/nes_timer.py.
+# Do not pull timer-daemon hardware into this input mapping boundary.
+timer_start = helpers.index("void stopNesTimer(")
+timer_end = helpers.index("void openSystemMenu();", timer_start)
+helpers = helpers[:timer_start] + helpers[timer_end:]
+
 input_code = osd[osd.index("void osd_getinput(void)"):osd.index("int logprint(")]
 prelude = r'''
 #include "apps/nes/preferences.h"

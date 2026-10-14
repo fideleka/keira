@@ -13,6 +13,7 @@ root = Path(__file__).resolve().parents[2]
 sdk = root.parent / "sdk"
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, default=Path("/tmp/keira-device-menu.png"))
+parser.add_argument("--language", choices=("en", "uk"), default="en")
 args = parser.parse_args()
 device_source = (root / "src/apps/devices/devices.cpp").read_text()
 display_source = (root / "src/apps/displaysettings/displaysettings.cpp").read_text()
@@ -25,6 +26,7 @@ display_block = construction(display_source, "lilka::Menu menu(K_S_LAUNCHER_DISP
 display_updates = construction(display_source, "        menu.setItem(", "        // Observe adjustment keys")
 blocks = [("Devices",list_block,"menu"), ("Device",page_block,"menu"),
           ("Device scrolled",page_block+"menu.setCursor(10);menu.update();", "menu"),
+          ("SPI test",page_block+"menu.setCursor(11);menu.update();", "menu"),
           ("Display",display_block+display_updates,"menu")]
 
 gpio_source = (root / "src/apps/gpiomanager/gpiomanager.cpp").read_text()
@@ -71,6 +73,9 @@ with tempfile.TemporaryDirectory(prefix="wifi-menu-render-") as directory:
         "draw.y += y;\n                if (!draw.boundWidth) { draw.boundX=x; draw.boundY=y; draw.boundWidth=canvas->width(); draw.boundHeight=canvas->height(); }",
     )
     mock = mock.replace("using String = std::string;", "class String : public std::string { public: using std::string::string; String(const std::string& s):std::string(s){} String(int n):std::string(std::to_string(n)){} };")
+    # Approximate font metrics count UTF-8 glyphs, not encoded bytes.
+    mock = mock.replace("return std::strlen(text) * font;", "size_t glyphs=0;for(const unsigned char* p=reinterpret_cast<const unsigned char*>(text);*p;++p)glyphs+=(*p&0xc0)!=0x80;return glyphs*font;")
+    mock = mock.replace("*width = text.length() * font * size;", "size_t glyphs=0;for(unsigned char c:text)glyphs+=(c&0xc0)!=0x80;*width=glyphs*font*size;")
     (out / "mock_graphics.h").write_text(mock)
     (out / "ui.h").write_text('#include "mock_graphics.h"\nnamespace lilka {\n' + menu + "\n}\n")
     (out / "menu.cpp").write_text((sdk / "lib/lilka/src/lilka/menu.cpp").read_text())
@@ -93,12 +98,12 @@ bool pinReserved(unsigned i){return i<5;} // Configured GPIO47 BLK is owned too.
 
 struct DeviceManager {
  enum Mode {Internal,External,Both};
- struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=9;};
+ struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=10;};
  struct SettingInfo {const char*label;const char*choice;int value;unsigned kind;};
  unsigned count(){return 1;}void info(unsigned,Info&){}
  void settingInfo(unsigned,unsigned f,SettingInfo&r){
-  const char* labels[]={"Clock pin","MOSI pin","Reset pin","DC pin","SPI speed","Orientation","Refresh limit","Panel drive","Backlight pin"};
-  const char* choices[]={"GPIO12","GPIO13","GPIO14","GPIO21","20 MHz","Automatic","30 FPS","79Hz default","GPIO47"};
+  const char* labels[]={"Clock pin","MOSI pin","Reset pin","DC pin","Backlight pin","SPI speed","Orientation","Refresh limit","Panel drive","SPI test"};
+  const char* choices[]={"GPIO12","GPIO13","GPIO14","GPIO21","GPIO47","10 MHz","Automatic","30 FPS","79Hz default","Off"};
   r={labels[f],choices[f],1,KD_SETTING_CHOICE};
  }
  Mode displayMode(){return Both;}
@@ -114,6 +119,9 @@ int main() {
     DeviceManager*manager=&deviceManager;unsigned index=0;DeviceManager::Info info;manager->info(index,info);
 
 """
+    body = body.replace('localizations/lang_en.h', 'localizations/lang_' + args.language + '.h')
+    localization = device_source[device_source.index('namespace {'):device_source.index('DevicesApp::DevicesApp')]
+    body = body.replace('int main() {', '#include <cstring>\n' + localization + '\nint main() {')
     for title, construction, variable in blocks:
         body += (
             "{\n"

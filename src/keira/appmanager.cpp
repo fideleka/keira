@@ -138,6 +138,25 @@ void AppManager::run() {
         auto volumeOverlay = lilka::audio.getVolumeOverlay();
         static_assert(sizeof(K_S_VOLUME_MUTE) <= sizeof(volumeOverlay.muteLabel), "Mute label exceeds snapshot");
         memcpy(volumeOverlay.muteLabel, K_S_VOLUME_MUTE, sizeof(K_S_VOLUME_MUTE));
+        const auto lightOverlay = lilka::brightness.getOverlay();
+        if (lightOverlay.visible(overlayNow) &&
+            (!volumeOverlay.visible(overlayNow) ||
+             overlayNow - lightOverlay.adjustedAt < overlayNow - volumeOverlay.adjustedAt))
+            volumeOverlay = lightOverlay;
+        if (devices) {
+            const auto selection = devices->getOverlay();
+            if (selection.visible(overlayNow) &&
+                (!volumeOverlay.visible(overlayNow) ||
+                 overlayNow - selection.adjustedAt < overlayNow - volumeOverlay.adjustedAt))
+                volumeOverlay = selection;
+        }
+        if (volumeOverlay.displayMode >= 0 && volumeOverlay.displayMode <= 2) {
+            const char* names[] = {K_S_DISPLAY_INTERNAL, K_S_DISPLAY_EXTERNAL, K_S_DISPLAY_BOTH};
+            static_assert(sizeof(K_S_DISPLAY_INTERNAL) <= sizeof(volumeOverlay.muteLabel), "Display label too long");
+            static_assert(sizeof(K_S_DISPLAY_EXTERNAL) <= sizeof(volumeOverlay.muteLabel), "Display label too long");
+            static_assert(sizeof(K_S_DISPLAY_BOTH) <= sizeof(volumeOverlay.muteLabel), "Display label too long");
+            strlcpy(volumeOverlay.muteLabel, names[volumeOverlay.displayMode], sizeof(volumeOverlay.muteLabel));
+        }
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
         if (monitored != topApp || routeChanged) {
@@ -210,12 +229,14 @@ void AppManager::run() {
             const bool overlayVisible = externalOverlay.visible(overlayNow);
             if (overlayVisible != externalOverlayVisible || externalOverlay.adjustedAt != externalOverlayAt ||
                 externalOverlay.level != externalOverlayLevel ||
-                externalOverlay.brightness != externalOverlayBrightness)
+                externalOverlay.brightness != externalOverlayBrightness ||
+                externalOverlay.displayMode != externalOverlayMode)
                 externalDirty = true;
             externalOverlayVisible = overlayVisible;
             externalOverlayAt = externalOverlay.adjustedAt;
             externalOverlayLevel = externalOverlay.level;
             externalOverlayBrightness = externalOverlay.brightness;
+            externalOverlayMode = externalOverlay.displayMode;
         }
         if (legacyInternal && lilka::display.systemOverlayNeedsTransfer()) {
             // Match screenshot lock order: panel mutex, panel canvas, top canvas.

@@ -18,7 +18,7 @@ private:
     bool loadState();
     static bool promoteTemporaryFile(const String& path);
     bool initAudio();
-    void writeAudio();
+    bool writeAudio();
     void stopAudio();
     void clearMissingLines();
     void releaseGame();

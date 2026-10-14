@@ -129,7 +129,7 @@ bool GameBoyApp::initAudio() {
     lilka::audio.initPins();
     esp_i2s::i2s_config_t config = {
         .mode = (esp_i2s::i2s_mode_t)(esp_i2s::I2S_MODE_MASTER | esp_i2s::I2S_MODE_TX),
-        .sample_rate = 32000,
+        .sample_rate = gbcore_audio_sample_rate(),
         .bits_per_sample = esp_i2s::I2S_BITS_PER_SAMPLE_16BIT,
         .channel_format = esp_i2s::I2S_CHANNEL_FMT_RIGHT_LEFT,
         .communication_format =
@@ -148,29 +148,33 @@ bool GameBoyApp::initAudio() {
 #endif
 }
 
-void GameBoyApp::writeAudio() {
-    if (!audioFrame) return;
+bool GameBoyApp::writeAudio() {
+    if (!audioFrame || !audioReady) return false;
     const size_t frames = gbcore_render_audio(core, audioFrame);
-    if (!audioReady || !frames) return;
+    if (!frames || frames > gbcore_audio_sample_frames()) return false;
+    const int64_t deadline = esp_timer_get_time() + 50000;
 
     const size_t bytes = frames * 2 * sizeof(int16_t);
     lilka::audio.adjustVolume(audioFrame, bytes, 16, lilka::audio.getVolume());
     size_t written = 0;
     while (written < bytes) {
         size_t chunk = 0;
-        const esp_err_t result = esp_i2s::i2s_write(
-            esp_i2s::I2S_NUM_0,
-            reinterpret_cast<uint8_t*>(audioFrame) + written,
-            bytes - written,
-            &chunk,
-            pdMS_TO_TICKS(100)
-        );
-        if (result != ESP_OK || chunk == 0) {
+        const int64_t remainingUs = deadline - esp_timer_get_time();
+        if (remainingUs <= 0) {
             stopAudio();
-            return;
+            return false;
+        }
+        const TickType_t timeout = pdMS_TO_TICKS((remainingUs + 999) / 1000) + 1;
+        const esp_err_t result = esp_i2s::i2s_write(
+            esp_i2s::I2S_NUM_0, reinterpret_cast<uint8_t*>(audioFrame) + written, bytes - written, &chunk, timeout
+        );
+        if (result != ESP_OK || !chunk || chunk > bytes - written || chunk % (2 * sizeof(int16_t))) {
+            stopAudio();
+            return false;
         }
         written += chunk;
     }
+    return true;
 }
 
 void GameBoyApp::stopAudio() {
@@ -409,15 +413,20 @@ void GameBoyApp::run() {
 #if KEIRA_MEASURE
         const int64_t audioStart = esp_timer_get_time();
 #endif
-        writeAudio();
+        const bool audioFed = writeAudio();
 #if KEIRA_MEASURE
         measures.record(measurement::Audio, esp_timer_get_time() - audioStart);
         reportMeasurements();
 #endif
         nextFrameAt += kFrameUs;
         const int64_t waitUs = nextFrameAt - esp_timer_get_time();
-        if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));
-        else if (waitUs < -3 * kFrameUs) nextFrameAt = esp_timer_get_time();
+        // Active PCM is paced by blocking I2S, not a second independent frame
+        // sleep. The mixer produces ~31775 Hz, not its requested 32000 Hz.
+        // Keep the emulation deadline for render frameskip; audio remains core-owned.
+        if (audioFed) vTaskDelay(1);
+        else if (waitUs >= 1000) vTaskDelay(pdMS_TO_TICKS(waitUs / 1000));
+        else vTaskDelay(1);
+        if (waitUs < -3 * kFrameUs) nextFrameAt = esp_timer_get_time();
     }
 
     stopAudio();

@@ -47,6 +47,12 @@ host = host[host.index("uint32_t hostNow"):host.index("using namespace lilka;")]
 pre += host
 osd = (ROOT / "src/apps/nes/osd.cpp").read_text()
 helpers = osd[osd.index("namespace {"):osd.index("int osd_init_sound();")]
+# Input-only fixture: timer lifecycle is covered by display_performance/nes_timer.py.
+# Do not pull timer-daemon hardware into this input mapping boundary.
+timer_start = helpers.index("void stopNesTimer(")
+timer_end = helpers.index("void openSystemMenu();", timer_start)
+helpers = helpers[:timer_start] + helpers[timer_end:]
+
 nes = function(osd, "void osd_getinput(void)")
 gb = (ROOT / "src/apps/gameboy/gameboyapp.cpp").read_text()
 start = gb.index("        if (state.selectConsumed)")
@@ -80,6 +86,7 @@ struct Menu {
  std::vector<Item> items = std::vector<Item>(8);
  std::vector<Button> activationButtons = {A};
  int cursor=3,scroll=0; uint32_t lastCursorMove=0; Button button=COUNT; bool done=false;
+ bool horizontalNavigationEnabled=true;
  void update();
 };
 #define MENU_HEIGHT 5
@@ -170,12 +177,17 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix="volume-select-") as directory:
     tmp=Path(directory)
-    for name in ("controller.cpp","controller.h","audio.cpp","audio.h","config.h","system_shortcuts.h","volume_overlay.h"):
+    for name in ("controller.cpp","controller.h","audio.cpp","audio.h","config.h","system_shortcuts.h","volume_overlay.h","brightness.cpp","brightness.h","display_settings.cpp","display_settings.h","settings_persistence.cpp","settings_persistence.h"):
         (tmp/name).write_text((SDK/name).read_text())
-    for name in ("Arduino.h","I2S.h","Preferences.h","serial.h","driver/uart.h","freertos/FreeRTOS.h","freertos/semphr.h"):
+    for name in ("Arduino.h","I2S.h","Preferences.h","serial.h","driver/uart.h","freertos/FreeRTOS.h","freertos/semphr.h","freertos/task.h","driver/ledc.h","driver/gpio.h","esp_rom_gpio.h","soc/gpio_sig_map.h"):
         p=tmp/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('''#pragma once
 #include "host.h"
 ''')
+    (tmp / "devices.h").write_text('#pragma once\nnamespace lilka { struct MockDevices { bool canCycleDisplays() const {return false;} void requestCycle() {} }; static MockDevices devices; }\n')
+    (tmp / "board.h").write_text('''#pragma once
+namespace lilka { struct MockBoard { void enablePowerSavingMode() {} void disablePowerSavingMode() {} }; extern MockBoard board; }
+''')
+    (tmp / "board_stub.cpp").write_text('#include "board.h"\nnamespace lilka {MockBoard board;}\n')
     (tmp/"ping.h").write_text('''#pragma once
 const uint8_t ping_raw[2]={};
 const int ping_raw_size=2;
@@ -185,5 +197,5 @@ const int ping_raw_size=2;
         subprocess.run(["g++","-std=c++11","-DLILKA_VERSION=2","-DLILKA_NO_AUDIO_HELLO","-Wall","-Wextra",
                         "-Wno-reorder","-Wno-unused-parameter","-Wno-sign-compare",*flags,
                         "-I"+str(tmp),"-I"+str(TEST),"-I"+str(U8G2.parent),"-I"+str(ROOT/"src"),
-                        str(tmp/"controller.cpp"),str(tmp/"audio.cpp"),str(tmp/"test.cpp"),"-o",str(tmp/"test")],check=True)
+                        str(tmp/"controller.cpp"),str(tmp/"audio.cpp"),str(tmp/"brightness.cpp"),str(tmp/"display_settings.cpp"),str(tmp/"settings_persistence.cpp"),str(tmp/"board_stub.cpp"),str(tmp/"test.cpp"),"-o",str(tmp/"test")],check=True)
         subprocess.run([str(tmp/"test")],check=True)
