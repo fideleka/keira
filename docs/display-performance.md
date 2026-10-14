@@ -287,7 +287,7 @@ would make this CPU round's device comparison uninterpretable.
 
 The supplied post-CPU-round demo log (1791948079533) contains seven sustained
 moving windows (94572/99597/104616 and 149705/154729/159729/164750). Combined
-submissions are 854 over35.097 seconds, about24.33 FPS, versus329/15.026=21.90
+submissions are 854 over35.096 seconds, about24.33 FPS, versus329/15.026=21.90
 in the previous log's three moving windows. Sampled drawn CPU time is9.16ms vs
 11.10ms; core-draw20.28ms vs21.83ms. This is indicative improvement (~11%FPS),
 not a frame-matched A/B proof. One serial record was lost during the later run;
