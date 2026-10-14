@@ -307,7 +307,7 @@ void App::startMeasurements() {
 void App::reportMeasurements(bool force) {
     if (!measurementsActive && !force) return;
     const uint32_t now = millis(), elapsed = now - measurementAt;
-    if (!force && (!KEIRA_MEASURE_LOG || elapsed < 5000)) return;
+    if (!force && elapsed < 5000) return;
     if (!elapsed) return;
     measurement::Snapshot snapshot;
     measures.take(snapshot);

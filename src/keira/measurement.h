@@ -3,9 +3,6 @@
 #ifndef KEIRA_MEASURE
 #    define KEIRA_MEASURE 0
 #endif
-#ifndef KEIRA_MEASURE_LOG
-#    define KEIRA_MEASURE_LOG 1
-#endif
 #if KEIRA_MEASURE
 #    include "frame_metrics.h"
 #    include <freertos/FreeRTOS.h>
