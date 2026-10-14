@@ -1,5 +1,8 @@
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
+#if KEIRA_MEASURE
+#    include <soc/soc_memory_types.h>
+#endif
 #include <lilka.h>
 
 #include <freertos/FreeRTOS.h>
@@ -630,6 +633,30 @@ extern "C" uint64_t osd_measure_clock(void) {
 }
 extern "C" void osd_measure_frame(int draw, uint64_t us) {
     Driver::app->measures.record(draw ? measurement::CoreDraw : measurement::CoreSkip, us);
+}
+extern "C" void osd_measure_core_memory(void) {
+    const auto region = [](const void* pointer) {
+        return !pointer                        ? "none"
+               : esp_ptr_external_ram(pointer) ? "psram"
+               : esp_ptr_internal(pointer)     ? "internal"
+                                               : "other";
+    };
+    const auto* machine = nes_getcontextptr();
+    const auto* bitmap = vid_getbuffer();
+    lilka::serial.log(
+        "measure-nes-memory: framebuffer=%s cpu-ram=%s chr=%s",
+        region(bitmap ? bitmap->data : nullptr),
+        region(machine && machine->cpu ? machine->cpu->mem_page[0] : nullptr),
+        region(machine && machine->ppu ? machine->ppu->page[0] : nullptr)
+    );
+}
+extern "C" int osd_measure_core_sample(int draw) {
+    auto& count = draw ? Driver::app->coreSampleDraw : Driver::app->coreSampleSkip;
+    return (count++ & 15U) == 0;
+}
+extern "C" void osd_measure_core(int draw, uint64_t cpuUs, uint64_t ppuUs) {
+    Driver::app->measures.record(draw ? measurement::NesCpuDraw : measurement::NesCpuSkip, cpuUs);
+    Driver::app->measures.record(draw ? measurement::NesPpuDraw : measurement::NesPpuSkip, ppuUs);
 }
 extern "C" void osd_measure_report(void) {
     Driver::app->reportMeasurements();

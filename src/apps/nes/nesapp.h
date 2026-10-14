@@ -20,6 +20,10 @@ public:
     bool timerEnabled = false; // guarded with nonblocking timer-command enqueue
 #endif
     bool audioPaused = false; // guarded by OSD sound mutex
+#if KEIRA_MEASURE
+    // Emulator-task-owned: sample each category independently, once in 16 frames.
+    uint32_t coreSampleDraw = 0, coreSampleSkip = 0;
+#endif
 
 private:
     void run() override;

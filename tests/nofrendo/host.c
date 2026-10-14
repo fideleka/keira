@@ -64,6 +64,9 @@ char* osd_newextension(char* s, char* e) {
     strcpy(p, e);
     return s;
 }
+void host_set_screen(bitmap_t* bitmap) {
+    screen = bitmap;
+}
 bitmap_t* vid_getbuffer(void) {
     return screen;
 }

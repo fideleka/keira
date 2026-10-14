@@ -184,20 +184,85 @@
        }
     }
  }
-@@ -329,6 +337,12 @@
-    nes.scanline = 0;
+@@ -288,22 +296,44 @@
+ {
+    nes6502_nmi();
  }
++
++#if KEIRA_MEASURE
++extern uint64_t osd_measure_clock(void);
++extern int osd_measure_core_sample(int draw);
++extern void osd_measure_core(int draw, uint64_t cpu_us, uint64_t ppu_us);
++#endif
  
+ static void nes_renderframe(bool draw_flag)
+ {
+    int elapsed_cycles;
+    mapintf_t *mapintf = nes.mmc->intf;
+    int in_vblank = 0;
++#if KEIRA_MEASURE
++   const int sample = osd_measure_core_sample(draw_flag);
++   uint64_t cpu_us = 0, ppu_us = 0, start = 0;
++#endif
+ 
+    while (262 != nes.scanline)
+    {
+ 
++#if KEIRA_MEASURE
++      if (sample) start = osd_measure_clock();
++#endif
+       ppu_scanline(vid_getbuffer(), nes.scanline, draw_flag);
++#if KEIRA_MEASURE
++      if (sample) ppu_us += osd_measure_clock() - start;
++#endif
+ 
+       if (241 == nes.scanline)
+       {
+          /* 7-9 cycle delay between when VINT flag goes up and NMI is taken */
++#if KEIRA_MEASURE
++         if (sample) start = osd_measure_clock();
++#endif
+          elapsed_cycles = nes6502_execute(7);
++#if KEIRA_MEASURE
++         if (sample) cpu_us += osd_measure_clock() - start;
++#endif
+          nes.scanline_cycles -= elapsed_cycles;
+          nes_checkfiq(elapsed_cycles);
+ 
+@@ -318,7 +348,13 @@
+          mapintf->hblank(in_vblank);
+ 
+       nes.scanline_cycles += (float)NES_SCANLINE_CYCLES;
++#if KEIRA_MEASURE
++      if (sample) start = osd_measure_clock();
++#endif
+       elapsed_cycles = nes6502_execute((int)nes.scanline_cycles);
++#if KEIRA_MEASURE
++      if (sample) cpu_us += osd_measure_clock() - start;
++#endif
+       nes.scanline_cycles -= (float)elapsed_cycles;
+       nes_checkfiq(elapsed_cycles);
+ 
+@@ -327,7 +363,17 @@
+    }
+ 
+    nes.scanline = 0;
+-}
++#if KEIRA_MEASURE
++   if (sample) osd_measure_core(draw_flag, cpu_us, ppu_us);
++#endif
++}
++
 +#if KEIRA_MEASURE
 +extern uint64_t osd_measure_clock(void);
 +extern void osd_measure_frame(int draw, uint64_t us);
 +extern void osd_measure_report(void);
++extern void osd_measure_core_memory(void);
 +#endif
-+
+ 
  static void system_video(bool draw)
  {
-    /* TODO: hack */
-@@ -344,8 +358,6 @@
+@@ -344,8 +390,6 @@
     /* blit to screen */
     vid_flush();
  
@@ -206,7 +271,17 @@
  }
  
  /* main emulation loop */
-@@ -371,6 +383,18 @@
+@@ -358,6 +402,9 @@
+    last_ticks = nofrendo_ticks;
+    frames_to_render = 0;
+    nes.scanline_cycles = 0;
++#if KEIRA_MEASURE
++   osd_measure_core_memory();
++#endif
+    nes.fiq_cycles = (int)NES_FIQ_PERIOD;
+ 
+    while (false == nes.poweroff)
+@@ -371,6 +418,18 @@
           last_ticks = nofrendo_ticks;
        }
  
@@ -225,7 +300,7 @@
        if (true == nes.pause)
        {
           /* TODO: dim the screen, and pause/silence the apu */
-@@ -380,15 +404,30 @@
+@@ -380,15 +439,30 @@
        else if (frames_to_render > 1)
        {
           frames_to_render--;
@@ -256,7 +331,7 @@
     }
  }
  
-@@ -414,6 +453,9 @@
+@@ -414,6 +488,9 @@
     ppu_reset(reset_type);
     mmc_reset();
     nes6502_reset();
@@ -266,7 +341,7 @@
  
     nes.scanline = 241;
  
-@@ -534,7 +576,7 @@
+@@ -534,7 +611,7 @@
        goto _fail;
  
     /* set the IRQ routines */
@@ -275,6 +350,67 @@
     machine->apu->irqclear_callback = nes_clearfiq;
  
     /* ppu */
+--- a/nes/nes_ppu.c
++++ b/nes/nes_ppu.c
+@@ -28,6 +28,9 @@
+ 
+ #include "../noftypes.h"
+ #include "nes_ppu.h"
++#ifdef ESP32
++#include <soc/soc_memory_types.h>
++#endif
+ #include "nes.h"
+ #include "../gui.h"
+ #include "../cpu/nes6502.h"
+@@ -573,7 +576,9 @@
+ }
+ 
+ /* rendering routines */
+-INLINE void draw_bgtile(uint8 *surface, uint8 pat1, uint8 pat2,
++/* One call site, 33 tiles per visible line: do not outline this tiny kernel
++ * under the ESP32 -Os default. No instruction/memory timing semantics change. */
++INLINE __attribute__((always_inline)) void draw_bgtile(uint8 *surface, uint8 pat1, uint8 pat2,
+                         const uint8 *colors)
+ {
+    uint32 pattern = ((pat2 & 0xAA) << 8) | ((pat2 & 0x55) << 1) | ((pat1 & 0xAA) << 7) | (pat1 & 0x55);
+@@ -1008,6 +1013,27 @@
+ static void ppu_renderscanline(bitmap_t *bmp, int scanline, bool draw_flag)
+ {
+    uint8 *buf = bmp->line[scanline];
++   /* Keira's software NES bitmap has 8-byte side guards and a 272-byte
++    * pitch. Render in task-stack (internal RAM), then bulk-copy to PSRAM.
++    * Preserve guard bytes: sprite priority reads beyond the visible edge.
++    * Other bitmap layouts retain the original renderer. */
++   uint32 scratch[68]; /* 8 left + 256 visible + 8 right, 4-byte aligned */
++   const uintptr_t border = (uintptr_t)bmp->line[0] - (uintptr_t)bmp->data;
++   const bool staged = draw_flag && !bmp->hardware && bmp->width == 256 &&
++                       bmp->pitch >= 272 && border >= 8 && border + 264 <= (uintptr_t)bmp->pitch
++#ifdef ESP32
++                       && esp_ptr_external_ram(buf)
++#endif
++                       ;
++   uint8 *destination = buf;
++   if (staged)
++   {
++      buf = (uint8 *)scratch + 8;
++      /* Background rendering always initializes all 256 visible pixels.
++       * Only edge guards need their previous sprite-priority contents. */
++      memcpy(buf - 8, destination - 8, 8);
++      memcpy(buf + 256, destination + 256, 8);
++   }
+ 
+    /* start scanline - transfer ppu latch into vaddr */
+    if (ppu.bg_on || ppu.obj_on)
+@@ -1031,6 +1057,9 @@
+       ppu_renderoam(buf, scanline);
+    else
+       ppu_fakeoam(scanline);
++
++   if (staged)
++      memcpy(destination - 8, buf - 8, sizeof(scratch));
+ }
+ 
+ void ppu_endscanline(int scanline)
 --- a/sndhrdw/nes_apu.c
 +++ b/sndhrdw/nes_apu.c
 @@ -509,6 +509,7 @@

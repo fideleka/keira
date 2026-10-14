@@ -187,3 +187,56 @@ Measured comparable moving-demo windows before versus 01195cd: blit10.005 ->
 8.161 ms (~18% reduction), capture10.788 ->10.418 ms (~3% reduction), submitted
 ~21.8 ->23 FPS (~5% higher). Core draw20.86 ms and native13.88 ms remain large;
 this is not a frame-matched A/B result or an audio-fixed build measurement.
+
+## NES CPU/PPU profiling and scanline staging
+
+The normal v2 profile now samples one in every 16 **drawn** and one in every
+16 **skipped** NES frames independently. No new build variant is needed.
+Five-second `measure-phase` summaries add `nes-cpu-draw`, `nes-ppu-draw`,
+`nes-cpu-skip`, and `nes-ppu-skip`; each tuple is
+`sampled frames,total microseconds,average microseconds,max microseconds`.
+CPU covers `nes6502_execute` calls, including the vblank delay. PPU covers
+`ppu_scanline`, including background/sprites, fake sprite-zero work on skipped
+frames and the new staging copies. These are **subsets of core-draw/core-skip**:
+never add them to those enclosing totals or call their wall times CPU usage.
+Mapper hblank, FIQ accounting and end-of-line bookkeeping remain outside the
+sampled CPU/PPU sections. Different sample populations and preemption mean that
+subtracting averages is only a rough guide, not an exact residual profile.
+
+A full sampled frame adds 1,050 clock calls; unsampled frames add no clock
+calls inside the core. Statistics are committed only twice per sampled frame,
+not once per scanline. Reporting adds at most two records to the existing
+bounded logger burst. Both categories sample separately to avoid systematically
+missing skipped frames. Sampling is diagnostic, not a cycle-exact profiler.
+
+The PPU renders supported PSRAM software-bitmap scanlines into a 272-byte aligned
+emulator-task stack buffer (8 left guard + 256 pixels + 8 right guard), then
+copies the result in bulk. The existing 8-byte guards, fine scrolling, sprite
+priority/hits and mapper latch order are retained. Only 16 guard bytes are read
+from the prior framebuffer; the background initializes every visible pixel.
+Internal-RAM framebuffers, other bitmap layouts and skipped frames retain the
+original rendering path. A one-time `measure-nes-memory` report identifies
+framebuffer, CPU-RAM and CHR placement without printing raw addresses.
+No extra framebuffer, lookup table, allocation, CPU opcode or IRQ changes.
+The single-site background tile kernel is forced inline under the GCC v2 build
+instead of making up to 7,920 tiny calls per drawn frame at `-Os`.
+
+Source checks: real PPU differential parity over 8,192 seeded cases against the
+pinned original, including full bitmap/guard hashes, scrolling, sprite edges,
+flip/priority/masks, mapper CHR mutation and skipped lines. Actual frame-loop
+profiling is tested with a deterministic clock boundary. Xtensa `-Os` object
+inspection confirms the tile kernel is no longer outlined. Component PPU text
+is 4,884 -> 5,345 bytes (+461), BSS remains 7,584 bytes. The new renderer frame
+uses 384 stack bytes and its PPU caller 32; previously the inlined scanline
+renderer used 96 and its tile helper 32 (compiler reports, not a complete call-
+chain bound or device watermark).
+These are component checks, not a firmware link/flash or device speed result.
+
+For acceptance, rebuild/reflash **Keira only** on `feature/sd-device-drivers`;
+SDK and ILI9341 module 1.1.x stay unchanged. Confirm sound remains correct, then
+capture 30–60 seconds of the same moving built-in NES demo in Both mode at
+actual `spi-hz=40000000`. Compare submitted/displayed FPS, core CPU/PPU rows,
+blit/capture times, input-gap tails and `emu-stack-free`. Repeat in External
+mode if possible. Do not infer gameplay FPS from static scenes where unchanged
+LCD frames are intentionally suppressed. No FPS uplift is claimed until this
+same-scene device comparison is available.

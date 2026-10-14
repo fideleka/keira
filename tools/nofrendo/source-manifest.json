@@ -260,7 +260,7 @@
     },
     "nes/nes.c": {
       "original": "aa611a5ec9b7d72f937dd570efe7c8a92e4cc84c04ebd0eb33e5d1a85736609b",
-      "patched": "493148a9958143a172c477f612999e1dd8afedeef8ae9f8454d50278585943db"
+      "patched": "19a32151c5dbb431518e1f8e27ce6a2ac9f420bd3ccd09427d22003106331d09"
     },
     "nes/nes.h": {
       "original": "703575977da25703a918d63cfcb74cd1e506eb2ff79f5bf8c318cad58fe340b6",
@@ -284,7 +284,7 @@
     },
     "nes/nes_ppu.c": {
       "original": "f69bbf63b4346272938e5586a0985f6987c789a0cd40c17e1f526b2c3c9e2d71",
-      "patched": "f69bbf63b4346272938e5586a0985f6987c789a0cd40c17e1f526b2c3c9e2d71"
+      "patched": "e0e661f75574435ada2d11433127b6e5625832934d55b47c4b949075f4327705"
     },
     "nes/nes_ppu.h": {
       "original": "c1e537a5c38a1f289ac87a4bc4b4af2f0ed5974880bfb9857df7078e26d28eef",

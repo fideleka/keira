@@ -352,8 +352,21 @@ void App::reportMeasurements(bool force) {
         static_cast<unsigned long long>(snapshot.lastSubmitUs - snapshot.firstSubmitUs)
     );
     static const char* names[] = {
-        "input", "core-draw", "core-skip", "blit", "publish-wait", "publish-work", "audio", "capture", "internal"
+        "input",
+        "core-draw",
+        "core-skip",
+        "blit",
+        "publish-wait",
+        "publish-work",
+        "audio",
+        "capture",
+        "internal",
+        "nes-cpu-draw",
+        "nes-ppu-draw",
+        "nes-cpu-skip",
+        "nes-ppu-skip"
     };
+    static_assert(sizeof(names) / sizeof(names[0]) == measurement::PhaseCount, "phase names must match metrics");
     for (unsigned i = 0; i < measurement::PhaseCount; i += 2) {
         const auto& first = snapshot.phase[i];
         const FrameMetrics empty;
