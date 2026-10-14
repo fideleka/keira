@@ -314,7 +314,6 @@ by previous profiling work; production input behavior is unchanged.
 
 Batching's time/FPS improvement still requires hardware measurement. Update
 firmware and repeat the same moving demo, Both/actual40MHz, sound enabled.
-Use **Changed rows** for the performance comparison; test Whole framebuffer
-separately for shimmer so its bandwidth change does not confound this round.
+Use **Changed rows** for the performance comparison; the Whole framebuffer experiment was subsequently removed after worsening shimmer.
 The conversion-only change needs no additional SDK or SD-module update beyond
-whatever module version is already installed (1.1.2 is needed for Flush mode).
+whatever module version is already installed; 1.1.3 removes the retired Flush mode UI.

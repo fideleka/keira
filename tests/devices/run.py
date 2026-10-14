@@ -225,22 +225,16 @@ int main(int argc,char**argv){
  const auto pixelsBefore=m.transferPixels,rowsBefore=m.rowTransfers;
  stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
  assert(m.transferPixels-pixelsBefore==280&&m.rowTransfers==rowsBefore+1&&m.frame[40*280+20]==0xabcd);
- // Whole-framebuffer policy: one full present even for fragmented tiny changes.
- assert(m.slots[0].descriptor->setting_count==8 && m.slots[0].values[7]==0);
- m.slots[0].values[7]=1;
- small.getFramebuffer()[0]^=1;small.getFramebuffer()[40*2]^=1;
- assert(m.capture(nullptr,&small,none,false));
- const auto fullBefore=m.fullTransfers,bandBefore=m.rowTransfers,pixelBefore=m.transferPixels;
- wireBytes.clear();stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
- assert(m.fullTransfers==fullBefore+1 && m.rowTransfers==bandBefore);
- assert(m.transferPixels-pixelBefore==280*240);
- // One CASET/PASET/RAMWR sequence followed by exactly one completed frame.
- assert(wireBytes.size()==11+280*240*2 && wireBytes[0]==0x2a && wireBytes[5]==0x2b && wireBytes[10]==0x2c);
- for(unsigned i=0;i<280*240;++i){assert(wireBytes[11+2*i]==(m.frame[i]>>8));assert(wireBytes[12+2*i]==(m.frame[i]&255));}
- assert(m.capture(nullptr,&small,none,false)&&!m.pending);
- const auto idleCount=m.transferCount;stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
- assert(m.transferCount==idleCount); // Full flush is not an idle repaint loop.
- m.slots[0].values[7]=0;
+ // Even an installed 1.1.2 descriptor requesting full flush is ignored.
+ assert(m.slots[0].descriptor->setting_count==7);
+ const auto*rowCurrent=m.slots[0].descriptor;kd_device retired=*rowCurrent;
+ retired.size=sizeof(kd_device);retired.prefer_full_frame=[](const void*,void*)->uint32_t{assert(false);return 1;};
+ m.slots[0].descriptor=&retired;
+ small.getFramebuffer()[0]^=1;assert(m.capture(nullptr,&small,none,false));
+ const auto removedFull=m.fullTransfers,removedRows=m.rowTransfers,removedPixels=m.transferPixels;
+ stopWorker=true;try{m.run();}catch(Stop&){}stopWorker=false;
+ assert(m.fullTransfers==removedFull&&m.rowTransfers==removedRows+1&&m.transferPixels-removedPixels==280);
+ m.slots[0].descriptor=rowCurrent;
  // Dirty bits accumulate until presented even if a change is reverted.
  small.getFramebuffer()[40]=0xabcd;assert(m.capture(nullptr,&small,none,false));
  small.getFramebuffer()[40]=0x5678;assert(m.capture(nullptr,&small,none,false));
@@ -360,14 +354,12 @@ int main(int argc,char**argv){
  assert(strstr(m.slots[0].status,"Invalid SPI speed"));m.slots[0].state=nullptr;
  m.slots[0].values[4]=2;assert(m.persist(m.slots[0]));m.slots[0].values[4]=1;
  assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2); // Existing saved index remains 40 MHz.
- m.slots[0].values[7]=1;assert(m.persist(m.slots[0]));m.slots[0].values[7]=0;
- assert(m.restore(m.slots[0])&&m.slots[0].values[7]==1&&m.slots[0].values[4]==2);
- // A saved pre-1.1.2 record has seven fields; new mode defaults to changed rows.
+ // Saved 1.1.2 mode=whole (id8) is ignored without resetting pins/saved40MHz.
  for(auto& entry:nvm){if(entry.second.size()==sizeof(Record)){
   Record saved;std::memcpy(&saved,entry.second.data(),sizeof saved);
-  if(!strcmp(saved.uuid,m.slots[0].uuid)){saved.count=7;std::memcpy(entry.second.data(),&saved,sizeof saved);}
+  if(!strcmp(saved.uuid,m.slots[0].uuid)){saved.count=8;saved.fields[7].id=8;saved.fields[7].value=1;std::memcpy(entry.second.data(),&saved,sizeof saved);}
  }}
- m.slots[0].values[7]=0;assert(m.restore(m.slots[0])&&m.slots[0].values[7]==0&&m.slots[0].values[4]==2);
+ assert(m.restore(m.slots[0])&&m.slots[0].values[4]==2&&!m.slots[0].readOnly);
  assert(m.setEnabled(0,true));assert(m.spiHz==40000000);
  for(int index=3;index<=6;++index){assert(m.changeSetting(0,4,1));const int requests[]={0,0,0,50000000,60000000,70000000,80000000};assert(m.slots[0].values[4]==index&&openedClock==requests[index]&&m.spiRequestedHz==unsigned(requests[index]));assert(m.spiHz==unsigned(index<=4?40000000:80000000));}
  for(int index=5;index>=2;--index){assert(m.changeSetting(0,4,-1));assert(m.slots[0].values[4]==index);}

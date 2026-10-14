@@ -523,38 +523,19 @@ partial/full/legacy transfers, allocation rollback and timeout-quarantine checks
 Xtensa C++11 source checks and optimized assembly prove word loads/stores,
 halfword fallback and bulk suffix memcpy; this is not a full firmware build.
 
-Whole-framebuffer flush comparison (ILI9341 1.1.2)
-------------------------------------------------
+Whole-framebuffer experiment removed (ILI9341 1.1.3)
+--------------------------------------------------
 
-Devices -> ILI9341 display -> Flush mode offers ``Changed rows`` (the existing
-and preserved default) and ``Whole framebuffer``. Whole mode sends a completed,
-immutable composed RAM frame through one CASET/PASET/RAMWR window per update,
-even when only a few disjoint rows changed. DMA still uses bounded chunks; this
-is not an atomic ILI9341 display page flip or vertical-blank synchronization.
-Static unchanged frames still cause no transfer. No additional framebuffer or
-pixel-conversion pass is allocated. Existing pin, SPI speed and refresh settings
-are untouched. MISO stays disconnected; this mode does not require readback.
+Device testing showed the 1.1.2 Whole framebuffer option widened the flicker to
+the whole screen without resolving it. The option and forced full-frame policy
+are removed. Changed-row presentation is restored; existing full-frame fallback
+for fragmented/high-coverage updates remains, as before the experiment.
 
-This is a direct physical comparison for update-local shimmer/flicker, not a
-claim that the symptom is fixed. Whole updates use more bandwidth and can reduce
-FPS: 280x240 RGB565 at 40 MHz requires 26.88 ms raw wire time before overhead.
-Compare the same animated menu selection and emulator scene with each mode, at
-the same clock and refresh limit. Keep Changed rows for the independent NES CPU
-round performance comparison so the transfer-policy change does not confound it.
-
-Rebuild/install both Keira firmware and the freestanding ILI9341 ``driver.so``
-plus its matching 1.1.2 manifest (the normal compile-all flow, no new profile).
-Install firmware first. The optional ABI-1 ``prefer_full_frame`` descriptor tail
-is size-guarded: old base-only and row-capable modules still work on new firmware.
-The host callback structure and settings schema/UUIDs are unchanged. Old seven-
-field saved records default the new field to Changed rows and retain saved40MHz;
-new records store the mode by setting id8. New modules need the new firmware.
-
-Host sanitizer tests exercise the actual manager and current C driver: tiny
-fragmented damage in whole mode emits exactly one window plus all 67,200 RGB565
-pixels, matching the leased completed framebuffer; no intermediate clear/output-
-off is emitted at fixed geometry. Unchanged frames are suppressed. Short old
-base and row descriptors are checked under ASan; full/row settings persistence,
-old seven-field restore and the existing20-in-flight-update immutable-lease tests
-remain passing. No fresh target module package/flash or physical flicker
-verification is implied by these source-only checks.
+New firmware ignores the retired policy callback even in installed1.1.2 modules,
+so a saved Whole-frame selection cannot force full updates. The new1.1.3 module
+removes Flush mode from the settings menu. Rebuild/install firmware and the
+module/manifest to remove both behavior and UI. Old settingid8 records are ignored
+while pin/clock/refresh values and UUID/schema are preserved. The retired ABI tail
+remains solely to accept existing module descriptor sizes and is never called.
+No NES optimization, shared RAM framebuffer, SDK, clock or wiring is reverted.
+Physical external shimmer remains unresolved; MISO is still disconnected.

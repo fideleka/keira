@@ -39,8 +39,8 @@ typedef struct {
         const void* host, void* state, const uint16_t* pixels, uint16_t width, uint16_t height, uint16_t first_row,
         uint16_t row_count
     );
-    // Optional ABI-1 tail: nonzero requests one complete framebuffer flush.
-    // Host API and older base/row-capable descriptor sizes remain supported.
+    // Retired ABI-1 compatibility tail from the 1.1.2 flush experiment.
+    // Kept for descriptor-size compatibility only; the host never calls it.
     uint32_t (*prefer_full_frame)(const void* host, void* state);
 } kd_device;
 

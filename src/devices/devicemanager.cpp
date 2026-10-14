@@ -747,9 +747,7 @@ int DeviceManager::presentPending(
     // Do not read beyond an older ABI-1 descriptor.
     const bool supportsRows =
         slot.descriptor->size >= offsetof(kd_device, prefer_full_frame) && slot.descriptor->present_rows;
-    const bool wholeFrame = slot.descriptor->size >= sizeof(kd_device) && slot.descriptor->prefer_full_frame &&
-                            slot.descriptor->prefer_full_frame(&slot.host, slot.state);
-    if (wholeFrame || !supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
+    if (!supportsRows || bands > 8 || rows * 4 >= unsigned(height) * 3) {
         ++fullTransfers;
         transferPixels += uint32_t(width) * height;
         return slot.descriptor->present(&slot.host, slot.state, pixels, width, height);
