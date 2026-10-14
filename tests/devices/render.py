@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory(prefix="wifi-menu-render-") as directory:
 const menu_icon_t input_img={},output_img={};
 uint8_t pinNo[6]={12,13,14,21,47,48},pinM[6]={},pinData[6]={},pwmDutyCycle[6]={};
 unsigned pwmFrequency[6]={};
-bool pinReserved(unsigned i){return i<4;}
+bool pinReserved(unsigned i){return i<5;} // Configured GPIO47 BLK is owned too.
 
 struct DeviceManager {
  enum Mode {Internal,External,Both};
