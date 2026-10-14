@@ -23,7 +23,7 @@ def function(path, signature):
 
 sync = function(ROOT / "src/apps/soundsettings/sound.cpp", "bool SoundConfigApp::syncSystemVolume()")
 gb = function(ROOT / "src/apps/gameboy/gameboyapp.cpp", "void GameBoyApp::writeAudio()")
-nes = function(ROOT / "src/apps/nes/osd.cpp", "void do_audio_frame()")
+nes = function(ROOT / "src/apps/nes/osd.cpp", "bool do_audio_frame()")
 tracker = function(ROOT / "src/apps/liltracker/i2s_sink.cpp", "size_t I2SSink::write(")
 adjust = function(args.sdk / "lib/lilka/src/lilka/audio.cpp", "void Audio::adjustVolume(")
 player = (ROOT / "src/keira/ksound/audioplayer.cpp").read_text()
@@ -41,7 +41,8 @@ prelude = r'''
 #include <vector>
 #include "lilka/system_shortcuts.h"
 #include "apps/nes/preferences.h"
-using esp_err_t = int;
+using esp_err_t = int;using TickType_t=uint32_t;
+int64_t esp_timer_get_time(){return 0;}
 constexpr int ESP_OK = 0, portMAX_DELAY = -1;
 #define pdMS_TO_TICKS(ms) (ms)
 namespace lilka {
@@ -68,9 +69,10 @@ using esp_i2s::i2s_write;
 constexpr int HW_AUDIO_SAMPLERATE = 480, NES_REFRESH_RATE = 60, DEFAULT_FRAGSIZE = 4;
 int16_t nesSamples[16];
 int16_t* audio_frame = nesSamples;
-void audio_callback(void* data, int count) {
+void generateAudio(void* data, int count) {
  for(int i=0;i<count;++i) static_cast<int16_t*>(data)[i] = 1000;
 }
+void (*audio_callback)(void*,int)=generateAudio;
 size_t gbcore_render_audio(void*, int16_t* data) {
  for(int i=0;i<16;++i) data[i] = 1000;
  return 8;
