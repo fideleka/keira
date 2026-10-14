@@ -20,7 +20,6 @@ static const uint32_t speeds[] = {10000000, 20000000, 40000000, 50000000, 600000
 static const char* const rotation_names[] = {"Automatic", "Automatic, flipped"};
 static const char* const refresh_names[] = {"15 FPS", "20 FPS", "30 FPS", "60 FPS"};
 static const uint32_t intervals[] = {67, 50, 34, 17};
-static const char* const flush_names[] = {"Changed rows", "Whole framebuffer"};
 static const kd_setting settings[] = {
     {1, "Clock pin", KD_SETTING_CHOICE, 0, 0, 5, 1, pin_names},
     {2, "MOSI pin", KD_SETTING_CHOICE, 1, 0, 5, 1, pin_names},
@@ -29,7 +28,6 @@ static const kd_setting settings[] = {
     {5, "SPI speed", KD_SETTING_CHOICE, 1, 0, 6, 1, speed_names},
     {6, "Orientation", KD_SETTING_CHOICE, 0, 0, 1, 1, rotation_names},
     {7, "Refresh limit", KD_SETTING_CHOICE, 2, 0, 3, 1, refresh_names},
-    {8, "Flush mode", KD_SETTING_CHOICE, 0, 0, 1, 1, flush_names},
 };
 static int command(const kd_host* host, uint8_t code, const uint8_t* bytes, uint32_t count) {
     if (host->spi_write(host->context, 0, &code, 1)) return -1;
@@ -103,11 +101,6 @@ static uint32_t interval(const void* api, void* memory) {
     const kd_host* host = api;
     return intervals[host->setting(host->context, 7)];
 }
-static uint32_t prefer_full_frame(const void* api, void* memory) {
-    (void)memory;
-    const kd_host* host = api;
-    return host->setting(host->context, 8) == 1;
-}
 static int present_rows(
     const void* api, void* memory, const uint16_t* pixels, uint16_t width, uint16_t height, uint16_t first_row,
     uint16_t row_count
@@ -139,13 +132,13 @@ static int present(const void* api, void* memory, const uint16_t* pixels, uint16
     return present_rows(api, memory, pixels, width, height, 0, height);
 }
 static const kd_device descriptor = {
-    sizeof(kd_device),
+    offsetof(kd_device, prefer_full_frame),
     KD_ABI_VERSION,
     KD_TYPE_DISPLAY,
     "cfa4bc25-c2d6-4a18-ade9-16506b19acf1",
     "674db8e0-cd55-4bfb-90b0-1e521e97c1cd",
     "ILI9341 display",
-    "1.1.2",
+    "1.1.3",
     1,
     sizeof(settings) / sizeof(settings[0]),
     settings,
@@ -156,7 +149,7 @@ static const kd_device descriptor = {
     disable,
     present,
     present_rows,
-    prefer_full_frame
+    0
 };
 int main(int argc, char** argv) {
     if (argc != 1 || !argv || !argv[0]) return -1;
