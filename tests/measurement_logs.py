@@ -1,5 +1,6 @@
 """Parser handles compact phases, incomplete/dropped reports and span-based rates."""
-import importlib.util,io,contextlib
+import importlib.util,io,contextlib,sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('measurement_parser',root/'tools/measurement/analyze.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
