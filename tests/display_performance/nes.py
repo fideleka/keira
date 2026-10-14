@@ -82,6 +82,7 @@ int polls=0,skipped=0,shown=0,renders=0;bool quit=false;
 extern "C" uint64_t osd_measure_clock(){return 1000;}
 extern "C" void osd_measure_frame(int draw,uint64_t us){assert(us==0);assert(draw==0||draw==1);}
 extern "C" void osd_measure_report(){}
+extern "C" void osd_measure_core_memory(){}
 void osd_setsound(void(*)(void*,int)){}void gui_tick(int){}void gui_frame(bool){}
 void osd_getinput(){assert(nofrendo_ticks.reads>=5);++polls;assert(polls==renders+1);if(quit)nes.poweroff=true;}
 void vid_flush(){++shown;nes.poweroff=true;}

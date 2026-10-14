@@ -282,3 +282,39 @@ time first; use background/sprite costs to select the following optimization
 round. Audio/display timing, SPI clock, SDK and SD module are unchanged. The
 second round remains measurement-driven; do not bundle speculative changes that
 would make this CPU round's device comparison uninterpretable.
+
+## Conversion batching round and CPU-round device result
+
+The supplied post-CPU-round demo log (1791948079533) contains seven sustained
+moving windows (94572/99597/104616 and 149705/154729/159729/164750). Combined
+submissions are 854 over35.097 seconds, about24.33 FPS, versus329/15.026=21.90
+in the previous log's three moving windows. Sampled drawn CPU time is9.16ms vs
+11.10ms; core-draw20.28ms vs21.83ms. This is indicative improvement (~11%FPS),
+not a frame-matched A/B proof. One serial record was lost during the later run;
+selected measurement summaries have their phase fields, but don't treat absent
+performance lines as zero. Background rendering is5.10ms and sprites2.85ms,
+nested inside11.63ms PPU time. Separate conversion remains8.55ms and capture
+10.11ms. Input polling remains~60Hz; moving worst gap41.42ms, none>50ms.
+
+The second round batches RGB565 conversion in groups of eight source pixels:
+compute four packed words, then write them to the destination. A256-pixel aligned
+row now uses32 main-loop iterations instead of128. Scalar alignment head, pair
+tail and odd-pixel tail remain. No new framebuffer, LUT, allocation, logging,
+IRQ, emulation clock, audio or LCD-flush-policy changes. Source/palette and output
+are separate buffers in the production NES blit path.
+
+10,272 direct-kernel scalar parity cases cover every width0..320, both word/
+halfword alignments and source offsets, odd tails and untouched guards under
+ASan/UBSan. The production blit suite retains all rotation/crop/border/overlay
+checks and both profiled/unprofiled input-order fixtures. Xtensa-Os inspection
+confirms four word stores per eight-pixel group. The isolated wrapper/kernel
+object grows111->280 text bytes, with no data/BSS; not a firmware-link size.
+The input-order fixture now stubs the one-time memory-report HAL boundary added
+by previous profiling work; production input behavior is unchanged.
+
+Batching's time/FPS improvement still requires hardware measurement. Update
+firmware and repeat the same moving demo, Both/actual40MHz, sound enabled.
+Use **Changed rows** for the performance comparison; test Whole framebuffer
+separately for shimmer so its bandwidth change does not confound this round.
+The conversion-only change needs no additional SDK or SD-module update beyond
+whatever module version is already installed (1.1.2 is needed for Flush mode).
