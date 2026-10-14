@@ -154,3 +154,12 @@ then checks real frame-loop CPU/PPU clock accounting and zero-clock unsampled
 execution. `--baseline /path/to/reviewed/overlay` optionally compares an earlier
 IRQ-corrected tree. No proprietary ROM is required. This does not replace
 same-game device timing, physical sound checks or mapper/ROM compatibility tests.
+
+CPU dispatch differential check:
+
+    python3 tests/nofrendo/cpu_dispatch.py
+
+Uses the reviewed expanded instruction-boundary level-IRQ policy as reference,
+not the uncorrected pinned IRQ implementation. All opcode, IRQ-mask/source and
+short-timeslice cases require exact RAM/register/cycle parity. The source overlay
+still verifies original and resulting hashes before routing compilation.

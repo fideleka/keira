@@ -24,6 +24,8 @@ enum Phase {
     NesPpuDraw,
     NesCpuSkip,
     NesPpuSkip,
+    NesBackground,
+    NesSprites,
     PhaseCount
 };
 struct Snapshot {
