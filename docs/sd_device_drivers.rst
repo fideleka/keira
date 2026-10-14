@@ -10,7 +10,7 @@ requiring verification, not an accepted limitation of the new implementation.
 Architecture and discovery
 --------------------------
 
-Keira scans /sd/drivers/<package>/manifest.json on startup after SD/VFS setup.
+The SDK scans /sd/drivers/<package>/manifest.json during lilka::begin(), after SD setup.
 A package contains manifest.json and driver.so. Bounded manifests identify ABI,
 driver UUID, device UUID, name and type. The first supported type is display;
 audio/Bluetooth remains a later milestone. Reuse the SDK ELF relocation loader,
@@ -31,7 +31,7 @@ command-line string. ABI negotiation is required before registration.
 Devices and settings
 --------------------
 
-Devices is a top-level Keira menu, listing registered/failed packages and
+Devices is under Keira Settings, listing registered/failed packages and
 requested enabled versus active/error status. Device pages contain generic
 Enable, Status, driver identity/version, Reset and driver-declared settings.
 No display/panel-specific logic belongs in these pages. The initial schema
@@ -622,3 +622,21 @@ the expanded saved records, so downgrade may restore device defaults.
 Host and target-header checks do not establish physical PWM quality. Verify both
 screens at 5/50/100 percent, Internal/External/Both routing, idle dim and wake,
 and continuous NES audio on the device. PWM is not claimed to cure LCD shimmer.
+
+
+Shared SDK migration (ILI9341 1.1.6)
+-----------------------------------
+
+Driver loading/validation, settings records, mode routing, composition, immutable
+frame leasing and SPI transport now live in the SDK. Keira retains only app-layer
+selection and its Settings -> Devices UI. The canonical ABI, ILI9341 source and
+package compiler are SDK-owned; old Keira paths forward to them for build-script
+compatibility. See SDK ``docs/devices.rst`` for the current integration contract.
+
+Install matching updated SDK-based firmware once in Keira, Doom, LilOBD,
+Lilplayer and LaserTank. A future ABI-compatible display package then needs no
+firmware recompile. The registry and configured GPIO47 BLK are shared across
+those firmwares. Select + D cycles modes everywhere; boot intentionally starts
+Internal, ignoring the saved mode but preserving all hardware/device settings.
+Use ILI9341 1.1.6 for black/off initialization, not the older white-GRAM startup.
+Do not reintroduce the removed whole-frame refresh experiment.

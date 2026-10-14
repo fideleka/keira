@@ -50,6 +50,6 @@ with tempfile.TemporaryDirectory(prefix="keira-frame-row-") as directory:
     tmp=Path(directory)
     (tmp/'test.cpp').write_text(source)
     subprocess.run(['g++','-std=c++11','-O2','-fstrict-aliasing','-Wall','-Wextra','-Werror',
-                    '-fsanitize=address,undefined','-I'+str(root/'src'),str(tmp/'test.cpp'),'-o',str(tmp/'test')],check=True)
+                    '-fsanitize=address,undefined','-I'+str(root/'src'),'-I'+str(root.parent/'sdk/lib/lilka/src'),str(tmp/'test.cpp'),'-o',str(tmp/'test')],check=True)
     subprocess.run([str(tmp/'test')],check=True)
 print('PASS: 30720 exact row cases, alignment/odd widths/guards/immutable source and lease')

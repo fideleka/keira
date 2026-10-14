@@ -89,7 +89,7 @@ void unlock(int id){assert(!held.empty()&&held.back()==id);held.pop_back();--loc
 #define GET_BACK(x) (x.empty() ? nullptr : x.back())
 #define APP_PCAST(x) (x)
 constexpr int KTS_SUSPENDED=1;
-namespace lilka {
+namespace lilka { struct DisplayFrame { template<class T> explicit DisplayFrame(T&) {} };
 namespace colors {constexpr uint16_t Black=0;}
 struct Canvas;
 template<typename T> struct GFX {void drawCanvas(Canvas*);};
@@ -123,6 +123,7 @@ struct Display:Surface,GFX<Display> {
  int normal=0,interlaced=0,rotation=0,wx=0,wy=0,ww=0,wh=0,cursor=0,writeDepth=0;
  int getRotation(){return rotation;}
  // PRODUCTION_DISPLAY_STATE
+ void serviceOutputPower() {}
  void drawCanvas(Canvas*);void presentCanvas(Canvas*);void drawSystemOverlay();
  bool prepareSystemOverlay(const VolumeOverlaySnapshot&,uint32_t);
  void presentCanvasOutsideOverlay(Canvas*,int parity=-1);

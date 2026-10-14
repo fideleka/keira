@@ -336,7 +336,6 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
             ITEM::APP(
                 K_S_LAUNCHER_USB_DRIVE, [this]() { this->runApp<USBDriveApp>(); }, &memory_img, lilka::colors::Mint
             ),
-            ITEM::APP(K_S_DEVICES, [this]() { this->runApp<DevicesApp>(); }, &settings_img),
             ITEM::SUBMENU(
                 K_S_LAUNCHER_DEV_MENU,
                 {
@@ -465,6 +464,7 @@ item_t LauncherApp::buildMainMenu(const ITEM_LIST& appsItems) {
                         }
                     ),
                     ITEM::MENU(K_S_LAUNCHER_SOUND, [this]() { this->runApp<SoundConfigApp>(); }),
+                    ITEM::MENU(K_S_DEVICES, [this]() { this->runApp<DevicesApp>(); }),
                     ITEM::MENU(K_S_LAUNCHER_DISPLAY, [this]() { this->runApp<DisplayConfigApp>(); }),
                     ITEM::SUBMENU(
                         K_S_LAUNCHER_SERVICES,
