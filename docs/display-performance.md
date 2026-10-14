@@ -86,3 +86,25 @@ The external 280x240 RGB565 full-payload floor remains 26.88 ms at 40 MHz; nativ
 80 MHz floor is 13.44 ms. Commands, packing, wakeups and scheduling add overhead.
 There is no 60 FPS guarantee and no numerical performance forecast until the
 paired hardware comparison is available.
+
+## External 80 MHz experimental choice (driver 1.1.1)
+
+The ILI9341 settings now append `50`, `60`, `70` and `80 MHz (test)` after the unchanged10/20/40MHz
+choices. Default20MHz, saved choice indices, UUIDs, ABI1 and settings schema1
+are unchanged. Keira's SPI host accepts up to80MHz; speeds above80MHz are rejected.
+No automatic clock increase is applied: an existing saved40MHz setting stays40.
+
+Update Keira firmware **and** the SD driver (`driver.so` plus matching1.1.1
+`manifest.json`), then choose Devices → ILI9341 display → SPI speed →
+`80 MHz (test)`. The next `perf-ext` line reports both effective `spi-hz` and selected
+`spi-requested-hz`. With this pinned80MHz APB/IDF divider,50/60MHz requests
+configure40MHz, while70/80MHz requests configure80MHz. These are not four
+distinct hardware clock rates; changing the dropdown alone cannot create them.
+Keep40MHz available if the module/wiring produces corruption or flicker.
+
+The SPI full-frame RGB565 payload-only floor becomes13.44ms for280x240,
+versus26.88ms at40MHz. This is twice the requested wire bandwidth, not a promise
+of twice the emulator FPS or hardware stability. Source/host tests cover passing
+80MHz to IDF,all requested50/60/70/80MHz choices, effective-clock rounding and return to40MHz, preserved saved40MHz and upper-bound rejection.
+No fresh driver package, full firmware link/flash or physical80MHz test was
+performed during this source change. SDK source is unchanged.

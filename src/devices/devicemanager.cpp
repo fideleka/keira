@@ -815,12 +815,13 @@ void DeviceManager::run() {
             KMTX_UNLOCK(frameMutex);
             // Keep each record below the SDK's 256-byte formatting buffer.
             lilka::serial.log(
-                "perf-ext: window-ms=%u external-fps=%u.%u spi-hz=%u "
+                "perf-ext: window-ms=%u external-fps=%u.%u spi-hz=%u spi-requested-hz=%u "
                 "capture-avg/max-us=%u/%u transfer-avg/max-us=%u/%u",
                 elapsed,
                 externalFps / 10,
                 externalFps % 10,
                 spiHz,
+                spiRequestedHz,
                 copying.averageUs(),
                 copying.maxUs,
                 transferTiming.averageUs(),
@@ -879,7 +880,7 @@ int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t
     if (!pinAllowed(clk) || !pinAllowed(mosi) || !pinAllowed(dc) || !pinAllowed(reset) || clk == mosi || clk == dc ||
         clk == reset || mosi == dc || mosi == reset || dc == reset)
         return fail(slot, "Invalid/conflicting GPIO pins", ESP_ERR_INVALID_ARG);
-    if (hz < 1000000 || hz > 40000000) return fail(slot, "Invalid SPI speed", ESP_ERR_INVALID_ARG);
+    if (hz < 1000000 || hz > 80000000) return fail(slot, "Invalid SPI speed", ESP_ERR_INVALID_ARG);
     spi_bus_config_t bus = {};
     bus.mosi_io_num = mosi;
     bus.miso_io_num = -1;
@@ -895,7 +896,8 @@ int32_t DeviceManager::spiOpen(void* context, int32_t clk, int32_t mosi, int32_t
     const esp_err_t busResult = spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO);
     if (busResult != ESP_OK) return fail(slot, "SPI bus init", busResult);
     manager.spiOwner = &slot;
-    manager.spiHz = hz;
+    manager.spiRequestedHz = hz;
+    manager.spiHz = spi_get_actual_clock(APB_CLK_FREQ, hz, 128);
     manager.ownedPins = pinBit(clk) | pinBit(mosi) | pinBit(dc) | pinBit(reset);
     manager.clkPin = clk;
     manager.mosiPin = mosi;

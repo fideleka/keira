@@ -85,7 +85,8 @@ private:
     uint16_t width = 0, height = 0;
     bool pending = false, bootSkipped = false, frameValid = false;
     uint32_t dirtyRows[10] = {}, internalDirtyRows[10] = {};
-    uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0;
+    uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0,
+             spiRequestedHz = 0;
     int presentPending(Slot& slot, const uint16_t* pixels, uint16_t width, uint16_t height, const uint32_t* rows);
     FrameMetrics captureTiming;
 #if KEIRA_MEASURE
