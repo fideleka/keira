@@ -1,6 +1,7 @@
 #pragma once
 // Libraries
 #include <Arduino.h>
+#include "fractional_ticks.h"
 #include <lilka.h>
 
 // System components
@@ -51,7 +52,10 @@ private:
     bool externalOverlayVisible = false, externalOverlayBrightness = false;
     int externalOverlayLevel = -1;
     App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
-    // Used for capping framerate to A
+// Used for capping framerate to A
+#if LILKA_VERSION == 2
+    FractionalTicks framePeriod{configTICK_RATE_HZ, 60};
+#endif
     TickType_t lastFrameTick = xTaskGetTickCount();
     void waitForFrame();
 };

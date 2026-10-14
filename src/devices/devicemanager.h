@@ -84,6 +84,8 @@ private:
     size_t frameCapacity = 0;
     uint16_t width = 0, height = 0;
     bool pending = false, bootSkipped = false, frameValid = false;
+    // Bit set means this buffer row is stale relative to the current frame.
+    uint32_t staleRows[2][10] = {};
     uint32_t dirtyRows[10] = {}, internalDirtyRows[10] = {};
     uint32_t unchangedCaptures = 0, fullTransfers = 0, rowTransfers = 0, transferPixels = 0, spiHz = 0,
              spiRequestedHz = 0;

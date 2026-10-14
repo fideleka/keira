@@ -55,9 +55,10 @@ void* xSoundMutex = nullptr;
 TaskHandle_t audioTaskHandle = nullptr;
 void (*audio_callback)(void*, int) = nullptr;
 int16_t* audio_frame = nullptr;
-#define LILKA_VERSION    2
-#define NES_REFRESH_RATE 60
-#define pdMS_TO_TICKS(x) (x)
+#define LILKA_VERSION      2
+#define configTICK_RATE_HZ 1000
+#define NES_REFRESH_RATE   60
+#define pdMS_TO_TICKS(x)   (x)
 struct Acquire {
     explicit Acquire(void*) {
     }

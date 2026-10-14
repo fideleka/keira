@@ -421,6 +421,7 @@ bool DeviceManager::route() {
     }
     pending = false;
     frameValid = false;
+    memset(staleRows, 0xff, sizeof(staleRows));
     memset(dirtyRows, 0, sizeof(dirtyRows));
     memset(internalDirtyRows, 0, sizeof(internalDirtyRows));
     routed = external;
@@ -642,7 +643,8 @@ bool DeviceManager::capture(
         const bool force = !frameValid || width != w || height != h;
         // Only the external worker retains a frame between compositor iterations.
         // Reuse the other frame even if it was previously published: latest wins.
-        auto* output = frames[externalReading == 0 ? 1 : 0];
+        const unsigned outputIndex = externalReading == 0 ? 1 : 0;
+        auto* output = frames[outputIndex];
         const auto top = layerView(sleeping ? nullptr : app);
         const auto status = layerView(sleeping ? nullptr : panel);
         const auto geometry = lilka::volumeOverlayGeometry(w, h);
@@ -671,9 +673,12 @@ bool DeviceManager::capture(
             }
             const auto* previous = frame + y * w;
             auto* destination = output + y * w;
-            const bool rowChanged = displayFrame::copyCompareRow(destination, source, previous, w, force);
+            const uint32_t bit = uint32_t(1) << (y % 32);
+            const bool fresh = !(staleRows[outputIndex][y / 32] & bit);
+            const bool rowChanged = displayFrame::copyCompareRow(destination, source, previous, w, force, fresh);
+            staleRows[outputIndex][y / 32] &= ~bit;
             if (rowChanged) {
-                const uint32_t bit = uint32_t(1) << (y % 32);
+                staleRows[1 - outputIndex][y / 32] |= bit;
                 dirtyRows[y / 32] |= bit;
                 internalDirtyRows[y / 32] |= bit;
                 changed = true;

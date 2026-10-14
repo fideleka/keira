@@ -65,7 +65,7 @@ constexpr int portMAX_DELAY=0;namespace esp_i2s {int I2S_NUM_0=0;}
 void i2s_zero_dma_buffer(int){}struct Acquire {Acquire(void*){}};
 void* xSemaphoreCreateBinary(){return &app;} void xSemaphoreGive(void*){}void xSemaphoreTake(void*,int){}void vSemaphoreDelete(void*){}
 int stops=0,resets=0,quits=0,releases=0,softResets=0;
-void xTimerStop(void*,int){++stops;}void xTimerReset(void*,int){++resets;}
+void xTimerStop(void*,int){++stops;}void stopNesTimer(){if(timer)++stops;}void xTimerReset(void*,int){++resets;}
 void xTimerPendFunctionCall(void(*f)(void*,uint32_t),void* p,int,int){f(p,0);}
 struct {bool exitRequested=false;} inputState;
 void releaseJoypad(){++releases;}void resetInputState(){inputState.exitRequested=false;}
