@@ -44,11 +44,11 @@ The additive SDK API keeps polling as the default for other SDK users.
 Keira calls it explicitly. PlatformIO espressif32 6.12.0 / Arduino 2.0.17 /
 ESP-IDF 4.4.7 ESP32-S3 is the reviewed target.
 
-Rebuild and flash Keira with the matching SDK. **Keep ILI9341 SD driver 1.1.0**;
+Rebuild and flash Keira with the matching SDK. **Keep the compatible ILI9341 SD driver 1.1.x**;
 no driver module rebuild/version change is needed for these host-side transport
 changes. Do not use the zero-copy 1.2.0 module. Retain 40 MHz and existing settings.
 Boot should report `Native LCD pixels: DMA` (or an explicit polling fallback).
-The existing 2-second `perf` / `perf-ext` logs remain available. No new logging
+The normal 5-second `perf` / `perf-ext` logs remain available. No new logging
 stream is added to burden the serial/audio/render hot paths.
 
 ## Validation and limitations
@@ -108,3 +108,53 @@ of twice the emulator FPS or hardware stability. Source/host tests cover passing
 80MHz to IDF,all requested50/60/70/80MHz choices, effective-clock rounding and return to40MHz, preserved saved40MHz and upper-bound rejection.
 No fresh driver package, full firmware link/flash or physical80MHz test was
 performed during this source change. SDK source is unchanged.
+
+
+## Follow-up: conversion, capture traffic and fractional pacing (2026-10-14)
+
+Source baseline for this follow-up: Keira `2736d91`; SDK remains `bdef714`.
+No SDK or SD driver module changes, clock migration, new logging stream or
+additional framebuffer. Rebuild/flash firmware only for this follow-up.
+
+- **NES conversion:** contiguous v2 RGB565 rows write two palette-converted
+  pixels with one aligned 32-bit store. An unaligned first pixel and odd tail
+  use halfwords; rotated/strided paths retain the exact scalar mapping. The
+  usual 256x240 image uses 30,720 word stores instead of 61,440 halfword stores.
+  Doom's earlier shortcut was direct indexed-to-RGB565 conversion with a
+  cached palette, eliminating another color format; NES already had that LUT.
+  No 256 KB pair lookup table is introduced.
+- **Shared capture:** two 320-row stale-bit maps (80 bytes total) track which
+  presentation-buffer rows differ from the latest frame. Unchanged rows skip
+  stores only if that destination is already current. Stale rows still copy
+  their identical prefix before the changed suffix; a fresh row can omit it.
+  Aligned dirty-row suffixes use four-word batches, with clipped/odd fallback.
+  Force/geometry/routing changes invalidate both maps. Exact pixel comparison,
+  overlay composition, accumulated external/internal damage, latest-wins and
+  immutable in-flight external storage remain intact. Fully moving rows still
+  require a copy; this is not zero-copy and does not eliminate all scanning.
+- **60 Hz scheduling:** v2 compositor, NES timer and audio alternate 16/17-tick
+  intervals at 1 kHz, totaling 1000 ticks per 60 intervals. NES timer deadlines
+  compensate daemon jitter. Menu resume resets phase/debt. A guarded,
+  nonblocking reschedule cannot enqueue after Stop, and a shutdown barrier
+  prevents callback access after app destruction. No floating point, per-frame
+  allocation or per-frame division. Other emulator clocks are not changed.
+  Lowering 62.5 to 60 removes 4% of the unintended emulation ticks; it does not
+  promise higher display FPS and correctly reduces nominal polling to 60 Hz.
+
+Checks: expanded production NES differential rendering (all four rotations,
+eight sizes including odd alignment/one-pixel), 30,720 row differential cases
+plus a read-only fresh destination proving zero stores, real manager ownership/
+mode/overlay/DMA suite, production timer 50/60 Hz / wrap / daemon-command jitter /
+resume / allocation failures / stop barrier, compositor overrun/wrap pacing,
+menu/history, measurement and Nofrendo IRQ suites. Xtensa C++11 syntax checks
+and `-Os` kernel disassembly confirm `s32i` pixel-pair writes and `l32i/s32i`
+copy batches. Source checks are not firmware-link or hardware verification.
+Repository-wide formatting/static checks retain unrelated baseline failures.
+
+Compare the same demo's moving section in Internal, External and Both at the
+same effective SPI clock. Primary targets are **blit** (previously ~10 ms) and
+**capture** (~10.8 ms), then core draw/skip, input-gap distribution and actual
+LCD update rate. Expect ~60 polls/s over a long steady window, not 62.5. Do not
+sum concurrent audio/capture/transfer wall times or count unchanged-scene LCD
+skips as game slowdowns. Keep heap/stack and audio/menu/SD soak checks; no
+numerical FPS gain has been measured or promised for this source update.

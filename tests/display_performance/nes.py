@@ -16,11 +16,13 @@ def method(source, signature):
     return source[start:end]
 
 pre = r'''
+#include "apps/nes/pixel_convert.h"
 #include <vector>
 #include <cstdint>
 #include <cassert>
 #include <algorithm>
 #include <cstdio>
+#define LILKA_VERSION 2
 #define NES_SCREEN_WIDTH 256
 #define NES_SCREEN_HEIGHT 240
 #define LILKA_DISPLAY_ROTATION 0
@@ -50,7 +52,7 @@ check=r'''
 int main(){uint8_t pixels[240][256];bitmap_t bmp;
  for(int y=0;y<240;++y){bmp.line[y]=pixels[y];for(int x=0;x<256;++x)pixels[y][x]=(y*13+x*7)&255;}
  for(int i=0;i<256;++i)Driver::nesPalette[i]=i*251;
- for(auto size: {std::pair<int,int>{280,240},{240,280},{240,240},{320,200},{480,320}})for(int r=0;r<4;++r){
+ for(auto size: {std::pair<int,int>{280,240},{240,280},{240,240},{320,200},{480,320},{281,241},{255,239},{1,1}})for(int r=0;r<4;++r){
  lilka::Canvas canvas(size.first,size.second,r);NesApp app{&canvas};Driver::app=&app;Driver::init(256,240);
  for(int frame=0;frame<3;++frame){std::fill(canvas.data.begin(),canvas.data.end(),0xfabc);Driver::customBlit(&bmp,0,nullptr);
  std::vector<uint16_t> expected(canvas.data.size(),0);int fw=std::min(256,size.first),fh=std::min(240,size.second),dx=(size.first-fw)/2,dy=(size.second-fh)/2;
@@ -65,7 +67,7 @@ with tempfile.TemporaryDirectory() as tmp:
     cpp=pre+method(driver,'int Driver::init(')+method(driver,'void Driver::customBlit(').replace('rect_t*','void*')+check
     (tmp/'render.cpp').write_text(cpp)
     for extra in ([],['-fsanitize=address,undefined','-fno-omit-frame-pointer']):
-        subprocess.run(['g++','-std=c++17','-O2',*extra,str(tmp/'render.cpp'),'-o',str(tmp/'render')],check=True)
+        subprocess.run(['g++','-std=c++17','-O2','-I'+str(ROOT/'src'),*extra,str(tmp/'render.cpp'),'-o',str(tmp/'render')],check=True)
         subprocess.run([str(tmp/'render')],check=True)
     overlay=patch.prepare(ROOT/'.pio/libdeps/v2/arduino-nofrendo/src',tmp/'core')
     core=(overlay/'nes/nes.c').read_text()

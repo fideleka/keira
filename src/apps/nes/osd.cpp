@@ -64,6 +64,37 @@ struct NesInputState {
 
 NesInputState inputState;
 
+void stopNesTimer(bool wait = false) {
+    if (!timer) return;
+#if LILKA_VERSION == 2
+    auto* app = Driver::app;
+    // Serialize disable with the callback's nonblocking reschedule. Otherwise
+    // a ChangePeriod queued after Stop can resurrect the timer past the barrier.
+    portENTER_CRITICAL(&app->timerMux);
+    app->timerEnabled = false;
+    portEXIT_CRITICAL(&app->timerMux);
+#endif
+    xTimerStop(timer, portMAX_DELAY);
+#if LILKA_VERSION == 2
+    if (wait) {
+        // The timer callback now owns app state. Prove it has stopped before
+        // shutdown can delete the app; static storage cannot fail allocation.
+        StaticSemaphore_t storage;
+        SemaphoreHandle_t stopped = xSemaphoreCreateBinaryStatic(&storage);
+        xTimerPendFunctionCall(
+            [](void* semaphore, uint32_t) { xSemaphoreGive(static_cast<SemaphoreHandle_t>(semaphore)); },
+            stopped,
+            0,
+            portMAX_DELAY
+        );
+        xSemaphoreTake(stopped, portMAX_DELAY);
+        vSemaphoreDelete(stopped);
+    }
+#else
+    (void)wait;
+#endif
+}
+
 void prepareRuntimeShutdown();
 void openSystemMenu();
 
@@ -245,8 +276,37 @@ int osd_main(int argc, char* argv[]) {
 
 int osd_installtimer(int frequency, void* func, int funcsize, void* counter, int countersize) {
     nofrendo_log_printf("Timer install, configTICK_RATE_HZ=%d, freq=%d\n", configTICK_RATE_HZ, frequency);
+#if LILKA_VERSION == 2
+    if (frequency <= 0 || frequency > configTICK_RATE_HZ) return -1;
+    auto* app = Driver::app;
+    app->timerPeriod = FractionalTicks(configTICK_RATE_HZ, frequency);
+    app->timerCallback = reinterpret_cast<TimerCallbackFunction_t>(func);
+    const TickType_t first = app->timerPeriod.next();
+    app->timerDeadline = xTaskGetTickCount() + first;
+    app->timerEnabled = true;
+    timer = xTimerCreate("nes", first, pdTRUE, app, [](TimerHandle_t handle) {
+        auto* app = static_cast<NesApp*>(pvTimerGetTimerID(handle));
+        app->timerCallback(handle);
+        app->timerDeadline += app->timerPeriod.next();
+        const TickType_t now = xTaskGetTickCount();
+        const TickType_t ahead = app->timerDeadline - now;
+        // Keep an absolute fractional deadline across daemon jitter. A late
+        // callback catches up at most once per tick, never a tight burst.
+        const TickType_t delay = ahead && ahead <= configTICK_RATE_HZ ? ahead : 1;
+        portENTER_CRITICAL(&app->timerMux);
+        if (app->timerEnabled) xTimerChangePeriod(handle, delay, 0);
+        portEXIT_CRITICAL(&app->timerMux);
+    });
+    if (!timer) return -1;
+    if (xTimerStart(timer, 0) != pdPASS) {
+        xTimerDelete(timer, portMAX_DELAY);
+        timer = NULL;
+        return -1;
+    }
+#else
     timer = xTimerCreate("nes", configTICK_RATE_HZ / frequency, pdTRUE, NULL, (TimerCallbackFunction_t)func);
     xTimerStart(timer, 0);
+#endif
     return 0;
 }
 
@@ -386,7 +446,7 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
     }
     xTaskCreatePinnedToCore(
         [](void* arg) {
-            const TickType_t xFrequency = pdMS_TO_TICKS(1000 / NES_REFRESH_RATE);
+            FractionalTicks audioPeriod(configTICK_RATE_HZ, NES_REFRESH_RATE);
             TickType_t xLastWakeTime = xTaskGetTickCount();
             while (true) {
                 // Call do_audio_frame 60 times per second.
@@ -404,9 +464,12 @@ void osd_setsound(void (*playfunc)(void* buffer, int length)) {
                         if (Driver::app->measurementsActive)
                             Driver::app->measures.record(measurement::Audio, esp_timer_get_time() - audioStart);
 #    endif
-                    } else xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
+                    } else {
+                        xLastWakeTime = xTaskGetTickCount(); // discard paused-time scheduling debt
+                        audioPeriod.reset();
+                    }
                 }
-                vTaskDelayUntil(&xLastWakeTime, xFrequency);
+                vTaskDelayUntil(&xLastWakeTime, audioPeriod.next());
             }
             if (audioStoppedSemaphore) {
                 xSemaphoreGive(audioStoppedSemaphore);
@@ -472,7 +535,7 @@ void openSystemMenu() {
         return; // chord already consumed; keep emulator running safely
     }
     if (timer) {
-        xTimerStop(timer, portMAX_DELAY);
+        stopNesTimer();
         xTimerPendFunctionCall(
             [](void* semaphore, uint32_t) { xSemaphoreGive(static_cast<SemaphoreHandle_t>(semaphore)); },
             stopped,
@@ -510,14 +573,26 @@ void openSystemMenu() {
 #if KEIRA_MEASURE
     Driver::app->measurementsActive = true;
 #endif
-    if (timer) xTimerReset(timer, portMAX_DELAY);
+    if (timer) {
+#if LILKA_VERSION == 2
+        Driver::app->timerPeriod.reset();
+        const TickType_t first = Driver::app->timerPeriod.next();
+        Driver::app->timerDeadline = xTaskGetTickCount() + first;
+        portENTER_CRITICAL(&Driver::app->timerMux);
+        Driver::app->timerEnabled = true;
+        portEXIT_CRITICAL(&Driver::app->timerMux);
+        xTimerChangePeriod(timer, first, portMAX_DELAY);
+#else
+        xTimerReset(timer, portMAX_DELAY);
+#endif
+    }
     // Screenshot is deferred until the next game blit, not the menu framebuffer.
     if (action == NesApp::SystemAction::Screenshot) Driver::app->screenshotOnNextFrame = true;
 }
 
 void prepareRuntimeShutdown() {
     if (timer) {
-        xTimerStop(timer, portMAX_DELAY);
+        stopNesTimer(true);
     }
 
     osd_stopsound();

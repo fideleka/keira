@@ -1,4 +1,5 @@
 #include "driver.h"
+#include "pixel_convert.h"
 #include "services/screenshot/request.h"
 #include "keira/ksystem.h"
 #include "keira/keira_lang.h"
@@ -95,8 +96,14 @@ void Driver::customBlit(bitmap_t* bmp, int numDirties, rect_t* dirtyRects) {
                 step = 1;
                 break;
         }
-        for (int x = 0; x < frame_width; ++x) {
-            dst[x * step] = nesPalette[src[x]];
+#if LILKA_VERSION == 2
+        if (step == 1) nesPixels::convertRow(dst, src, nesPalette, frame_width);
+        else
+#endif
+        {
+            for (int x = 0; x < frame_width; ++x) {
+                dst[x * step] = nesPalette[src[x]];
+            }
         }
     }
 

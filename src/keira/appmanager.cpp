@@ -17,13 +17,20 @@
 #define MAX_FPS 60
 
 void AppManager::waitForFrame() {
+#if LILKA_VERSION == 2
+    const TickType_t period = framePeriod.next();
+#else
     const TickType_t period = pdMS_TO_TICKS(1000 / MAX_FPS);
+#endif
     const TickType_t now = xTaskGetTickCount();
     if (now - lastFrameTick >= period) {
         // Missed frames cannot be recovered. Always let apps/input/audio run
         // after an overrun instead of spinning through expired deadlines.
         vTaskDelay(1);
         lastFrameTick = xTaskGetTickCount();
+#if LILKA_VERSION == 2
+        framePeriod.reset();
+#endif
     } else vTaskDelayUntil(&lastFrameTick, period);
 }
 
@@ -263,7 +270,7 @@ void AppManager::run() {
 #endif
         const uint32_t workUs = esp_timer_get_time() - iterationStart;
         work.record(workUs);
-        if (workUs >= (1000 / MAX_FPS) * 1000) ++overruns;
+        if (uint64_t(workUs) * MAX_FPS >= 1000000) ++overruns;
         const uint32_t elapsed = millis() - windowAt;
         const bool report = elapsed >= (KEIRA_MEASURE ? 5000u : 2000u);
         char appName[48] = {};
