@@ -19,6 +19,7 @@
     sdcard
     custom_apps
     sd_device_drivers
+    jellyfin-playback
     bluetooth_audio_poc
     battery_charge_status_mod
     lua/intro
