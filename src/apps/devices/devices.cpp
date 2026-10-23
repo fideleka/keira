@@ -41,6 +41,12 @@ const char* driverText(const char* original) {
         if (!strcmp(original, text.source)) return text.translated;
     return original;
 }
+String settingValue(const DeviceManager::SettingInfo& setting) {
+    const String value = setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
+                         : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
+                                                              : String(setting.value);
+    return String("< ") + value + " >";
+}
 } // namespace
 
 DevicesApp::DevicesApp() : App("Devices") {
@@ -89,13 +95,21 @@ void DevicesApp::devicePage(unsigned index) {
         menu.addActivationButton(K_BTN_BACK);
         menu.addItem(K_S_DEVICES_ENABLED, nullptr, lilka::colors::White, info.enabled ? K_S_ON : K_S_OFF);
         menu.addItem(K_S_STATUS);
-        for (unsigned f = 0; f < info.settingCount; ++f) {
+        unsigned fields[KD_MAX_SETTINGS], fieldCount = 0;
+        bool hasPins = false;
+        for (unsigned field = 0; field < info.settingCount && field < KD_MAX_SETTINGS; ++field) {
             DeviceManager::SettingInfo setting;
-            manager->settingInfo(index, f, setting);
-            const String value = setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
-                                 : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
-                                                                      : String(setting.value);
-            menu.addItem(driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >");
+            if (!manager->settingInfo(index, field, setting)) continue;
+            if (setting.pin) hasPins = true;
+            else fields[fieldCount++] = field;
+        }
+        if (hasPins) menu.addItem(K_S_DEVICES_PINS, nullptr, lilka::colors::White, ">");
+        const int firstSetting = hasPins ? 3 : 2;
+        const int resetRow = firstSetting + fieldCount;
+        for (unsigned f = 0; f < fieldCount; ++f) {
+            DeviceManager::SettingInfo setting;
+            if (manager->settingInfo(index, fields[f], setting))
+                menu.addItem(driverText(setting.label), nullptr, lilka::colors::White, settingValue(setting));
         }
         menu.addItem(K_S_DEVICES_RESET);
         menu.addItem(K_S_DEVICES_IDENTITY);
@@ -103,7 +117,7 @@ void DevicesApp::devicePage(unsigned index) {
         menu.setHorizontalNavigationEnabled(false);
         while (!menu.isFinished()) {
             const int row = menu.getCursor();
-            const bool isSetting = row >= 2 && row < static_cast<int>(info.settingCount) + 2;
+            const bool isSetting = row >= firstSetting && row < resetRow;
             if (isSetting) menu.removeActivationButton(lilka::Button::A);
             else menu.addActivationButton(lilka::Button::A);
             const auto state = lilka::controller.peekState();
@@ -111,19 +125,14 @@ void DevicesApp::devicePage(unsigned index) {
                 const bool less = state.left.justPressed || state.d.justPressed;
                 const bool more = state.right.justPressed || state.a.justPressed;
                 if (less != more) {
-                    if (!manager->changeSetting(index, row - 2, more ? 1 : -1)) {
+                    if (!manager->changeSetting(index, fields[row - firstSetting], more ? 1 : -1)) {
                         alert(K_S_ERROR, K_S_DEVICES_CHANGE_FAILED);
                     }
                     DeviceManager::SettingInfo setting;
-                    if (manager->settingInfo(index, row - 2, setting)) {
-                        const String value = setting.kind == KD_SETTING_CHOICE ? String(driverText(setting.choice))
-                                             : setting.kind == KD_SETTING_BOOLEAN
-                                                 ? String(setting.value ? K_S_ON : K_S_OFF)
-                                                 : String(setting.value);
+                    if (manager->settingInfo(index, fields[row - firstSetting], setting))
                         menu.setItem(
-                            row, driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >"
+                            row, driverText(setting.label), nullptr, lilka::colors::White, settingValue(setting)
                         );
-                    }
                 }
             }
             menu.update();
@@ -138,12 +147,82 @@ void DevicesApp::devicePage(unsigned index) {
         else if (cursor == 1) {
             manager->info(index, info);
             alert(K_S_STATUS, info.status);
-        } else if (cursor == static_cast<int>(info.settingCount) + 2) {
+        } else if (hasPins && cursor == 2) {
+            pinsPage(index);
+        } else if (cursor == resetRow) {
             if (confirm(K_S_DEVICES_RESET, K_S_DEVICES_RESET_CONFIRM)) good = manager->resetSettings(index);
         } else alert(K_S_DEVICES_IDENTITY, String(info.name) + "\n" + info.version + "\n" + info.uuid);
         if (!good) {
             manager->info(index, info);
             alert(K_S_ERROR, String(K_S_DEVICES_CHANGE_FAILED) + "\n" + info.status);
+        }
+    }
+}
+
+void DevicesApp::pinsPage(unsigned index) {
+    auto* manager = ksystem.devices;
+    DeviceManager::SettingsDraft draft;
+    if (!manager->beginSettingsEdit(index, draft)) {
+        alert(K_S_ERROR, K_S_DEVICES_CHANGE_FAILED);
+        return;
+    }
+    unsigned fields[KD_MAX_SETTINGS], pinCount = 0;
+    for (unsigned field = 0; field < draft.count && field < KD_MAX_SETTINGS; ++field) {
+        DeviceManager::SettingInfo setting;
+        if (manager->previewSetting(index, field, draft, setting) && setting.pin) fields[pinCount++] = field;
+    }
+    if (!pinCount) return;
+    int cursor = 0;
+    while (true) {
+        lilka::Menu menu(K_S_DEVICES_PINS);
+        menu.addActivationButton(K_BTN_BACK);
+        for (unsigned pin = 0; pin < pinCount; ++pin) {
+            DeviceManager::SettingInfo setting;
+            if (manager->previewSetting(index, fields[pin], draft, setting))
+                menu.addItem(driverText(setting.label), nullptr, lilka::colors::White, settingValue(setting));
+        }
+        menu.addItem(K_S_DEVICES_APPLY);
+        menu.addItem(K_S_DEVICES_CANCEL);
+        menu.setCursor(cursor);
+        menu.setHorizontalNavigationEnabled(false);
+        while (!menu.isFinished()) {
+            const int row = menu.getCursor();
+            const bool isPin = row >= 0 && row < static_cast<int>(pinCount);
+            if (isPin) menu.removeActivationButton(lilka::Button::A);
+            else menu.addActivationButton(lilka::Button::A);
+            const auto state = lilka::controller.peekState();
+            if (isPin && !state.selectHeld) {
+                const bool less = state.left.justPressed || state.d.justPressed;
+                const bool more = state.right.justPressed || state.a.justPressed;
+                if (less != more) {
+                    const unsigned field = fields[row];
+                    DeviceManager::SettingInfo setting;
+                    if (manager->previewSetting(index, field, draft, setting)) {
+                        const int32_t previous = draft.values[field];
+                        int64_t next = static_cast<int64_t>(previous) + (more ? setting.step : -setting.step);
+                        if (next > setting.maximum) next = setting.minimum;
+                        if (next < setting.minimum) next = setting.maximum;
+                        draft.values[field] = next;
+                        if (manager->previewSetting(index, field, draft, setting))
+                            menu.setItem(
+                                row, driverText(setting.label), nullptr, lilka::colors::White, settingValue(setting)
+                            );
+                        else draft.values[field] = previous;
+                    }
+                }
+            }
+            menu.update();
+            menu.draw(canvas);
+            queueDraw();
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        cursor = menu.getCursor();
+        if (menu.getButton() == K_BTN_BACK || cursor == static_cast<int>(pinCount) + 1) return;
+        if (cursor == static_cast<int>(pinCount)) {
+            if (manager->applySettings(index, draft)) return;
+            DeviceManager::Info info;
+            manager->info(index, info);
+            alert(K_S_ERROR, String(K_S_DEVICES_PINS_APPLY_FAILED) + "\n" + info.status);
         }
     }
 }

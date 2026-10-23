@@ -7,4 +7,5 @@ public:
 private:
     void run() override;
     void devicePage(unsigned index);
+    void pinsPage(unsigned index);
 };
