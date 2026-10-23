@@ -6,8 +6,16 @@
 #include <lilka.h>
 
 namespace {
-constexpr size_t maxShortcuts = 4;
+constexpr size_t maxShortcuts = 20;
+constexpr size_t maxSavedLength = 3999; // NVS limit includes one additional terminating NUL.
 constexpr const char* listKey = "guest_fw";
+
+String readSavedList(Preferences& prefs, const char* key) {
+    // Keep the expanded list off the task stack (Preferences' String overload uses a VLA).
+    std::vector<char> buffer(maxSavedLength + 1, '\0');
+    if (!prefs.getString(key, buffer.data(), buffer.size())) return "";
+    return String(buffer.data());
+}
 
 String canonicalPath(const String& value) {
     const String root = lilka::fileutils.getSDRoot();
@@ -23,8 +31,12 @@ void addIfAvailable(std::vector<String>& entries, const String& value) {
     String lower = path;
     lower.toLowerCase();
     if (!lower.endsWith(".bin")) return;
-    for (const String& existing : entries)
+    size_t savedLength = path.length();
+    for (const String& existing : entries) {
         if (existing == path) return;
+        savedLength += existing.length() + 1;
+    }
+    if (savedLength > maxSavedLength) return;
     FILE* file = fopen(path.c_str(), "rb");
     if (!file) return;
     fclose(file);
@@ -37,7 +49,7 @@ std::vector<String> readGuestShortcuts() {
     Preferences prefs;
     String saved;
     if (prefs.begin("keira", true)) {
-        saved = prefs.getString(listKey, "");
+        saved = readSavedList(prefs, listKey);
         prefs.end();
     }
     int from = 0;
@@ -50,7 +62,7 @@ std::vector<String> readGuestShortcuts() {
 
     // Migrate the existing one-slot shortcut without consuming the SDK key.
     if (prefs.begin("lilka", true)) {
-        addIfAvailable(entries, prefs.getString("multiboot_path", ""));
+        addIfAvailable(entries, readSavedList(prefs, "multiboot_path"));
         prefs.end();
     }
     return entries;

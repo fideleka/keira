@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <vector>
 
-// Recent SD multiboot images remain independently launchable in Applications.
+// Keep up to 20 recent SD multiboot images independently launchable in Applications.
+// The saved list is also bounded by the NVS string capacity.
 std::vector<String> readGuestShortcuts();
 void rememberGuestShortcut(const String& path, const std::vector<String>& previous);
