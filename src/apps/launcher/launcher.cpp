@@ -257,20 +257,23 @@ ITEM_LIST LauncherApp::buildApplicationsMenu() {
 
     // Keep several previously launched guest firmwares available at once.
     const std::vector<String> guests = readGuestShortcuts();
-    guestShortcutNames_.clear();
-    guestShortcutNames_.reserve(guests.size());
+    guestMetadata_.clear();
+    guestMetadata_.resize(guests.size());
+    unsigned guestIndex = 0;
     for (const String& path : guests) {
-        String name = path.substring(path.lastIndexOf('/') + 1);
-        if (name.endsWith(".bin")) name.remove(name.length() - 4);
-        if (name.equalsIgnoreCase("doom")) name = "Doom";
-        else if (name.equalsIgnoreCase("lasertank")) name = "LaserTank";
-        guestShortcutNames_.push_back(name);
+        readGuestAppMetadata(path, guestMetadata_[guestIndex++]);
     }
     for (int i = static_cast<int>(guests.size()) - 1; i >= 0; --i) {
         const String path = guests[i];
-        appsItems.insert(appsItems.begin(), ITEM::APP(guestShortcutNames_[i].c_str(), [this, path]() {
-                             this->runApp<MultiBootApp>(path);
-                         }));
+        const auto& metadata = guestMetadata_[i];
+        appsItems.insert(
+            appsItems.begin(),
+            ITEM::APP(
+                metadata.name.c_str(),
+                [this, path]() { this->runApp<MultiBootApp>(path); },
+                metadata.hasIcon ? &metadata.pixels : nullptr
+            )
+        );
     }
 
     return appsItems;
@@ -868,11 +871,15 @@ void LauncherApp::refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind)
         String name = path.substring(path.lastIndexOf('/') + 1);
         if (system == RomSystem::NES) {
             items.push_back(
-                ITEM::APP(name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+                ITEM::APP(
+                    name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
+                )
             );
         } else {
             items.push_back(
-                ITEM::APP(name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
+                ITEM::APP(
+                    name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
+                )
             );
         }
     }

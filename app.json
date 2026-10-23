@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "name": "KeiraOS",
+  "firmware": "keira.bin",
+  "icon": "icon.rgb565"
+}

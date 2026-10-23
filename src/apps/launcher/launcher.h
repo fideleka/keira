@@ -4,6 +4,7 @@
 #include "apps/icons/app.h"
 #include "keira/app.h"
 #include "keira/keira.h"
+#include "apps/multiboot/appmetadata.h"
 
 enum class LauncherMenuKind { Static, Applications, NES, GameBoy, GameBoyColor };
 
@@ -77,7 +78,7 @@ private:
     item_t buildMainMenu(const ITEM_LIST& appsItems) __attribute__((noinline));
     ITEM_LIST loadCatalogItems();
     std::vector<String> catalogItemNames_;
-    std::vector<String> guestShortcutNames_;
+    std::vector<GuestAppMetadata> guestMetadata_;
     void refreshRecentRomFolders(ITEM_LIST& apps);
     void refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind);
     // Cached autorun setting, menu redraws every frame and it's stored in NVS
