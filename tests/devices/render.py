@@ -14,6 +14,7 @@ sdk = root.parent / "sdk"
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, default=Path("/tmp/keira-device-menu.png"))
 parser.add_argument("--language", choices=("en", "uk"), default="en")
+parser.add_argument("--long-values", action="store_true", help="Render the longest driver choices")
 args = parser.parse_args()
 device_source = (root / "src/apps/devices/devices.cpp").read_text()
 display_source = (root / "src/apps/displaysettings/displaysettings.cpp").read_text()
@@ -119,6 +120,9 @@ int main() {
     DeviceManager*manager=&deviceManager;unsigned index=0;DeviceManager::Info info;manager->info(index,info);
 
 """
+    if args.long_values:
+        body = body.replace('"10 MHz","Automatic","30 FPS","79Hz default","Off"',
+                            '"10 MHz","Automatic, flipped","30 FPS","79Hz default","Fixed image + writes"')
     body = body.replace('localizations/lang_en.h', 'localizations/lang_' + args.language + '.h')
     localization = device_source[device_source.index('namespace {'):device_source.index('DevicesApp::DevicesApp')]
     body = body.replace('int main() {', '#include <cstring>\n' + localization + '\nint main() {')

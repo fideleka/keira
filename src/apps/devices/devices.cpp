@@ -92,14 +92,10 @@ void DevicesApp::devicePage(unsigned index) {
         for (unsigned f = 0; f < info.settingCount; ++f) {
             DeviceManager::SettingInfo setting;
             manager->settingInfo(index, f, setting);
-            menu.addItem(
-                driverText(setting.label),
-                nullptr,
-                lilka::colors::White,
-                setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
-                : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
-                                                     : String(setting.value)
-            );
+            const String value = setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
+                                 : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
+                                                                      : String(setting.value);
+            menu.addItem(driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >");
         }
         menu.addItem(K_S_DEVICES_RESET);
         menu.addItem(K_S_DEVICES_IDENTITY);
@@ -124,7 +120,9 @@ void DevicesApp::devicePage(unsigned index) {
                                              : setting.kind == KD_SETTING_BOOLEAN
                                                  ? String(setting.value ? K_S_ON : K_S_OFF)
                                                  : String(setting.value);
-                        menu.setItem(row, driverText(setting.label), nullptr, lilka::colors::White, value);
+                        menu.setItem(
+                            row, driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >"
+                        );
                     }
                 }
             }

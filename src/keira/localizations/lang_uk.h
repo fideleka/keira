@@ -707,7 +707,7 @@
 #define K_S_DRIVER_DRIVE         "Режим LCD"
 #define K_S_DRIVER_TEST          "Тест SPI"
 #define K_S_DRIVER_AUTO          "Автоматично"
-#define K_S_DRIVER_FLIPPED       "Авто, перевернуто"
+#define K_S_DRIVER_FLIPPED       "Авто, навпаки"
 #define K_S_DRIVER_DISCONNECTED  "Не підключено"
 #define K_S_DRIVER_TEST_OFF      "Вимкнено"
 #define K_S_DRIVER_WRITES        "Стале + запис"
