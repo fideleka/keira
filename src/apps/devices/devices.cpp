@@ -104,7 +104,30 @@ void DevicesApp::devicePage(unsigned index) {
         menu.addItem(K_S_DEVICES_RESET);
         menu.addItem(K_S_DEVICES_IDENTITY);
         menu.setCursor(cursor);
+        menu.setHorizontalNavigationEnabled(false);
         while (!menu.isFinished()) {
+            const int row = menu.getCursor();
+            const bool isSetting = row >= 2 && row < static_cast<int>(info.settingCount) + 2;
+            if (isSetting) menu.removeActivationButton(lilka::Button::A);
+            else menu.addActivationButton(lilka::Button::A);
+            const auto state = lilka::controller.peekState();
+            if (isSetting && !state.selectHeld) {
+                const bool less = state.left.justPressed || state.d.justPressed;
+                const bool more = state.right.justPressed || state.a.justPressed;
+                if (less != more) {
+                    if (!manager->changeSetting(index, row - 2, more ? 1 : -1)) {
+                        alert(K_S_ERROR, K_S_DEVICES_CHANGE_FAILED);
+                    }
+                    DeviceManager::SettingInfo setting;
+                    if (manager->settingInfo(index, row - 2, setting)) {
+                        const String value = setting.kind == KD_SETTING_CHOICE ? String(driverText(setting.choice))
+                                             : setting.kind == KD_SETTING_BOOLEAN
+                                                 ? String(setting.value ? K_S_ON : K_S_OFF)
+                                                 : String(setting.value);
+                        menu.setItem(row, driverText(setting.label), nullptr, lilka::colors::White, value);
+                    }
+                }
+            }
             menu.update();
             menu.draw(canvas);
             queueDraw();
@@ -117,42 +140,12 @@ void DevicesApp::devicePage(unsigned index) {
         else if (cursor == 1) {
             manager->info(index, info);
             alert(K_S_STATUS, info.status);
-        } else if (cursor < static_cast<int>(info.settingCount) + 2) settingPage(index, cursor - 2);
-        else if (cursor == static_cast<int>(info.settingCount) + 2) {
+        } else if (cursor == static_cast<int>(info.settingCount) + 2) {
             if (confirm(K_S_DEVICES_RESET, K_S_DEVICES_RESET_CONFIRM)) good = manager->resetSettings(index);
         } else alert(K_S_DEVICES_IDENTITY, String(info.name) + "\n" + info.version + "\n" + info.uuid);
         if (!good) {
             manager->info(index, info);
             alert(K_S_ERROR, String(K_S_DEVICES_CHANGE_FAILED) + "\n" + info.status);
         }
-    }
-}
-void DevicesApp::settingPage(unsigned index, unsigned field) {
-    auto* manager = ksystem.devices;
-    DeviceManager::SettingInfo setting;
-    if (!manager->settingInfo(index, field, setting)) return;
-    lilka::Menu menu(driverText(setting.label));
-    menu.addItem(driverText(setting.label));
-    menu.addActivationButton(K_BTN_BACK);
-    menu.removeActivationButton(lilka::Button::A);
-    menu.setHorizontalNavigationEnabled(false);
-    while (!menu.isFinished()) {
-        manager->settingInfo(index, field, setting);
-        const String value = setting.kind == KD_SETTING_CHOICE    ? String(driverText(setting.choice))
-                             : setting.kind == KD_SETTING_BOOLEAN ? String(setting.value ? K_S_ON : K_S_OFF)
-                                                                  : String(setting.value);
-        menu.setItem(0, driverText(setting.label), nullptr, lilka::colors::White, String("< ") + value + " >");
-        const auto state = lilka::controller.peekState();
-        if (!state.selectHeld) {
-            const bool less = state.left.justPressed || state.d.justPressed,
-                       more = state.right.justPressed || state.a.justPressed;
-            if (less != more && !manager->changeSetting(index, field, more ? 1 : -1)) {
-                alert(K_S_ERROR, K_S_DEVICES_CHANGE_FAILED);
-            }
-        }
-        menu.update();
-        menu.draw(canvas);
-        queueDraw();
-        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
