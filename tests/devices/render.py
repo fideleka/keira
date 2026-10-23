@@ -26,9 +26,17 @@ page_block = construction(device_source, "lilka::Menu menu(info.name)", "menu.se
 display_block = construction(display_source, "lilka::Menu menu(K_S_LAUNCHER_DISPLAY)", "while (!menu.isFinished())")
 display_updates = construction(display_source, "        menu.setItem(", "        // Observe adjustment keys")
 blocks = [("Devices",list_block,"menu"), ("Device",page_block,"menu"),
-          ("Device scrolled",page_block+"menu.setCursor(10);menu.update();", "menu"),
-          ("SPI test",page_block+"menu.setCursor(11);menu.update();", "menu"),
+          ("Device scrolled",page_block+"menu.setCursor(6);menu.update();", "menu"),
+          ("SPI test",page_block+"menu.setCursor(7);menu.update();", "menu"),
           ("Display",display_block+display_updates,"menu")]
+
+pins_source = device_source[device_source.index("void DevicesApp::pinsPage"):]
+pins_block = construction(pins_source, "lilka::Menu menu(K_S_DEVICES_PINS)", "menu.setCursor(cursor)")
+pins_map = construction(pins_source, "    unsigned fields[KD_MAX_SETTINGS]", "    if (!pinCount) return;")
+pins_setup = "DeviceManager::SettingsDraft draft;manager->beginSettingsEdit(index,draft);" + pins_map
+blocks += [("Pins", pins_setup + pins_block, "menu"),
+           ("Pins Apply", pins_setup + "draft.values[0]=1;draft.values[1]=0;" + pins_block + "menu.setCursor(5);menu.update();", "menu"),
+           ("Pins Cancel", pins_setup + pins_block + "menu.setCursor(6);menu.update();", "menu")]
 
 gpio_source = (root / "src/apps/gpiomanager/gpiomanager.cpp").read_text()
 gpio_block = construction(gpio_source, "            for (int i = 0; i < PIN_COUNT; i++)", "            menu.setCursor(lastPos)")
@@ -100,12 +108,24 @@ bool pinReserved(unsigned i){return i<5;} // Configured GPIO47 BLK is owned too.
 struct DeviceManager {
  enum Mode {Internal,External,Both};
  struct Info {const char* name="ILI9341 display"; bool active=true,enabled=true;unsigned settingCount=10;};
- struct SettingInfo {const char*label;const char*choice;int value;unsigned kind;};
+ struct SettingInfo {const char*label;const char*choice;int value;unsigned kind;bool pin;};
+ struct SettingsDraft {unsigned count=10;int values[KD_MAX_SETTINGS]={};};
  unsigned count(){return 1;}void info(unsigned,Info&){}
- void settingInfo(unsigned,unsigned f,SettingInfo&r){
+ bool settingInfo(unsigned,unsigned f,SettingInfo&r){
   const char* labels[]={"Clock pin","MOSI pin","Reset pin","DC pin","Backlight pin","SPI speed","Orientation","Refresh limit","Panel drive","SPI test"};
   const char* choices[]={"GPIO12","GPIO13","GPIO14","GPIO21","GPIO47","10 MHz","Automatic","30 FPS","79Hz default","Off"};
-  r={labels[f],choices[f],1,KD_SETTING_CHOICE};
+  r={labels[f],choices[f],f<4?int(f):0,KD_SETTING_CHOICE,f<5};return true;
+ }
+ bool beginSettingsEdit(unsigned,SettingsDraft& draft){
+  for(unsigned field=0;field<draft.count;++field){SettingInfo value;settingInfo(0,field,value);draft.values[field]=value.value;}
+  return true;
+ }
+ bool previewSetting(unsigned,unsigned field,const SettingsDraft& draft,SettingInfo& value){
+  settingInfo(0,field,value);value.value=draft.values[field];
+  const char* pins[]={"GPIO12","GPIO13","GPIO14","GPIO21","GPIO47","GPIO48"};
+  if(field<4)value.choice=pins[value.value];
+  if(field==4){const char* backlight[]={"Disconnected","GPIO47","GPIO48"};value.choice=backlight[value.value];}
+  return true;
  }
  Mode displayMode(){return Both;}
 };
