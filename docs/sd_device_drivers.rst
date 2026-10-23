@@ -640,3 +640,8 @@ those firmwares. Select + D cycles modes everywhere; boot intentionally starts
 Internal, ignoring the saved mode but preserving all hardware/device settings.
 Use ILI9341 1.1.6 for black/off initialization, not the older white-GRAM startup.
 Do not reintroduce the removed whole-frame refresh experiment.
+
+Driver fields change directly in the device page: A/Right advances and D/Left
+reverses, wrapping through the available values. The selected row and scroll
+position stay in place. Select chords do not change driver fields. Changes use
+the existing driver validation and persistence; Back leaves the device page.
