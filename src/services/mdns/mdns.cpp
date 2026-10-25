@@ -41,13 +41,13 @@ void MDNSService::startMDNS() {
 
     esp_err_t err = mdns_init();
     if (err != ESP_OK) {
-        lilka::serial.log("MDNSService: Failed to init mDNS: %s", esp_err_to_name(err));
+        lilka::serial.err("MDNSService: Failed to init mDNS: %s", esp_err_to_name(err));
         return;
     }
 
     err = mdns_hostname_set(hostname.c_str());
     if (err != ESP_OK) {
-        lilka::serial.log("MDNSService: Failed to set hostname: %s", esp_err_to_name(err));
+        lilka::serial.err("MDNSService: Failed to set hostname: %s", esp_err_to_name(err));
         mdns_free();
         return;
     }

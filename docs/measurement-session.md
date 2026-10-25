@@ -1,5 +1,10 @@
 # Emulator/input measurement session
 
+**Production update (2026-10-25):** measurement is off in every normal v2-derived
+build. Set `KEIRA_MEASURE=1` in the build environment to explicitly enable Keira,
+input and display measurements; remove it afterward. The older always-on
+directions below describe the historical investigation, not current defaults.
+
 Use the normal **Keira feature/sd-device-drivers** and matching **SDK
 feature/native-lcd-dma** branches. Measurement is now included in the ordinary
 v2 environments, including `v2-modified-backlight-adc-charge-status`; there are

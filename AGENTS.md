@@ -56,3 +56,8 @@ See [Lilka SDK](https://github.com/lilka-dev/sdk) and its `AGENTS.md` for SDK-sp
 - No global variables in `src/apps/` or `src/services/` implementations
 - All state must be members of the `App` or `Service` subclass
 - File-scoped constants (`static const` / `constexpr`) are fine — mutable globals are not
+
+## Production diagnostics
+
+- Normal v2-derived builds must not enable measurements. `pre:tools/build_diagnostics.py` registers explicit KEIRA_MEASURE/input/display zeros before dependency cloning; KEIRA_MEASURE=1 is the supported opt-in. Keep SDK errors visible and preserve explicit Lua/mJS/stdio user console output.
+- Compositor reports and their timer reads/accumulators must be compiled out when measurement is off; do not merely suppress their serial output. Keep frame pacing, rendering, overlays, driver fault handling and idle behavior unchanged.
