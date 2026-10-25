@@ -23,7 +23,7 @@ void TransformApp::run() {
     int x = canvas->width() / 2;
     int y = canvas->height() / 2;
 
-    Serial.println(StringFormat(K_S_TRANFORM_DRAWING_FACE_AT_FMT, x, y));
+    lilka::serial.log(K_S_TRANFORM_DRAWING_FACE_AT_FMT, x, y);
 
     int angle = 0;
 

@@ -1,5 +1,9 @@
 # Display performance improvements on the pre-zero-copy baseline
 
+**Production update (2026-10-25):** `KEIRA_MEASURE` and SDK input/display
+measurements now default off. The measurements below describe explicit
+diagnostic builds. Normal builds omit compositor timing collectors and reports.
+
 Base: `de02c7201a579feafec6def5bba3c48800faafe3` on
 `feature/sd-device-drivers`. This does **not** restore the rejected zero-copy
 pipeline: exact fused comparison/composition, shared presentation buffers,

@@ -25,7 +25,7 @@ sndhrdw/nes_apu.c and mappers/map004.c. The current feature overlay additionally
 patches nes/nes_ppu.c for internal-RAM scanline staging and a forced-inline tile
 kernel, and nes/nes.c for per-frame input cadence and bounded CPU/PPU profiling.
 The original IRQ semantics below are retained. Profiling runs only with the
-normal KEIRA_MEASURE flag; tests/fixtures are not shipped. See
+explicit opt-in KEIRA_MEASURE=1 build setting; tests/fixtures are not shipped. See
 [display performance](../../docs/display-performance.md) for scope and checks.
 
 - FRAME assertion persists while masked. $4015 reads return the prior frame flag

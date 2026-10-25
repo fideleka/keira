@@ -63,14 +63,18 @@ void AppManager::threadsRun() {
 /// Performs Apps Run/Stop/Suspend/Draw if necessary
 void AppManager::run() {
     K_AMG_DBG lilka::serial.log("Starting apps update loop");
+#if KEIRA_MEASURE
     FrameMetrics work, intervals, internalTimes, submitted;
     uint32_t windowAt = millis(), previousAppFrame = 0, overruns = 0;
     int64_t previousStart = 0;
     App* monitored = nullptr;
+#endif
     while (1) {
+#if KEIRA_MEASURE
         const int64_t iterationStart = esp_timer_get_time();
         bool internalPresented = false;
         uint32_t internalUs = 0;
+#endif
         threadsRun();
 
         ThreadManager::threadsClean();
@@ -113,7 +117,9 @@ void AppManager::run() {
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
         lilka::display.serviceOutputPower();
         if (lilka::displaySettings.isSleeping()) {
+#if KEIRA_MEASURE
             monitored = nullptr;
+#endif
             if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {
                 lilka::VolumeOverlaySnapshot none;
                 if (devices->capture(nullptr, nullptr, none, true)) {
@@ -159,6 +165,7 @@ void AppManager::run() {
         }
         const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
         KMTX_LOCK(topApp->canvasMutex);
+#if KEIRA_MEASURE
         if (monitored != topApp || routeChanged) {
             monitored = topApp;
             previousAppFrame = topApp->frame;
@@ -171,14 +178,19 @@ void AppManager::run() {
         previousAppFrame = topApp->frame;
         if (previousStart) intervals.record(iterationStart - previousStart);
         previousStart = iterationStart;
+#endif
         const bool repaintLayers =
             wokeDisplay || routeChanged || topApp->backgroundDirty || rotated || topApp != lastPresentedApp;
         if (repaintLayers) {
             if (legacyInternal) {
+#if KEIRA_MEASURE
                 const int64_t start = esp_timer_get_time();
+#endif
                 lilka::display.clearOutsideOverlay(lilka::colors::Black);
+#if KEIRA_MEASURE
                 internalUs += esp_timer_get_time() - start;
                 internalPresented = true;
+#endif
             }
             topApp->backgroundDirty = false;
         }
@@ -209,10 +221,14 @@ void AppManager::run() {
                 const int parity = (app->flags & AppFlags::APP_FLAG_INTERLACED) && !repaintLayers ? app->frame % 2 : -1;
                 externalDirty = true;
                 if (legacyInternal) {
+#if KEIRA_MEASURE
                     const int64_t start = esp_timer_get_time();
+#endif
                     lilka::display.presentCanvasOutsideOverlay(app->backCanvas, parity);
+#if KEIRA_MEASURE
                     internalUs += esp_timer_get_time() - start;
                     internalPresented = true;
+#endif
                 }
                 app->setRedraw(false);
             }
@@ -248,10 +264,14 @@ void AppManager::run() {
             lilka::Canvas* layers[] = {
                 (topApp->getFlags() & AppFlags::APP_FLAG_FULLSCREEN) ? nullptr : panel->backCanvas, topApp->backCanvas
             };
+#if KEIRA_MEASURE
             const int64_t start = esp_timer_get_time();
+#endif
             lilka::display.finishSystemOverlay(layers, 2);
+#if KEIRA_MEASURE
             internalUs += esp_timer_get_time() - start;
             internalPresented = true;
+#endif
             KMTX_UNLOCK(topApp->canvasMutex);
             KMTX_UNLOCK(panel->canvasMutex);
             KMTX_UNLOCK(panelMtx);
@@ -281,25 +301,30 @@ void AppManager::run() {
         }
         // App canvases are no longer locked during either LCD transfer in shared mode.
         if (sharedOutput) {
+#if KEIRA_MEASURE
             const int64_t start = esp_timer_get_time();
             internalPresented = devices->presentInternal();
             if (internalPresented) internalUs = esp_timer_get_time() - start;
-        }
-        if (internalPresented) internalTimes.record(internalUs);
-#if KEIRA_MEASURE
-        if (internalPresented && topApp->measurementsActive) topApp->measures.record(measurement::Internal, internalUs);
+#else
+            devices->presentInternal();
 #endif
+        }
+#if KEIRA_MEASURE
+        if (internalPresented) internalTimes.record(internalUs);
+        if (internalPresented && topApp->measurementsActive) topApp->measures.record(measurement::Internal, internalUs);
         const uint32_t workUs = esp_timer_get_time() - iterationStart;
         work.record(workUs);
         if (uint64_t(workUs) * MAX_FPS >= 1000000) ++overruns;
         const uint32_t elapsed = millis() - windowAt;
-        const bool report = elapsed >= (KEIRA_MEASURE ? 5000u : 2000u);
+        const bool report = elapsed >= 5000u;
         char appName[48] = {};
         if (report) strncpy(appName, topApp->getName(), sizeof(appName) - 1);
+#endif
         lastPresentedApp = topApp;
         /// UNLOCK THREADS LIST
 
         KMTX_UNLOCK(ThreadManager::lock);
+#if KEIRA_MEASURE
         if (report) {
             const uint32_t appFps = submitted.fpsX10(elapsed), lcdFps = internalTimes.fpsX10(elapsed);
             const uint32_t compositorFps = work.fpsX10(elapsed);
@@ -332,6 +357,7 @@ void AppManager::run() {
             work = intervals = internalTimes = submitted = FrameMetrics{};
             overruns = 0;
         }
+#endif
         waitForFrame();
         //K_AMG_DBG lilka::serial.log("Last frame tick = %d", lastFrameTick);
     }

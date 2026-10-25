@@ -263,7 +263,8 @@ void osd_getinput(void) {
 }
 
 int logprint(const char* string) {
-    return printf("%s", string);
+    lilka::serial.log("%s", string);
+    return strlen(string);
 }
 
 int osd_init() {

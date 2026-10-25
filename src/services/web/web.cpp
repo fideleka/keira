@@ -1028,7 +1028,7 @@ static esp_err_t upload_handler(httpd_req_t* req) {
         do {
             len = httpd_req_recv(req, buf, WEB_BUFFER_FLASH_OP);
             if (len < 0) {
-                lilka::serial.log("FW upload error %d", len);
+                lilka::serial.err("FW upload error %d", len);
                 lastError = "Failed to receive firmware file";
                 break;
             }
@@ -1071,7 +1071,7 @@ static esp_err_t upload_handler(httpd_req_t* req) {
         lilka::serial.log("FW upload done. Restart scheduled");
         pendingRestart = true;
     } else {
-        lilka::serial.log("FW upload failed. Error %d", (int)err);
+        lilka::serial.err("FW upload failed. Error %d", (int)err);
         esp_ota_abort(ota_handle);
         httpd_resp_set_status(req, HTTPD_500);
         res = httpd_resp_sendstr(req, lastError.c_str());
@@ -1166,7 +1166,7 @@ static esp_err_t sd_upload_handler(httpd_req_t* req) {
             lilka::serial.log("Full file path: %s", filePath.c_str());
             file = fopen(filePath.c_str(), "wb");
             if (!file) {
-                lilka::serial.log("Failed to create file: %s", filePath.c_str());
+                lilka::serial.err("Failed to create file: %s", filePath.c_str());
                 lastError = "Failed to create file on SD card";
                 err = ESP_FAIL;
                 break;
@@ -1678,7 +1678,7 @@ void WebService::run() {
 
                     int error = lilka::multiboot.start(*path);
                     if (error) {
-                        lilka::serial.log("Multiboot start error: %d", error);
+                        lilka::serial.err("Multiboot start error: %d", error);
                         multibootProgress = -2;
                         delete path;
                         vTaskDelete(NULL);
@@ -1704,7 +1704,7 @@ void WebService::run() {
                     }
 
                     if (error < 0) {
-                        lilka::serial.log("Multiboot process error: %d", error);
+                        lilka::serial.err("Multiboot process error: %d", error);
                         multibootProgress = -2;
                         delete path;
                         vTaskDelete(NULL);
@@ -1714,7 +1714,7 @@ void WebService::run() {
                     multibootProgress = 100;
                     error = lilka::multiboot.finishAndReboot();
                     if (error) {
-                        lilka::serial.log("Multiboot finish error: %d", error);
+                        lilka::serial.err("Multiboot finish error: %d", error);
                         multibootProgress = -2;
                     }
                     delete path;
