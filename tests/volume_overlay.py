@@ -124,6 +124,7 @@ struct Display:Surface,GFX<Display> {
  int normal=0,interlaced=0,rotation=0,wx=0,wy=0,ww=0,wh=0,cursor=0,writeDepth=0;
  int getRotation(){return rotation;}
  // PRODUCTION_DISPLAY_STATE
+ bool nativeOutput() const;bool renderingActive() const;bool routingDirty=false;
  void serviceOutputPower() {}
  void drawCanvas(Canvas*);void presentCanvas(Canvas*);void drawSystemOverlay();
  bool prepareSystemOverlay(const VolumeOverlaySnapshot&,uint32_t);
@@ -170,10 +171,11 @@ struct {void log(const char*){} template<class... T>void log(const char* format,
 struct DeviceManager {
  lilka::VolumeOverlaySnapshot modeFeedback;
  lilka::VolumeOverlaySnapshot getOverlay(){return modeFeedback;}
- bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0;
+ bool external=false,internal=true,busy=false;unsigned epoch=1,captures=0,internalCalls=0;
  bool dirty=false;
  std::vector<uint16_t> pixels;
  bool presentInternal(){
+  ++internalCalls;
   assert(held.size()==1 && held[0]==0); // Neither canvas nor panel mutex spans SPI.
   if(external&&internal&&dirty){lilka::display.draw16bitRGBBitmap(0,0,pixels.data(),lilka::display.width(),lilka::display.height());dirty=false;return true;}return false;
  }
@@ -190,7 +192,9 @@ struct DeviceManager {
 namespace lilka { DeviceManager devices; }
 struct {DeviceManager* devices=nullptr;} ksystem;
 namespace AppFlags {constexpr int APP_FLAG_FULLSCREEN=1,APP_FLAG_INTERLACED=2;}
+#include "keira/measurement.h"
 struct App {
+ bool measurementsActive=false;measurement::Window measures;
  lilka::Canvas* backCanvas;
  explicit App(lilka::Canvas* c):backCanvas(c){static int next=10;canvasMutex=next++;}
  int flags=0,frame=0,canvasMutex=0,state=0;
@@ -207,6 +211,8 @@ unsigned remainingTicks=0;
 std::function<void()> onTick;
 void vTaskDelay(int){assert(lockDepth==0);if(remainingTicks){--remainingTicks;now+=40;onTick();return;}throw Stop();}
 void vTaskDelayUntil(uint32_t*,int){vTaskDelay(1);}
+bool lilka::Display::nativeOutput() const {return !lilka::displaySettings.isSleeping()&&(!ksystem.devices||ksystem.devices->internalOutput());}
+bool lilka::Display::renderingActive() const {return !lilka::displaySettings.isSleeping()&&(!ksystem.devices||ksystem.devices->internalOutput()||ksystem.devices->externalOutput());}
 struct AppManager:ThreadManager {
  std::vector<App*> threads;
  App* panel;App* lastPresentedApp=nullptr;int panelMtx=1;uint32_t lastFrameTick=0;
@@ -214,6 +220,7 @@ struct AppManager:ThreadManager {
  uint32_t externalGeneration=0,externalOverlayAt=0;
  bool externalOverlayVisible=false,externalOverlayBrightness=false;
  int externalOverlayLevel=-1,externalOverlayMode=-1;
+ int lastOutputWidth=-1,lastOutputHeight=-1,lastOutputRotation=-1;
  struct {uint32_t endTime=0;} toast;
  void threadsRun(){}void renderToast(lilka::Canvas*){assert(false);}
  void waitForFrame();void run();void renderToCanvas(lilka::Canvas*);
@@ -421,14 +428,22 @@ int main(){
  device.external=true;device.internal=false;++device.epoch;pixelWrites=0;routing.tick();
  assert(device.captures==1&&device.pixels[100*280+100]==0x2222);
  pixelWrites=0;const auto captures=device.captures;routing.tick();assert(pixelWrites==0&&device.captures==captures);
+ // Shared-only geometry invalidation cannot depend on disabled-native overlays.
+ const int oldRotation=display.rotation;const auto rotatedCopies=device.captures, nativeCalls=device.internalCalls;
+ display.rotation=(oldRotation+1)%4;routing.tick();assert(device.captures==rotatedCopies+1&&device.internalCalls==nativeCalls&&pixelWrites==0);
+ display.rotation=oldRotation;routing.tick();
  foreground.redraw=true;const auto uncapped=device.captures;routing.tick();assert(device.captures==uncapped+1);
  foreground.redraw=true;device.busy=true;routing.tick();assert(routing.externalDirty);
  routingApp.fillScreen(0x3333);device.busy=false;routing.tick();assert(!routing.externalDirty&&device.pixels[100*280+100]==0x3333);
  feedback.level=42;feedback.valid=true;feedback.adjustedAt=now;routing.tick();assert(pixelWrites==0);
  const auto overlayCapture=device.captures;now+=1200;routing.tick();assert(device.captures==overlayCapture+1);
  device.internal=true;++device.epoch;routing.tick();assert(display.pixels==device.pixels);
- lilka::displaySettings.sleeping=true;routing.tick();assert(device.pixels==std::vector<uint16_t>(280*240,0));
- const auto sleepingCapture=device.captures;routing.tick();assert(device.captures==sleepingCapture);
+ const auto sleepingCapture=device.captures,sleepingInternal=device.internalCalls;const auto sleepingWrites=pixelWrites;
+ const auto sleepingPixels=device.pixels,nativePixels=display.pixels;
+ lilka::displaySettings.sleeping=true;foreground.redraw=true;routing.tick();
+ assert(device.captures==sleepingCapture&&device.internalCalls==sleepingInternal&&pixelWrites==sleepingWrites);
+ assert(device.pixels==sleepingPixels&&display.pixels==nativePixels&&foreground.redraw);
+ routing.tick();assert(device.captures==sleepingCapture&&device.internalCalls==sleepingInternal);
  lilka::displaySettings.sleeping=false;routing.tick();assert(device.pixels[100*280+100]==0x3333);
  device.external=false;++device.epoch;foreground.redraw=true;routing.tick();assert(display.pixels[100*280+100]==0x3333);
  // All mode feedback is localized and composed identically for both readers.
@@ -458,7 +473,7 @@ int main(){
  // Real production monitor distinguishes 75 submitted frames/s from 25 LCD
  // updates/s, and serial formatting is outside ALL compositor/canvas locks.
  device.external=true;device.internal=true;++device.epoch;feedback.valid=false;
- performanceLogs.clear();remainingTicks=51;
+ performanceLogs.clear();remainingTicks=126;
  onTick=[&]{foreground.frame+=3;foreground.redraw=true;};
  routing.tick();onTick=nullptr;
  assert(performanceLogs.size()==2);
@@ -506,6 +521,9 @@ assert "queueDraw();" in (ROOT / "src/apps/gameboy/gameboyapp.cpp").read_text()
 assert "drawVolumeOverlay" not in function(ROOT / "src/keira/appmanager.cpp", "void AppManager::renderToCanvas(")
 with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
     tmp = Path(directory)
+    (tmp / "freertos").mkdir()
+    (tmp / "freertos/FreeRTOS.h").write_text("#pragma once\nusing portMUX_TYPE=int;\n#define portMUX_INITIALIZER_UNLOCKED 0\n#define portENTER_CRITICAL(x) ((void)(x))\n#define portEXIT_CRITICAL(x) ((void)(x))\n")
+    (tmp / "esp_timer.h").write_text("#pragma once\n")
     (tmp / "test.cpp").write_text(prelude + code + checks)
     # Extract verbatim the maintained 6979-byte regular font, rather than
     # compiling every unrelated font in the dependency's multi-megabyte file.
@@ -522,7 +540,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
             subprocess.run(["gcc", "-std=c99", "-ffunction-sections", "-fdata-sections", *flags,
                             "-I" + str(u8g2.parent), "-c", str(source), "-o", str(obj)], check=True)
             objects.append(str(obj))
-        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", *flags, "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
+        subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-DKEIRA_MEASURE=1", *flags, "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(tmp), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections",
                         *objects, str(tmp / "test.cpp"), "-o", str(tmp / "test")], check=True)
         subprocess.run([str(tmp / "test")], check=True)
     # Prove guard sensitivity: a background transfer through the footprint must
@@ -531,7 +549,7 @@ with tempfile.TemporaryDirectory(prefix="keira-volume-overlay-") as directory:
                             "void Display::presentCanvasOutsideOverlay(Canvas* canvas, int parity) { presentCanvas(canvas);")
     assert bad_code != code
     (tmp / "test.cpp").write_text(prelude + bad_code + checks)
-    subprocess.run(["g++", "-std=c++11", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
+    subprocess.run(["g++", "-std=c++11", "-DKEIRA_MEASURE=1", "-fsanitize=undefined", "-fno-pie", "-no-pie", "-include", str(ROOT / ("src/keira/localizations/lang_" + language + ".h")), "-I" + str(tmp), "-I" + str(ROOT / "src"), "-I" + str(sdk), "-I" + str(u8g2.parent), "-Wl,--gc-sections", *objects, str(tmp / "test.cpp"),
                     "-o", str(tmp / "test")], check=True)
     rejected = subprocess.run([str(tmp / "test")], capture_output=True, text=True)
     assert rejected.returncode != 0 and "value==expected" in rejected.stderr, rejected.stderr
