@@ -116,18 +116,11 @@ void AppManager::run() {
         lastShared = sharedOutput;
         const bool wokeDisplay = lilka::displaySettings.serviceIdle(strcmp(topApp->getName(), "Launcher") == 0);
         lilka::display.serviceOutputPower();
-        if (lilka::displaySettings.isSleeping()) {
+        if (lilka::displaySettings.isSleeping() || (!internalOutput && !sharedOutput)) {
 #if KEIRA_MEASURE
             monitored = nullptr;
 #endif
-            if (devices && devices->externalOutput() && (!externalSleeping || externalDirty)) {
-                lilka::VolumeOverlaySnapshot none;
-                if (devices->capture(nullptr, nullptr, none, true)) {
-                    externalSleeping = true;
-                    externalDirty = false;
-                }
-            }
-            if (sharedOutput) devices->presentInternal();
+            externalSleeping = true; // Power is already off; do not compose a blank frame.
             KMTX_UNLOCK(ThreadManager::lock);
             waitForFrame();
             continue;
@@ -163,7 +156,15 @@ void AppManager::run() {
             static_assert(sizeof(K_S_DISPLAY_BOTH) <= sizeof(volumeOverlay.muteLabel), "Display label too long");
             strlcpy(volumeOverlay.muteLabel, names[volumeOverlay.displayMode], sizeof(volumeOverlay.muteLabel));
         }
-        const bool rotated = lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
+        const int outputWidth = lilka::display.width(), outputHeight = lilka::display.height();
+        const int outputRotation = lilka::display.getRotation();
+        const bool geometryChanged =
+            lastOutputWidth != outputWidth || lastOutputHeight != outputHeight || lastOutputRotation != outputRotation;
+        lastOutputWidth = outputWidth;
+        lastOutputHeight = outputHeight;
+        lastOutputRotation = outputRotation;
+        const bool nativeRotated = legacyInternal && lilka::display.prepareSystemOverlay(volumeOverlay, overlayNow);
+        const bool rotated = geometryChanged || nativeRotated;
         KMTX_LOCK(topApp->canvasMutex);
 #if KEIRA_MEASURE
         if (monitored != topApp || routeChanged) {
@@ -300,7 +301,7 @@ void AppManager::run() {
             KMTX_UNLOCK(panelMtx);
         }
         // App canvases are no longer locked during either LCD transfer in shared mode.
-        if (sharedOutput) {
+        if (sharedOutput && internalOutput) {
 #if KEIRA_MEASURE
             const int64_t start = esp_timer_get_time();
             internalPresented = devices->presentInternal();

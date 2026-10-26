@@ -51,6 +51,7 @@ private:
     uint32_t externalGeneration = 0, externalOverlayAt = 0;
     bool externalOverlayVisible = false, externalOverlayBrightness = false;
     int externalOverlayLevel = -1, externalOverlayMode = -1;
+    int lastOutputWidth = -1, lastOutputHeight = -1, lastOutputRotation = -1;
     App* lastPresentedApp = nullptr; // render-task identity only, never dereferenced
 // Used for capping framerate to A
 #if LILKA_VERSION == 2
