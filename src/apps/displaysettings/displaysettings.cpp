@@ -1,6 +1,8 @@
 #include "displaysettings.h"
 #include "keira/keira.h"
 #include "keira/ksystem.h"
+#include "keira/utils/string.h"
+#include <Preferences.h>
 #include "devices/devicemanager.h"
 
 namespace {

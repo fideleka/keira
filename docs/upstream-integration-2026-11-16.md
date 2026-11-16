@@ -81,3 +81,20 @@ exports, literal-format printing, canvas locks and their host tests.
 The imported OTA updater still targets official lilka-dev release binaries.
 Using it installs upstream firmware, not this modified stage build. This rebase
 neither invokes the updater nor changes the release manifest destination.
+
+## Follow-up: Display SPI include failure
+
+The Windows firmware build exposed two missing direct includes after moving the
+SPI methods from LauncherApp to DisplayConfigApp: `keira/utils/string.h` for
+StringFormat, and `Preferences.h` for the complete Preferences type. Both are now
+included by displaysettings.cpp. The I2S deprecation messages were warnings,
+not the reported build failure.
+
+The original menu harness stripped every production include and supplied both
+symbols globally. It therefore checked behavior but masked this include error.
+The repaired harness retains production include directives, reads the actual
+Keira string header, and limits Preferences substitution to its HAL header.
+Negative compilation probes remove each required include and must fail.
+Behavior tests, include probes, quiet-diagnostics checks, localization,
+changed-file clang-format and targeted cppcheck pass. No target firmware build
+or flash was performed for this source-only correction.
