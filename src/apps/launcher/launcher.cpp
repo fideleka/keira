@@ -809,7 +809,8 @@ void LauncherApp::showMenu(const String& title, ITEM_LIST& list, bool back, Laun
     if (back) menu.addActivationButton(K_BTN_BACK);
     auto rebuild = [&]() {
         menu.clearItems();
-        for (const item_t& item : list) menu.addItem(item.name, item.icon, item.color);
+        for (const item_t& item : list)
+            menu.addItem(item.name, item.icon, item.color);
         if (back) menu.addItem(K_S_MENU_BACK);
     };
     auto refresh = [&]() {
@@ -865,21 +866,17 @@ void LauncherApp::showMenu(const String& title, ITEM_LIST& list, bool back, Laun
 void LauncherApp::refreshRecentRomItems(ITEM_LIST& items, LauncherMenuKind kind) {
     RomSystem system = kind == LauncherMenuKind::NES       ? RomSystem::NES
                        : kind == LauncherMenuKind::GameBoy ? RomSystem::GameBoy
-                                                          : RomSystem::GameBoyColor;
+                                                           : RomSystem::GameBoyColor;
     items.clear();
     for (const String& path : readRecentRoms(system)) {
         String name = path.substring(path.lastIndexOf('/') + 1);
         if (system == RomSystem::NES) {
             items.push_back(
-                ITEM::APP(
-                    name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
-                )
+                ITEM::APP(name.c_str(), [path]() { K_FT_NES_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
             );
         } else {
             items.push_back(
-                ITEM::APP(
-                    name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink
-                )
+                ITEM::APP(name.c_str(), [path]() { K_FT_GB_HANDLER(path); }, &nes_img, lilka::colors::Candy_pink)
             );
         }
     }
@@ -1131,79 +1128,6 @@ void LauncherApp::setSpiSDSpeed() {
     prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
     uint32_t sdFrequency = sdFrequencies[index];
     prefs.putUInt(LILKA_SPI_NVS_SD_FREQUENCY_KEY, sdFrequency);
-    prefs.end();
-    NVS_UNLOCK;
-
-    alert("", K_S_CHANGE_ON_NEXT_BOOT);
-}
-
-void LauncherApp::setDisplaySpeed() {
-    uint32_t displayFrequencies[] = {
-        10000000, // 10 MHz
-        20000000, // 20 MHz
-        40000000, // 40 MHz
-        80000000 // 80 MHz
-    };
-
-    lilka::Menu setDisplaySpeedMenu;
-    setDisplaySpeedMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPEED);
-    setDisplaySpeedMenu.addActivationButton(K_BTN_BACK); // Exit
-
-    // Add frequencies to menu
-    for (auto i = 0; i < sizeof(displayFrequencies) / sizeof(displayFrequencies[0]); i++)
-        setDisplaySpeedMenu.addItem(StringFormat("%d MHz", displayFrequencies[i] / 1000000));
-
-    // Perform draw
-    while (!setDisplaySpeedMenu.isFinished()) {
-        setDisplaySpeedMenu.update();
-        setDisplaySpeedMenu.draw(canvas);
-        queueDraw();
-    }
-    auto button = setDisplaySpeedMenu.getButton();
-
-    if (button == K_BTN_BACK) return;
-
-    auto index = setDisplaySpeedMenu.getCursor();
-
-    // store new frequency to NVS
-    NVS_LOCK;
-    Preferences prefs;
-    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
-    prefs.putUInt(LILKA_SPI_NVS_DISPLAY_FREQUENCY_KEY, displayFrequencies[index]);
-    prefs.end();
-    NVS_UNLOCK;
-
-    alert("", K_S_CHANGE_ON_NEXT_BOOT);
-}
-
-void LauncherApp::setDisplaySpiMode() {
-    uint8_t spiModes[] = {SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3};
-
-    lilka::Menu setDisplaySpiModeMenu;
-    setDisplaySpiModeMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPI_MODE);
-    setDisplaySpiModeMenu.addActivationButton(K_BTN_BACK); // Exit
-
-    // Add SPI modes to menu
-    for (auto i = 0; i < sizeof(spiModes) / sizeof(spiModes[0]); i++)
-        setDisplaySpiModeMenu.addItem(StringFormat("SPI_MODE%d", spiModes[i]));
-
-    // Perform draw
-    while (!setDisplaySpiModeMenu.isFinished()) {
-        setDisplaySpiModeMenu.update();
-        setDisplaySpiModeMenu.draw(canvas);
-        queueDraw();
-    }
-    auto button = setDisplaySpiModeMenu.getButton();
-
-    if (button == K_BTN_BACK) return;
-
-    auto index = setDisplaySpiModeMenu.getCursor();
-
-    // store new SPI mode to NVS
-    NVS_LOCK;
-    Preferences prefs;
-    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
-    prefs.putUChar(LILKA_SPI_NVS_DISPLAY_MODE_KEY, spiModes[index]);
     prefs.end();
     NVS_UNLOCK;
 

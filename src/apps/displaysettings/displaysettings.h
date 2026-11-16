@@ -8,4 +8,6 @@ public:
 
 private:
     void run() override;
+    void setDisplaySpeed();
+    void setDisplaySpiMode();
 };

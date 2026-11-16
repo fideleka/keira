@@ -94,8 +94,6 @@ private:
     void wifiToggle();
     void wifiManager();
     void setSpiSDSpeed();
-    void setDisplaySpeed();
-    void setDisplaySpiMode();
     void setMDNSHostname();
     void setTimezone();
     void setCustomTimezone();

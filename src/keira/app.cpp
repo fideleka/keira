@@ -265,10 +265,8 @@ void App::queueDraw() {
             TOOL_BAR_SAFE_DISTANCE, canvas->height() - TOOL_BAR_HEIGHT, TOOL_BAR_WIDTH, TOOL_BAR_HEIGHT
         );
 
-        canvas->printf(this->toolBarLabel.c_str());
+        canvas->printf("%s", this->toolBarLabel.c_str());
     }
-
-    KMTX_LOCK(canvasMutex);
 
     // Detect if frame was skipped. Need to readjust priorities in this case
     KAPP_DBG if (frame && redraw) {

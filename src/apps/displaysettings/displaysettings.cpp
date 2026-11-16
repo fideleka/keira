@@ -42,6 +42,8 @@ void DisplayConfigApp::run() {
     menu.addItem(K_S_DISPLAY_TIMEOUT);
     menu.addItem(K_S_DISPLAY_DIM);
     menu.addItem(K_S_DISPLAY_MODE);
+    menu.addItem(K_S_LAUNCHER_DISPLAY_SPEED);
+    menu.addItem(K_S_LAUNCHER_DISPLAY_SPI_MODE);
     menu.addActivationButton(K_BTN_BACK);
     menu.removeActivationButton(lilka::Button::A);
     menu.setHorizontalNavigationEnabled(false);
@@ -90,6 +92,12 @@ void DisplayConfigApp::run() {
             const bool more = state.right.justPressed || state.a.justPressed;
             if (less != more) direction = more ? 1 : -1;
         }
+        if (!state.selectHeld && state.a.justPressed && menu.getCursor() >= 4) {
+            lilka::controller.getState(); // Consume the opening press before the child menu reads input.
+            if (menu.getCursor() == 4) setDisplaySpeed();
+            else setDisplaySpiMode();
+            direction = 0;
+        }
         if (direction) {
             if (menu.getCursor() == 0) lilka::brightness.stepBrightnessShortcut(direction);
             else if (menu.getCursor() == 1) changeTimeout(direction, false);
@@ -99,11 +107,84 @@ void DisplayConfigApp::run() {
                     alert(K_S_ERROR, K_S_DEVICES_CHANGE_FAILED);
                 else if (next != DeviceManager::Internal && !ksystem.devices->externalOutput())
                     alert(K_S_DISPLAY_FALLBACK, K_S_DISPLAY_NO_ACTIVE);
-            } else if (lilka::brightness.isEnabled()) changeTimeout(direction, true);
+            } else if (menu.getCursor() == 2 && lilka::brightness.isEnabled()) changeTimeout(direction, true);
         }
         menu.update();
         menu.draw(canvas);
         queueDraw();
         vTaskDelay(pdMS_TO_TICKS(20));
     }
+}
+
+void DisplayConfigApp::setDisplaySpeed() {
+    uint32_t displayFrequencies[] = {
+        10000000, // 10 MHz
+        20000000, // 20 MHz
+        40000000, // 40 MHz
+        80000000 // 80 MHz
+    };
+
+    lilka::Menu setDisplaySpeedMenu;
+    setDisplaySpeedMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPEED);
+    setDisplaySpeedMenu.addActivationButton(K_BTN_BACK); // Exit
+
+    // Add frequencies to menu
+    for (auto i = 0; i < sizeof(displayFrequencies) / sizeof(displayFrequencies[0]); i++)
+        setDisplaySpeedMenu.addItem(StringFormat("%d MHz", displayFrequencies[i] / 1000000));
+
+    // Perform draw
+    while (!setDisplaySpeedMenu.isFinished()) {
+        setDisplaySpeedMenu.update();
+        setDisplaySpeedMenu.draw(canvas);
+        queueDraw();
+    }
+    auto button = setDisplaySpeedMenu.getButton();
+
+    if (button == K_BTN_BACK) return;
+
+    auto index = setDisplaySpeedMenu.getCursor();
+
+    // store new frequency to NVS
+    NVS_LOCK;
+    Preferences prefs;
+    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
+    prefs.putUInt(LILKA_SPI_NVS_DISPLAY_FREQUENCY_KEY, displayFrequencies[index]);
+    prefs.end();
+    NVS_UNLOCK;
+
+    alert("", K_S_CHANGE_ON_NEXT_BOOT);
+}
+
+void DisplayConfigApp::setDisplaySpiMode() {
+    uint8_t spiModes[] = {SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3};
+
+    lilka::Menu setDisplaySpiModeMenu;
+    setDisplaySpiModeMenu.setTitle(K_S_LAUNCHER_DISPLAY_SPI_MODE);
+    setDisplaySpiModeMenu.addActivationButton(K_BTN_BACK); // Exit
+
+    // Add SPI modes to menu
+    for (auto i = 0; i < sizeof(spiModes) / sizeof(spiModes[0]); i++)
+        setDisplaySpiModeMenu.addItem(StringFormat("SPI_MODE%d", spiModes[i]));
+
+    // Perform draw
+    while (!setDisplaySpiModeMenu.isFinished()) {
+        setDisplaySpiModeMenu.update();
+        setDisplaySpiModeMenu.draw(canvas);
+        queueDraw();
+    }
+    auto button = setDisplaySpiModeMenu.getButton();
+
+    if (button == K_BTN_BACK) return;
+
+    auto index = setDisplaySpiModeMenu.getCursor();
+
+    // store new SPI mode to NVS
+    NVS_LOCK;
+    Preferences prefs;
+    prefs.begin(LILKA_SPI_NVS_NAMESPACE, false);
+    prefs.putUChar(LILKA_SPI_NVS_DISPLAY_MODE_KEY, spiModes[index]);
+    prefs.end();
+    NVS_UNLOCK;
+
+    alert("", K_S_CHANGE_ON_NEXT_BOOT);
 }
